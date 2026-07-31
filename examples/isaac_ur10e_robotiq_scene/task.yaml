@@ -1,0 +1,101 @@
+schema_version: "task.v1"
+name: isaac_ur10e_robotiq_scene
+language_instruction: "Pick the cube from the table with the UR10e and Robotiq 2F-85, transfer it to the green target zone, release it, and verify that it remains stable inside the zone."
+frames: 1270
+record_every_n_frames: 1
+randomization:
+  enabled: true
+  pick_object:
+    x: [0.94, 1.00]
+    y: [0.22, 0.28]
+  target_zone:
+    x: [0.73, 0.79]
+    y: [-0.09, -0.03]
+  min_pick_target_separation: 0.20
+  max_sampling_attempts: 100
+scene:
+  ground:
+    enabled: true
+    path: "/World/GroundPlane"
+  lighting:
+    type: "distant"
+    path: "/World/DistantLight"
+    intensity: 900
+  table:
+    path: "/World/WorkTable"
+    color: [0.50, 0.50, 0.46]
+    position: [0.72, 0.14, 0.34]
+    scale: [0.70, 0.56, 0.08]
+    size: 1.0
+  target_zone:
+    path: "/World/TargetZone"
+    color: [0.05, 0.65, 0.40]
+    position: [0.76, -0.06, 0.42]
+    scale: [0.20, 0.14, 0.01]
+    size: 1.0
+  pick_object:
+    path: "/World/PickObject"
+    color: [0.90, 0.28, 0.08]
+    position: [0.98, 0.25, 0.50]
+    scale: [0.055, 0.055, 0.055]
+    size: 1.0
+    mass: 0.12
+pickup:
+  grasp_mode: "solver_fixed_joint"
+  arm_motion_mode: "rmpflow_motion_policy"
+  grasp_body_path: "/World/UR10e/Robotiq_2F_85/base_link"
+  attach_frame: 160
+  grasp_retry_frames: 45
+  release_frame: 1120
+  lift_height: 0.24
+  object_grasp_offset: [0.00, -0.10, -0.16]
+  place_grasp_x_compensation: -0.175
+  place_grasp_y_compensation: -0.03
+  place_servo_frames: 160
+  place_servo_gain: 0.12
+  place_servo_max_step: 0.004
+  place_servo_max_correction: 0.08
+  physics_substeps_per_frame: 6
+  max_attached_distance: 0.12
+  max_grasp_attach_distance: 0.10
+robot:
+  name: ur10e_robotiq_2f85
+  prim_path: "/World/UR10e"
+  asset_path: "/isaac-sim/exts/isaacsim.asset.transformer.rules/data/tests/ur10e/ur10e.usd"
+  gripper_variant: "Robotiq_2F_85"
+  physics_variant: "PhysX"
+  end_effector_path_hint: "robotiq"
+  position: [0.575, -0.24, 0.0]
+  rotation_degrees: [0.0, 0.0, 0.0]
+camera:
+  enabled: true
+  position: [2.25, -2.45, 1.85]
+  target: [0.55, -0.02, 0.70]
+  resolution: [1280, 720]
+  preview_frames: [0, 80, 130, 160, 380, 650, 900, 1040, 1120, 1200, 1269]
+  rt_subframes: 8
+success_criteria:
+  min_recorded_frames: 1200
+  min_robot_prim_count: 20
+  min_articulation_dofs: 7
+  min_controlled_joints: 7
+  min_joint_motion_degrees: 10.0
+  min_preview_images: 10
+  min_gripper_motion_degrees: 5.0
+  min_lift_height: 0.15
+  min_object_attached_frames: 850
+  max_grasp_rigidity_error: 0.04
+  max_grasp_attach_distance: 0.10
+  require_grasp_created: true
+  require_final_released: true
+  require_final_inside_target_zone: true
+  min_release_settle_frames: 120
+  max_final_target_xy_distance: 0.04
+  min_final_object_height: 0.39
+  max_final_object_height: 0.44
+  max_post_release_motion: 0.03
+  require_robotiq_asset: true
+  require_mimic_joint_prims: true
+  require_real_grasp_body: true
+output:
+  root: "/workspace/project/outputs/episodes"

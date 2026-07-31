@@ -1,0 +1,47 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Local environments and packaging output
+.generated-skills/
+.codex/
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.token
+
+# Generated simulation, benchmark, and dashboard artifacts
+outputs/
+!outputs/.gitkeep
+dashboard/generated/
+dashboard/.cache/
+logs/
+*.log
+
+# Isaac Sim and GPU runtime caches
+.cache/
+cache/
+kit_cache/
+isaac-sim/cache/
+
+# Editor and OS metadata
+.idea/
+.vscode/
+.DS_Store
+
+outputs/episodes/
+outputs/reports/
+!outputs/.gitkeep

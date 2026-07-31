@@ -1,0 +1,246 @@
+schema_version: "task.v2"
+name: isaac_perception_contact_scene
+language_instruction: "Use calibrated RGB-D observations to locate the cube and target, grasp the cube through Robotiq finger contact and friction only, and place it inside the target zone."
+frames: 5200
+record_every_n_frames: 1
+randomization:
+  enabled: true
+  pick_object:
+    x: [0.94, 1.00]
+    y: [0.22, 0.28]
+  target_zone:
+    x: [0.94, 0.98]
+    y: [-0.05, -0.01]
+  min_pick_target_separation: 0.20
+  max_sampling_attempts: 100
+scene:
+  ground:
+    enabled: true
+    path: "/World/GroundPlane"
+  lighting:
+    type: "distant"
+    path: "/World/DistantLight"
+    intensity: 1000
+  table:
+    path: "/World/WorkTable"
+    color: [0.42, 0.46, 0.50]
+    position: [0.72, 0.14, 0.34]
+    scale: [0.95, 0.65, 0.08]
+    size: 1.0
+  target_zone:
+    path: "/World/TargetZone"
+    color: [0.04, 0.72, 0.30]
+    position: [0.96, -0.03, 0.42]
+    scale: [0.14, 0.14, 0.01]
+    size: 1.0
+  pick_object:
+    path: "/World/PickObject"
+    color: [0.95, 0.16, 0.03]
+    position: [0.98, 0.25, 0.50]
+    scale: [0.055, 0.055, 0.055]
+    size: 1.0
+    mass: 0.08
+pickup:
+  grasp_mode: "contact_only"
+  control_observation: "rgbd_closed_loop"
+  arm_motion_mode: "hybrid_rmpflow_lula_ik"
+  grasp_body_path: "/World/UR10e/Robotiq_2F_85/base_link"
+  left_contact_body_path: "/World/UR10e/Robotiq_2F_85/left_inner_finger"
+  right_contact_body_path: "/World/UR10e/Robotiq_2F_85/right_inner_finger"
+  left_contact_body_paths: ["/World/UR10e/Robotiq_2F_85/left_inner_finger", "/World/UR10e/Robotiq_2F_85/left_outer_finger", "/World/UR10e/Robotiq_2F_85/left_inner_knuckle", "/World/UR10e/Robotiq_2F_85/left_outer_knuckle"]
+  right_contact_body_paths: ["/World/UR10e/Robotiq_2F_85/right_inner_finger", "/World/UR10e/Robotiq_2F_85/right_outer_finger", "/World/UR10e/Robotiq_2F_85/right_inner_knuckle", "/World/UR10e/Robotiq_2F_85/right_outer_knuckle"]
+  attach_frame: 400
+  grasp_retry_frames: 220
+  gripper_close_start_frame: 480
+  gripper_close_end_frame: 600
+  release_frame: 2020
+  transfer_end_frame: 1720
+  place_hover_end_frame: 1800
+  place_descent_start_frame: 1820
+  place_descent_end_frame: 1900
+  lift_height: 0.20
+  lift_duration_frames: 700
+  object_grasp_offset: [0.0, -0.015, -0.135]
+  grasp_alignment_start_frame: 370
+  grasp_alignment_mode: "aperture_center"
+  grasp_tracking_mode: "integral"
+  grasp_tracking_gain: [0.25, 0.25, 1.20]
+  grasp_tracking_max_step: [0.010, 0.010, 0.00025]
+  grasp_tracking_max_correction: 0.08
+  grasp_tracking_max_xy_error: 0.012
+  grasp_approach_max_xy_error: 0.020
+  grasp_tracking_max_z_error: 0.008
+  grasp_tracking_max_finger_z_skew: 0.015
+  grasp_axis_target_yaw_degrees: 90.0
+  grasp_axis_max_error_degrees: 5.0
+  grasp_axis_calibration_max_error_degrees: 8.0
+  grasp_axis_max_delta_degrees_per_frame: 0.01
+  grasp_descent_max_xy_error: 0.012
+  grasp_descent_max_axis_yaw_error_degrees: 5.0
+  # Calibrated RGB-D projection bias from the camera frame to the gripper aperture.
+  grasp_aperture_bias_xy: [-0.006, -0.015]
+  grasp_tracking_stable_frames: 20
+  freeze_visual_target_after_xy_gate: true
+  grasp_visual_lock_source: "initial_rgbd"
+  grasp_hover_clearance: 0.10
+  grasp_height_offset_meters: 0.010
+  grasp_descent_frames: 120
+  grasp_descent_step_meters: 0.00025
+  grasp_close_duration_frames: 800
+  gripper_max_position_error_radians: 0.200
+  end_effector_orientation_degrees: [180.0, 0.0, 0.0]
+  lock_orientation_on_grasp: true
+  free_orientation_after_grasp: false
+  ik_max_joint_step_radians: 0.006
+  lula_ik_all_phases: true
+  place_grasp_x_compensation: 0.0
+  place_grasp_y_compensation: 0.0
+  place_servo_frames: 360
+  place_servo_gain: [0.12, 0.12, 0.35]
+  place_servo_max_step: [0.015, 0.015, 0.03]
+  place_servo_max_correction: 0.40
+  place_release_clearance: 0.03
+  place_release_max_xy_error: 0.04
+  place_release_max_z_error: 0.04
+  place_release_max_grasp_tracking_error: 0.04
+  place_require_grasp_tracking: false
+  place_hover_guard_clearance: 0.10
+  place_release_stable_updates: 1
+  place_release_timeout_frames: 800
+  place_descent_gate_max_object_xy_error: 0.02
+  place_descent_gate_max_grasp_xy_error: 0.025
+  place_descent_gate_stable_updates: 3
+  soft_landing_enabled: true
+  soft_landing_clearance: 0.003
+  soft_landing_step_meters: 0.0003
+  soft_landing_force_threshold_newtons: 8.0
+  soft_landing_force_max_clearance: 0.01
+  soft_landing_hold_frames: 30
+  soft_release_frames: 90
+  physics_substeps_per_frame: 8
+  contact_force_threshold_newtons: 0.02
+  bilateral_contact_force_threshold_newtons: 0.20
+  bilateral_contact_min_finger_position_radians: 0.21
+  bilateral_contact_confirmation_frames: 3
+  bilateral_contact_confirmation_window_frames: 12
+  bilateral_contact_memory_frames: 12
+  close_position_radians: 0.45
+  unilateral_contact_preload_radians: 0.01
+  tactile_close_step_radians: 0.001
+  unilateral_recenter_enabled: true
+  unilateral_recenter_step: 0.00025
+  unilateral_recenter_max_correction: 0.020
+  unilateral_recenter_persistence_frames: 60
+  pickup_visual_tracking_enabled: true
+  pickup_visual_tracking_max_step: [0.003, 0.003, 0.0]
+  unilateral_force_limit_newtons: 5.0
+  unilateral_force_backoff_radians: 0.002
+  post_grasp_target_return_step: 0.0004
+  tactile_activation_position_radians: 0.0
+  contact_hold_preload_radians: 0.0
+  bilateral_force_limit_newtons: 25.0
+  bilateral_force_backoff_radians: 0.0001
+  bilateral_hold_min_force_newtons: 0.7
+  bilateral_hold_max_force_newtons: 25.0
+  bilateral_hold_close_step_radians: 0.0001
+  transport_hold_max_close_adjustment_radians: 0.003
+  gripper_force_max_preload_error_radians: 0.025
+  transport_unilateral_close_enabled: false
+  transport_recenter_enabled: false
+  transport_recenter_step_meters: 0.0005
+  transport_recenter_max_correction: 0.015
+  initial_grasp_timeout_frame: 3000
+  grasp_validation_frames: 60
+  grasp_validation_max_frames: 240
+  grasp_validation_min_support_frames: 20
+  grasp_validation_min_force_newtons: 0.25
+  grasp_validation_terminal_stable_frames: 4
+  grasp_proof_lift_enabled: true
+  grasp_proof_lift_height_meters: 0.02
+  grasp_proof_lift_frames: 90
+  grasp_proof_hold_frames: 240
+  grasp_proof_hold_max_frames: 240
+  grasp_proof_lower_frames: 90
+  grasp_proof_min_object_lift_meters: 0.012
+  grasp_proof_required_contact_frames: 12
+  grasp_proof_terminal_contact_frames: 5
+  grasp_proof_max_rigidity_error_meters: 0.015
+  grasp_contact_loss_frames: 45
+  transport_rigidity_max_error_meters: 0.015
+  max_grasp_retries: 1
+  recovery_retreat_frames: 120
+  recovery_descend_frames: 120
+  recovery_close_frames: 400
+  finger_stiffness: 60.0
+  finger_damping: 15.0
+  finger_close_stiffness: 300.0
+  finger_close_damping: 40.0
+  finger_max_effort: 26.0
+  finger_contact_max_effort: 8.0
+  static_friction: 1.8
+  dynamic_friction: 1.5
+  restitution: 0.0
+robot:
+  name: ur10e_robotiq_2f85
+  prim_path: "/World/UR10e"
+  asset_path: "/isaac-sim/exts/isaacsim.asset.transformer.rules/data/tests/ur10e/ur10e.usd"
+  gripper_variant: "Robotiq_2F_85"
+  physics_variant: "PhysX"
+  end_effector_path_hint: "robotiq"
+  position: [0.575, -0.24, 0.0]
+  rotation_degrees: [0.0, 0.0, 0.0]
+camera:
+  enabled: true
+  position: [1.60, 1.60, 2.10]
+  target: [0.76, 0.10, 0.42]
+  resolution: [640, 360]
+  preview_frames: [0, 180, 300, 360, 400, 440, 480, 520, 560, 600, 620, 800, 920, 1040, 1160, 1400, 1800, 2200, 2600, 3000, 3400, 3800, 4200, 4600, 5000, 5199]
+  rt_subframes: 8
+perception:
+  enabled: true
+  object_channel: "red"
+  target_channel: "green"
+  min_channel: 70
+  min_dominance: 25
+  min_pixels: 30
+  warmup_frames: 12
+  update_every_n_frames: 20
+  max_object_xy_error: 0.02
+dataset:
+  enabled: true
+  observation_every_n_frames: 10
+  format: "farpoint_multimodal_v1"
+success_criteria:
+  min_recorded_frames: 1400
+  min_robot_prim_count: 20
+  min_articulation_dofs: 7
+  min_controlled_joints: 7
+  min_joint_motion_degrees: 10.0
+  min_preview_images: 10
+  min_gripper_motion_degrees: 5.0
+  min_lift_height: 0.15
+  require_final_released: true
+  require_final_inside_target_zone: true
+  min_release_settle_frames: 120
+  require_place_release_gate_converged: true
+  require_place_descent_gate_converged: true
+  require_soft_landing: true
+  require_grasp_approach_gate_converged: true
+  max_final_target_xy_distance: 0.05
+  min_final_object_height: 0.39
+  max_final_object_height: 0.44
+  max_post_release_motion: 0.03
+  require_robotiq_asset: true
+  require_mimic_joint_prims: true
+  require_real_grasp_body: true
+  require_rgbd_perception: true
+  max_perception_xy_error: 0.02
+  require_no_grasp_joint: true
+  min_bilateral_contact_frames: 20
+  min_transport_contact_frames: 120
+  require_no_transport_contact_loss: true
+  require_grasp_proof_lift: true
+  require_dataset_valid: true
+  min_dataset_observations: 100
+output:
+  root: "/workspace/project/outputs/episodes"

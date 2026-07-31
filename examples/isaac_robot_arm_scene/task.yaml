@@ -1,0 +1,63 @@
+schema_version: "task.v1"
+name: isaac_robot_arm_scene
+language_instruction: "Execute a scaffolded UR10e tabletop pick-and-place episode with phase labels, object motion, and telemetry."
+frames: 60
+record_every_n_frames: 1
+scene:
+  ground:
+    enabled: true
+    path: "/World/GroundPlane"
+  lighting:
+    type: "distant"
+    path: "/World/DistantLight"
+    intensity: 850
+  robot_pedestal:
+    path: "/World/RobotPedestal"
+    color: [0.32, 0.36, 0.38]
+    position: [-0.55, -0.22, 0.18]
+    scale: [0.20, 0.20, 0.18]
+    size: 1.0
+  table:
+    path: "/World/WorkTable"
+    color: [0.50, 0.50, 0.46]
+    position: [1.02, 0.12, 0.35]
+    scale: [0.95, 0.76, 0.08]
+    size: 1.0
+  target_zone:
+    path: "/World/TargetZone"
+    color: [0.05, 0.65, 0.40]
+    position: [1.16, -0.09, 0.385]
+    scale: [0.24, 0.18, 0.01]
+    size: 1.0
+  pick_object:
+    path: "/World/PickObject"
+    color: [0.90, 0.28, 0.08]
+    position: [1.02, 0.08, 0.445]
+    scale: [0.11, 0.11, 0.11]
+    size: 1.0
+robot:
+  name: ur10e
+  prim_path: "/World/UR10e"
+  asset_path: "/isaac-sim/exts/isaacsim.asset.transformer.rules/data/tests/ur10e/ur10e.usd"
+  position: [-0.55, -0.22, 0.38]
+  rotation_degrees: [0.0, 0.0, 0.0]
+camera:
+  enabled: true
+  position: [1.60, -1.05, 1.05]
+  target: [0.45, 0.20, 0.48]
+  resolution: [1280, 720]
+  preview_frames: [0, 15, 30, 45, 59]
+  rt_subframes: 8
+success_criteria:
+  min_recorded_frames: 60
+  min_robot_prim_count: 10
+  min_articulation_dofs: 6
+  min_controlled_joints: 6
+  min_joint_motion_degrees: 10.0
+  min_preview_images: 5
+  max_pick_place_distance: 0.08
+  min_grasp_contact_frames: 10
+  min_object_attached_frames: 10
+  max_gripper_object_distance: 0.12
+output:
+  root: "/workspace/project/outputs/episodes"

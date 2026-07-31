@@ -1,0 +1,35 @@
+schema_version: "task.v1"
+name: isaac_cube_scene
+language_instruction: "Observe a red cube falling onto a ground plane."
+frames: 60
+record_every_n_frames: 1
+scene:
+  ground:
+    enabled: true
+    path: "/World/GroundPlane"
+  lighting:
+    type: "distant"
+    path: "/World/DistantLight"
+    intensity: 300
+objects:
+  cube:
+    type: "dynamic_cube"
+    path: "/World/RedCube"
+    color: [1.0, 0.0, 0.0]
+    position: [0.0, 0.0, 1.0]
+    scale: [0.25, 0.25, 0.25]
+    size: 1.0
+camera:
+  enabled: true
+  position: [2.2, -3.0, 1.8]
+  target: [0.0, 0.0, 0.25]
+  resolution: [1280, 720]
+  preview_frames: [0, 15, 30, 59]
+  rt_subframes: 8
+success_criteria:
+  min_recorded_frames: 60
+  final_cube_z:
+    min: 0.10
+    max: 0.15
+output:
+  root: "/workspace/project/outputs/episodes"

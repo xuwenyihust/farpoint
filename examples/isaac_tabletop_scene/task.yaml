@@ -1,0 +1,54 @@
+schema_version: "task.v1"
+name: isaac_tabletop_scene
+language_instruction: "Observe three colored objects settling on a tabletop."
+frames: 90
+record_every_n_frames: 1
+scene:
+  ground:
+    enabled: true
+    path: "/World/GroundPlane"
+  lighting:
+    type: "distant"
+    path: "/World/DistantLight"
+    intensity: 450
+  table:
+    path: "/World/Table"
+    color: [0.55, 0.45, 0.34]
+    position: [0.0, 0.0, 0.35]
+    scale: [1.4, 0.9, 0.10]
+    size: 1.0
+objects:
+  red_block:
+    type: "dynamic_cube"
+    path: "/World/RedBlock"
+    color: [1.0, 0.05, 0.02]
+    position: [-0.35, -0.12, 0.80]
+    scale: [0.16, 0.16, 0.16]
+    size: 1.0
+  blue_block:
+    type: "dynamic_cube"
+    path: "/World/BlueBlock"
+    color: [0.02, 0.20, 1.0]
+    position: [0.0, 0.12, 0.95]
+    scale: [0.18, 0.18, 0.18]
+    size: 1.0
+  green_block:
+    type: "dynamic_cube"
+    path: "/World/GreenBlock"
+    color: [0.05, 0.72, 0.28]
+    position: [0.34, -0.05, 1.10]
+    scale: [0.14, 0.14, 0.14]
+    size: 1.0
+camera:
+  enabled: true
+  position: [2.4, -2.8, 1.7]
+  target: [0.0, 0.0, 0.55]
+  resolution: [1280, 720]
+  preview_frames: [0, 20, 40, 60, 89]
+  rt_subframes: 8
+success_criteria:
+  min_recorded_frames: 90
+  all_objects_min_z: 0.35
+  all_objects_max_abs_xy: 0.85
+output:
+  root: "/workspace/project/outputs/episodes"
