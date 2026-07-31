@@ -11,6 +11,8 @@
 - [Data Contract](dataset-v1/data-contract.md): LeRobot-compatible schema
 - [Hugging Face Dataset Card](dataset-v1/huggingface-dataset-card.md): release
   metadata and dataset licensing template
+- [Intra-Task Diversity Goal](dataset-v1/intra-task-diversity-goal.md): V1.1
+  expansion target and acceptance criteria
 
 Machine-specific setup notes, benchmark run records, and data-platform
 operations are kept locally under `.codex/local/`. Internal roadmaps,
