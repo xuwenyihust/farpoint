@@ -1,9 +1,13 @@
 ---
 pretty_name: Farpoint UR10e Robotiq 2F-85
 license: cc-by-4.0
+library_name: lerobot
 task_categories:
 - robotics
 tags:
+- LeRobotDataset-v3
+- format:parquet
+- modality:tabular
 - robotics
 - robot-learning
 - isaac-sim
@@ -43,6 +47,17 @@ for the data contract and LeRobot compatibility policy.
 The dataset is intended to be consumed independently of the source repository;
 the source repository contains the generation and validation pipeline, while
 this Hugging Face repository contains the released dataset artifacts.
+
+## Releases
+
+- `v1.0.0`: the original 12 successful legacy randomized episodes.
+- `v1.1.0`: 29 successful episodes, combining the original 12 episodes with 17
+  V1.1 profiled episodes. Legacy records are labeled
+  `farpoint_legacy_randomized_v0`; profiled records are labeled
+  `farpoint_v1_1_profiled` in `meta/episode_metadata.jsonl`.
+
+The default revision tracks the latest release. Earlier releases remain
+available through their Hugging Face revision tags.
 
 ## Intended use
 
