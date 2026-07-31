@@ -151,10 +151,13 @@ def make_visual_shape(
     material = PreviewSurfaceMaterial(f"/World/Materials/{Path(path).name}")
     material.set_input_values("diffuseColor", config["color"])
     if object_type == "cylinder":
+        # Keep the cylinder within the 2F-85 aperture while giving RGB-D enough
+        # pixels for stable pose estimation at the pilot camera resolution.
+        radius_scale = float(config.get("cylinder_radius_scale", 0.72))
         shape = Cylinder(
             paths=config["path"],
             positions=config["position"],
-            radii=float(config["size"]) * 0.5,
+            radii=float(config["size"]) * radius_scale,
             heights=float(config["size"]),
             axes="Z",
             scales=config["scale"],
@@ -1025,7 +1028,9 @@ def main():
     preview_dir = episode_dir / "preview"
     observations_path = episode_dir / "observations.jsonl"
     labels_path = episode_dir / "labels.jsonl"
-    frame_count = int(task["frames"])
+    frame_count = int(
+        os.environ.get("FARPOINT_FRAME_LIMIT", task["frames"])
+    )
     record_every = int(task["record_every_n_frames"])
     camera_config = task.get("camera", {})
     perception_config = task.get("perception", {})

@@ -2,7 +2,7 @@
   "schema_version": "farpoint.variation.v1",
   "dataset_version": "farpoint_v1.1",
   "task_name": "isaac_ur10e_robotiq_scene",
-  "description": "Six bounded profiles for the UR10e Robotiq 2F-85 tabletop pickup pilot.",
+  "description": "Three bounded cube-position profiles for the UR10e Robotiq 2F-85 tabletop pickup pilot. Cylinder geometry remains a future experiment.",
   "fixed_parameters": {
     "object_yaw_degrees": 0.0,
     "appearance_profile": "orange_default",
@@ -29,30 +29,6 @@
     {
       "variation_id": "cube_position_right",
       "object_type": "cube",
-      "object_position_bin": "right",
-      "position_xy": {"x": [0.98, 1.00], "y": [0.26, 0.28]},
-      "object_yaw_degrees": 0.0,
-      "appearance_profile": "orange_default"
-    },
-    {
-      "variation_id": "cylinder_position_left",
-      "object_type": "cylinder",
-      "object_position_bin": "left",
-      "position_xy": {"x": [0.94, 0.96], "y": [0.22, 0.24]},
-      "object_yaw_degrees": 0.0,
-      "appearance_profile": "orange_default"
-    },
-    {
-      "variation_id": "cylinder_position_center",
-      "object_type": "cylinder",
-      "object_position_bin": "center",
-      "position_xy": {"x": [0.96, 0.98], "y": [0.24, 0.26]},
-      "object_yaw_degrees": 0.0,
-      "appearance_profile": "orange_default"
-    },
-    {
-      "variation_id": "cylinder_position_right",
-      "object_type": "cylinder",
       "object_position_bin": "right",
       "position_xy": {"x": [0.98, 1.00], "y": [0.26, 0.28]},
       "object_yaw_degrees": 0.0,
