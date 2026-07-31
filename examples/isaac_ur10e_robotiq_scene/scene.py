@@ -53,6 +53,7 @@ from farpoint.perception import (
     look_at_calibration,
     xy_error,
 )
+from farpoint.variation import load_variation_config, resolve_variation
 
 
 ARM_JOINT_NAMES = [
@@ -980,6 +981,27 @@ def main():
     started_at = utc_now()
     base_task = parse_simple_yaml(TASK_PATH)
     episode_seed = int(os.environ.get("FARPOINT_EPISODE_SEED", "0"))
+    variation_id = os.environ.get("FARPOINT_VARIATION_ID") or None
+    variation = None
+    if variation_id:
+        variation_config_path = Path(
+            os.environ.get(
+                "FARPOINT_VARIATION_CONFIG",
+                str(PROJECT_ROOT / "configs" / "farpoint_v1_1_variations.json"),
+            )
+        )
+        variation_config = load_variation_config(variation_config_path)
+        variation = resolve_variation(variation_config, variation_id, episode_seed)
+        if variation["object_type"] != "cube":
+            raise ValueError(
+                "variation profile requests an object type that this scene "
+                "does not render yet: "
+                f"{variation['object_type']}"
+            )
+        base_task["scene"]["pick_object"]["position"][:2] = variation[
+            "object_position_xy"
+        ]
+        base_task["randomization"]["enabled"] = False
     benchmark_id = os.environ.get("FARPOINT_BENCHMARK_ID") or None
     benchmark_repeat = int(os.environ.get("FARPOINT_BENCHMARK_REPEAT", "0"))
     task, randomization = randomize_task(base_task, episode_seed)
@@ -1016,6 +1038,7 @@ def main():
             "scene_script_start",
             episode_id=episode_id,
             episode_seed=episode_seed,
+            variation_id=variation_id,
             benchmark_id=benchmark_id,
             benchmark_repeat=benchmark_repeat,
         )
@@ -6352,6 +6375,8 @@ def main():
         metrics["success_checks"] = checks
         metrics.update(classify_failure(checks))
         metrics["episode_seed"] = episode_seed
+        metrics["variation_id"] = variation_id
+        metrics["variation"] = variation
         metrics["benchmark_id"] = benchmark_id
         metrics["benchmark_repeat"] = benchmark_repeat
         metrics["randomization"] = randomization
@@ -6360,6 +6385,8 @@ def main():
             "episode_id": episode_id,
             "run_id": os.environ.get("FARPOINT_RUN_ID"),
             "episode_seed": episode_seed,
+            "variation_id": variation_id,
+            "variation": variation,
             "benchmark_id": benchmark_id,
             "benchmark_repeat": benchmark_repeat,
             "randomization": randomization,

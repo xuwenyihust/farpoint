@@ -9,6 +9,7 @@ REMOTE_ROOT="${FARPOINT_REMOTE_ROOT:-${HOME}/farpoint}"
 REMOTE_RUNTIME="${FARPOINT_REMOTE_RUNTIME:-${HOME}/.cache/farpoint/isaac-sim}"
 ISAAC_IMAGE="${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0}"
 EPISODE_SEED="${FARPOINT_EPISODE_SEED:-0}"
+VARIATION_ID="${FARPOINT_VARIATION_ID:-}"
 BENCHMARK_ID="${FARPOINT_BENCHMARK_ID:-}"
 BENCHMARK_REPEAT="${FARPOINT_BENCHMARK_REPEAT:-0}"
 RUN_TIMEOUT_SECONDS="${FARPOINT_RUN_TIMEOUT_SECONDS:-300}"
@@ -107,11 +108,13 @@ rsync -az -e "${RSYNC_SSH_COMMAND}" \
   --exclude ".git" \
   --exclude ".generated-skills" \
   --exclude "outputs" \
+  --exclude ".codex" \
   --exclude "__pycache__" \
   "${LOCAL_ROOT}/README.md" \
   "${LOCAL_ROOT}/deploy" \
   "${LOCAL_ROOT}/docs" \
   "${LOCAL_ROOT}/examples" \
+  "${LOCAL_ROOT}/configs" \
   "${LOCAL_ROOT}/scripts" \
   "${LOCAL_ROOT}/src" \
   "${LOCAL_ROOT}/web" \
@@ -126,7 +129,7 @@ REMOTE_LOG="${REMOTE_LOG_DIR}/${EXAMPLE_NAME}_${RUN_ID}.log"
 
 set +e
 record_local_phase "remote_example_start" host="${DGX_HOST}" log="${REMOTE_LOG}"
-ssh "${SSH_OPTIONS[@]}" "${DGX_HOST}" "bash -lc 'cd \"${REMOTE_ROOT}\" && set -o pipefail && FARPOINT_RUN_TIMEOUT_SECONDS=\"${RUN_TIMEOUT_SECONDS}\" FARPOINT_STARTUP_TIMEOUT_SECONDS=\"${STARTUP_TIMEOUT_SECONDS}\" bash scripts/run_remote_isaac_example.sh \"${EXAMPLE_PATH}\" \"${ISAAC_IMAGE}\" \"${REMOTE_RUN_RUNTIME}\" \"${RUN_ID}\" \"${EPISODE_SEED}\" \"${BENCHMARK_ID}\" \"${BENCHMARK_REPEAT}\" 2>&1 | tee \"${REMOTE_LOG}\"'"
+ssh "${SSH_OPTIONS[@]}" "${DGX_HOST}" "bash -lc 'cd \"${REMOTE_ROOT}\" && set -o pipefail && FARPOINT_RUN_TIMEOUT_SECONDS=\"${RUN_TIMEOUT_SECONDS}\" FARPOINT_STARTUP_TIMEOUT_SECONDS=\"${STARTUP_TIMEOUT_SECONDS}\" FARPOINT_VARIATION_ID=\"${VARIATION_ID}\" bash scripts/run_remote_isaac_example.sh \"${EXAMPLE_PATH}\" \"${ISAAC_IMAGE}\" \"${REMOTE_RUN_RUNTIME}\" \"${RUN_ID}\" \"${EPISODE_SEED}\" \"${BENCHMARK_ID}\" \"${BENCHMARK_REPEAT}\" \"${VARIATION_ID}\" 2>&1 | tee \"${REMOTE_LOG}\"'"
 STATUS=$?
 record_local_phase "remote_example_end" host="${DGX_HOST}" status="${STATUS}"
 set -e
