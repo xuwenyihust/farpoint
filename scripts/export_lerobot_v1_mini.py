@@ -6,9 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from export_lerobot_v1_episode import (
     TASK_INSTRUCTION,
@@ -19,6 +22,7 @@ from export_lerobot_v1_episode import (
     resolve_controlled_joint_names,
     select_joint_values,
 )
+from farpoint.episode_metadata import normalize_episode_metadata
 
 
 def load_episode(episode_dir: Path) -> tuple[dict, list[dict]]:
@@ -123,6 +127,7 @@ def export_mini(episode_dirs: list[Path], output_dir: Path, dataset_id: str) -> 
                     "success": bool(metrics.get("success")),
                     "failure_category": metrics.get("failure_category"),
                     "frame_count": len(rows),
+                    "metadata": normalize_episode_metadata(metadata, metrics),
                 }
             )
         dataset.finalize()
@@ -143,6 +148,10 @@ def export_mini(episode_dirs: list[Path], output_dir: Path, dataset_id: str) -> 
     )
     (output_dir / "meta" / "source_episodes.json").write_text(
         json.dumps(source_records, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (output_dir / "meta" / "episode_metadata.jsonl").write_text(
+        "".join(json.dumps(record["metadata"], sort_keys=True) + "\n" for record in source_records),
+        encoding="utf-8",
     )
     return output_dir
 
