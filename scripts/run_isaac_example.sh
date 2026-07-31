@@ -111,13 +111,11 @@ rsync -az -e "${RSYNC_SSH_COMMAND}" \
   --exclude ".codex" \
   --exclude "__pycache__" \
   "${LOCAL_ROOT}/README.md" \
-  "${LOCAL_ROOT}/deploy" \
   "${LOCAL_ROOT}/docs" \
   "${LOCAL_ROOT}/examples" \
   "${LOCAL_ROOT}/configs" \
   "${LOCAL_ROOT}/scripts" \
   "${LOCAL_ROOT}/src" \
-  "${LOCAL_ROOT}/web" \
   "${DGX_HOST}:${REMOTE_ROOT}/"
 record_local_phase "project_sync_end" host="${DGX_HOST}" remote_root="${REMOTE_ROOT}"
 

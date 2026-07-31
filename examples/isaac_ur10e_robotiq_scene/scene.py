@@ -140,15 +140,32 @@ def append_phase(path, phase, **fields):
         )
 
 
-def make_visual_cube(Cube, PreviewSurfaceMaterial, path, config):
+def make_visual_shape(
+    Cube,
+    Cylinder,
+    PreviewSurfaceMaterial,
+    path,
+    config,
+    object_type="cube",
+):
     material = PreviewSurfaceMaterial(f"/World/Materials/{Path(path).name}")
     material.set_input_values("diffuseColor", config["color"])
-    shape = Cube(
-        paths=config["path"],
-        positions=config["position"],
-        sizes=config["size"],
-        scales=config["scale"],
-    )
+    if object_type == "cylinder":
+        shape = Cylinder(
+            paths=config["path"],
+            positions=config["position"],
+            radii=float(config["size"]) * 0.5,
+            heights=float(config["size"]),
+            axes="Z",
+            scales=config["scale"],
+        )
+    else:
+        shape = Cube(
+            paths=config["path"],
+            positions=config["position"],
+            sizes=config["size"],
+            scales=config["scale"],
+        )
     shape.apply_visual_materials(material)
     return shape
 
@@ -992,12 +1009,6 @@ def main():
         )
         variation_config = load_variation_config(variation_config_path)
         variation = resolve_variation(variation_config, variation_id, episode_seed)
-        if variation["object_type"] != "cube":
-            raise ValueError(
-                "variation profile requests an object type that this scene "
-                "does not render yet: "
-                f"{variation['object_type']}"
-            )
         base_task["scene"]["pick_object"]["position"][:2] = variation[
             "object_position_xy"
         ]
@@ -1058,7 +1069,12 @@ def main():
         import isaacsim.core.experimental.utils.stage as stage_utils
         from isaacsim.core.api import World
         from isaacsim.core.experimental.materials import PreviewSurfaceMaterial
-        from isaacsim.core.experimental.objects import Cube, DistantLight, GroundPlane
+        from isaacsim.core.experimental.objects import (
+            Cube,
+            Cylinder,
+            DistantLight,
+            GroundPlane,
+        )
         from isaacsim.core.experimental.prims import GeomPrim
         from isaacsim.core.prims import SingleArticulation
         from isaacsim.core.utils.types import ArticulationAction
@@ -1088,8 +1104,16 @@ def main():
             GroundPlane(task["scene"]["ground"]["path"], positions=[0, 0, 0])
         light = DistantLight(task["scene"]["lighting"]["path"])
         light.set_intensities(task["scene"]["lighting"]["intensity"])
+        object_type = variation["object_type"] if variation else "cube"
         for scene_key in ["table", "target_zone", "pick_object"]:
-            shape = make_visual_cube(Cube, PreviewSurfaceMaterial, scene_key, task["scene"][scene_key])
+            shape = make_visual_shape(
+                Cube,
+                Cylinder,
+                PreviewSurfaceMaterial,
+                scene_key,
+                task["scene"][scene_key],
+                object_type if scene_key == "pick_object" else "cube",
+            )
             if scene_key != "target_zone":
                 GeomPrim(paths=shape.paths, apply_collision_apis=True)
         pick_object_config = task["scene"]["pick_object"]
