@@ -9,7 +9,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = PROJECT_ROOT / "schemas" / "farpoint_v1.schema.json"
-LEGACY_SCHEMA_PATH = PROJECT_ROOT / "schemas" / "robotsim_v1.schema.json"
+LEGACY_SCHEMA_PATH = PROJECT_ROOT / "schemas" / "legacy" / "robotsim_v1.schema.json"
 PRIMARY_SIDECAR = "farpoint_v1.json"
 LEGACY_SIDECAR = "robotsim_v1.json"
 REQUIRED_FEATURES = {
