@@ -151,10 +151,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output_dir", type=Path)
     parser.add_argument("episode_dirs", nargs="+", type=Path)
-    parser.add_argument("--dataset-id", default="farpoint_v1_mini")
+    parser.add_argument("--dataset-id", default="farpoint_ur10e_robotiq_2f85")
     args = parser.parse_args()
     output = export_mini(args.episode_dirs, args.output_dir.resolve(), args.dataset_id)
-    print(f"Farpoint V1 mini dataset written: {output}")
+    print(f"Farpoint UR10e Robotiq 2F-85 dataset written: {output}")
     return 0
 
 

@@ -15,7 +15,7 @@ def write_json(path, payload):
 def valid_sidecar():
     return {
         "schema_version": "farpoint.dataset.v1",
-        "dataset_id": "farpoint_v1",
+        "dataset_id": "farpoint_ur10e_robotiq_2f85",
         "format": "lerobot",
         "format_version": "v3",
         "split": "train",
@@ -83,7 +83,7 @@ def test_valid_structural_dataset(tmp_path):
     make_valid_dataset(tmp_path)
     result = validate_dataset(tmp_path)
     assert result["valid"] is True
-    assert result["dataset_id"] == "farpoint_v1"
+    assert result["dataset_id"] == "farpoint_ur10e_robotiq_2f85"
     assert result["compatibility_mode"] == "current"
     assert result["errors"] == []
 

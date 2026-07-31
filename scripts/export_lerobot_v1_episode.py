@@ -250,10 +250,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("episode_dir", type=Path)
     parser.add_argument("output_dir", type=Path)
-    parser.add_argument("--dataset-id", default="farpoint_v1_episode_0000")
+    parser.add_argument("--dataset-id", default="farpoint_ur10e_robotiq_2f85_episode_0000")
     args = parser.parse_args()
     output = export_episode(args.episode_dir.resolve(), args.output_dir.resolve(), args.dataset_id)
-    print(f"Farpoint V1 LeRobot dataset written: {output}")
+    print(f"Farpoint UR10e Robotiq 2F-85 dataset written: {output}")
     return 0
 
 

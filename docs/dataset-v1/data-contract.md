@@ -47,7 +47,7 @@ The Farpoint sidecar must contain:
 ```json
 {
   "schema_version": "farpoint.dataset.v1",
-  "dataset_id": "farpoint_v1",
+  "dataset_id": "farpoint_ur10e_robotiq_2f85",
   "format": "lerobot",
   "format_version": "v3",
   "split": "train",
@@ -279,7 +279,7 @@ write a machine-readable result containing:
 {
   "valid": true,
   "schema_version": "farpoint.dataset.v1",
-  "dataset_id": "farpoint_v1",
+  "dataset_id": "farpoint_ur10e_robotiq_2f85",
   "errors": [],
   "warnings": [],
   "checks": {}
@@ -309,7 +309,7 @@ current exporter.
 
 ## Licensing and Provenance
 
-The separately published `farpoint-v1` dataset is intended to be released
+The separately published `farpoint-ur10e-robotiq-2f85` dataset is intended to be released
 under CC BY 4.0 for original Farpoint content. Each release must document
 the provenance and redistribution terms of simulator assets, robot models,
 textures, and other third-party content. NVIDIA Isaac Sim, Omniverse, and

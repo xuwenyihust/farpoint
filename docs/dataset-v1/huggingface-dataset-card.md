@@ -1,5 +1,5 @@
 ---
-pretty_name: Farpoint V1
+pretty_name: Farpoint UR10e Robotiq 2F-85
 license: cc-by-4.0
 task_categories:
 - robotics
@@ -11,10 +11,10 @@ tags:
 - manipulation
 ---
 
-# Farpoint V1
+# Farpoint UR10e Robotiq 2F-85
 
-Farpoint V1 is a LeRobot-compatible dataset of physics-based robot
-manipulation episodes generated with the Farpoint simulation pipeline.
+Farpoint UR10e Robotiq 2F-85 is a LeRobot-compatible dataset of physics-based
+robot manipulation episodes generated with the Farpoint simulation pipeline.
 
 ## License
 
