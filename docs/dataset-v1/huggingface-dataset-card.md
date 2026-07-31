@@ -16,6 +16,9 @@ tags:
 Farpoint UR10e Robotiq 2F-85 is a LeRobot-compatible dataset of physics-based
 robot manipulation episodes generated with the Farpoint simulation pipeline.
 
+- Dataset: [farpoint-ur10e-robotiq-2f85](https://huggingface.co/datasets/wenyixu101/farpoint-ur10e-robotiq-2f85)
+- Source repository: [xuwenyihust/farpoint](https://github.com/xuwenyihust/farpoint)
+
 ## License
 
 The original Farpoint dataset content is released under the **Creative
@@ -36,6 +39,10 @@ redistribution remain subject to the original terms from their providers.
 See the Farpoint source repository's
 [`docs/dataset-v1/data-contract.md`](https://github.com/xuwenyihust/farpoint/blob/main/docs/dataset-v1/data-contract.md)
 for the data contract and LeRobot compatibility policy.
+
+The dataset is intended to be consumed independently of the source repository;
+the source repository contains the generation and validation pipeline, while
+this Hugging Face repository contains the released dataset artifacts.
 
 ## Intended use
 

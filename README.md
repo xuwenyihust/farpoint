@@ -58,6 +58,11 @@ Farpoint Dataset V1 targets the LeRobot Dataset v3 layout and contains
 physics-based UR10e + Robotiq manipulation episodes. The public contract is
 documented in [docs/dataset-v1/data-contract.md](docs/dataset-v1/data-contract.md).
 
+The current release is available on
+[Hugging Face](https://huggingface.co/datasets/wenyixu101/farpoint-ur10e-robotiq-2f85).
+The Dataset Card is the authoritative release-level license and provenance
+notice.
+
 The exporter and validators are available as scripts:
 
 ```bash
