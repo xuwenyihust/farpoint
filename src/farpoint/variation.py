@@ -98,6 +98,7 @@ def resolve_variation(config: dict, variation_id: str, seed: int) -> dict:
         "object_position_xy": position_xy,
         "object_yaw_degrees": float(profile.get("object_yaw_degrees", 0.0)),
         "appearance_profile": profile.get("appearance_profile", "orange_default"),
+        "grasp_profile": profile.get("grasp_profile", "default"),
         "seed": int(seed),
         "derived_seed": resolved_seed,
         "config": copy.deepcopy(config.get("fixed_parameters", {})),

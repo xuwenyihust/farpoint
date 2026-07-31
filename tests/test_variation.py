@@ -21,9 +21,9 @@ class VariationTests(unittest.TestCase):
     def setUp(self):
         self.config = load_variation_config(CONFIG_PATH)
 
-    def test_config_is_versioned_and_has_three_profiles(self):
+    def test_config_is_versioned_and_has_six_profiles(self):
         self.assertEqual(self.config["schema_version"], CONFIG_VERSION)
-        self.assertEqual(len(self.config["profiles"]), 3)
+        self.assertEqual(len(self.config["profiles"]), 6)
 
     def test_resolution_is_deterministic(self):
         first = resolve_variation(self.config, "cube_position_center", 17)
@@ -32,9 +32,14 @@ class VariationTests(unittest.TestCase):
         self.assertEqual(first["object_type"], "cube")
         self.assertEqual(first["object_position_bin"], "center")
 
+    def test_cylinder_profiles_select_the_cylinder_grasp_profile(self):
+        variation = resolve_variation(self.config, "cylinder_position_right", 0)
+        self.assertEqual(variation["object_type"], "cylinder")
+        self.assertEqual(variation["grasp_profile"], "cylinder_grip_v1")
+
     def test_different_seeds_are_planned_without_simulation(self):
         plan = plan_variations(self.config, [0, 1])
-        self.assertEqual(len(plan), 6)
+        self.assertEqual(len(plan), 12)
         self.assertEqual(
             [item["variation_id"] for item in plan[:2]],
             ["cube_position_left", "cube_position_left"],

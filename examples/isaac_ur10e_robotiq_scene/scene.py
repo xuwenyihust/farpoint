@@ -1016,6 +1016,13 @@ def main():
             "object_position_xy"
         ]
         base_task["randomization"]["enabled"] = False
+        if variation.get("grasp_profile") == "cylinder_grip_v1":
+            # Cylinders need a slightly higher, still physical, friction/force
+            # envelope to survive the proof lift without a solver attachment.
+            base_task["scene"]["pick_object"]["cylinder_radius_scale"] = 0.50
+            base_task["pickup"]["static_friction"] = 2.5
+            base_task["pickup"]["dynamic_friction"] = 2.0
+            base_task["pickup"]["finger_contact_max_effort"] = 20.0
     benchmark_id = os.environ.get("FARPOINT_BENCHMARK_ID") or None
     benchmark_repeat = int(os.environ.get("FARPOINT_BENCHMARK_REPEAT", "0"))
     task, randomization = randomize_task(base_task, episode_seed)
