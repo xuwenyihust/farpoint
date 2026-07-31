@@ -20,7 +20,7 @@ def _parquet_safe(value: Any) -> Any:
     """Keep metadata lossless when a simulator emits integers beyond int64."""
     if isinstance(value, bool) or value is None:
         return value
-    if isinstance(value, int) and not -(2**63) <= value < 2**63:
+    if isinstance(value, int):
         return str(value)
     if isinstance(value, dict):
         return {str(key): _parquet_safe(item) for key, item in value.items()}
