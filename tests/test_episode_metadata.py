@@ -3,6 +3,7 @@ from copy import deepcopy
 from farpoint.episode_metadata import (
     normalize_episode_metadata,
     normalize_episode_metadata_v2,
+    resolve_measured_object_pose,
     validate_simulator_metadata_v2,
 )
 
@@ -88,3 +89,13 @@ def test_simulator_v2_metadata_is_validated_before_persistence():
         assert "recording" in str(error)
     else:
         raise AssertionError("invalid simulator recording metadata should fail")
+
+
+def test_measured_pose_updates_only_resolved_variation():
+    raw = episode_metadata_v2()["variation"]
+    requested = deepcopy(raw["requested"])
+    measured = [0.87, 0.20, 0.4075]
+    resolved = resolve_measured_object_pose(raw, measured)
+    assert resolved["requested"] == requested
+    assert resolved["resolved"]["object_position_m"] == measured
+    assert raw["resolved"]["object_position_m"] != measured

@@ -17,6 +17,19 @@ QUALITY_FIELDS = (
     "joint_smoothness_score",
 )
 
+
+def resolve_measured_object_pose(
+    variation: dict[str, Any] | None, position_m: list[float]
+) -> dict[str, Any] | None:
+    """Copy episode variation metadata and bind its resolved object pose."""
+    if variation is None:
+        return None
+    resolved = deepcopy(variation)
+    values = resolved.get("resolved")
+    if isinstance(values, dict) and "object_position_m" in values:
+        values["object_position_m"] = [float(value) for value in position_m]
+    return resolved
+
 def normalize_episode_metadata(metadata: dict, metrics: dict | None = None) -> dict:
     """Return a stable metadata record without rewriting the raw source metadata.
 

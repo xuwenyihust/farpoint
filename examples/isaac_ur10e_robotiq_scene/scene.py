@@ -49,6 +49,7 @@ from farpoint.control import (
     update_contact_loss_streak,
 )
 from farpoint.dataset import validate_episode_dataset
+from farpoint.episode_metadata import resolve_measured_object_pose
 from farpoint.perception import (
     PerceptionError,
     estimate_dominant_color_pose,
@@ -6583,12 +6584,19 @@ def main():
             round(joint_smoothness, 8) if joint_smoothness is not None else None
         )
 
+        episode_variation = resolve_measured_object_pose(
+            variation,
+            ground_truth_pick_start_position,
+        )
+        if position_trial:
+            metrics["variation"] = episode_variation
+
         metadata = {
             "episode_id": episode_id,
             "run_id": os.environ.get("FARPOINT_RUN_ID"),
             "episode_seed": episode_seed,
             "variation_id": variation_id,
-            "variation": variation,
+            "variation": episode_variation,
             "trial_id": trial_id,
             "split": position_trial["split"] if position_trial else None,
             "position_plan_id": position_trial["plan_id"] if position_trial else None,
