@@ -13,6 +13,10 @@ Release versions use `MAJOR.MINOR.PATCH` in `release.toml` and `vMAJOR.MINOR.PAT
 for Git and Hugging Face tags. Schema versions are independent compatibility
 contracts and do not follow the release number.
 
+For example, a feature branch may introduce `farpoint.dataset.v2` while the
+published release remains `1.2.0`. Only the final release PR changes
+`release.toml`; contract, pilot, and benchmark PRs must not pre-bump it.
+
 The release currently recorded in `release.toml` is the published baseline.
 Ordinary feature PRs do not bump it; the next version is selected in a release PR.
 
@@ -42,6 +46,8 @@ episode IDs, artifact completeness, and distinct execution and quality states.
 ## Dataset workflow
 
 1. Export only eligible benchmark episodes into a new candidate directory.
+   The selection manifest must assign every episode to an explicit split and
+   preserve its benchmark trial identity.
 2. Validate episode boundaries, finite values, feature dimensions, timestamps,
    Parquet shards, MP4 decoding, frame alignment, metadata, and checksums.
 3. Build the Viewer-safe package with `scripts/release_dataset.py build`.

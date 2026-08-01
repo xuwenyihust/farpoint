@@ -12,6 +12,11 @@
 - [Hugging Face Dataset Card](dataset-v1/huggingface-dataset-card.md): release
   metadata and dataset licensing template
 
+## Dataset Contract V2
+
+- [Data Contract](dataset-v2/data-contract.md): multi-task, multi-split,
+  reproducible episode and benchmark metadata for future releases
+
 Machine-specific setup notes, benchmark run records, and data-platform
 operations are kept locally under `.codex/local/`. Internal roadmaps,
 sub-goals, and release checklists are kept there as well and are not part of

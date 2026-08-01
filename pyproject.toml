@@ -22,6 +22,7 @@ dev = [
   "tomli>=2; python_version < '3.11'",
 ]
 data = [
+  "pillow>=10",
   "pyarrow>=17",
 ]
 qa = [

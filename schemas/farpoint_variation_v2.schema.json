@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xuwenyihust/farpoint/schemas/farpoint_variation_v2.schema.json",
+  "title": "Farpoint Variation Plan Contract v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "task_id", "config_revision", "dimensions", "frozen_factors"],
+  "properties": {
+    "schema_version": {"const": "farpoint.variation.v2"},
+    "plan_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "config_revision": {"type": "string", "minLength": 1},
+    "dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind", "values"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["categorical", "continuous_grid"]},
+          "values": {"type": "array", "minItems": 1, "items": {"type": ["string", "number", "array"]}},
+          "unit": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "frozen_factors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_shape", "object_dimensions_m", "object_yaw_degrees", "appearance_profile_id", "camera_profile_id", "lighting_profile_id"],
+      "properties": {
+        "object_shape": {"type": "string", "minLength": 1},
+        "object_dimensions_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+        "object_yaw_degrees": {"type": "number"},
+        "appearance_profile_id": {"type": "string", "minLength": 1},
+        "camera_profile_id": {"type": "string", "minLength": 1},
+        "lighting_profile_id": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

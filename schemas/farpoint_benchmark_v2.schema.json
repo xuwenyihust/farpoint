@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xuwenyihust/farpoint/schemas/farpoint_benchmark_v2.schema.json",
+  "title": "Farpoint Benchmark Contract v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "benchmark_id", "task_id", "git_commit", "config_sha256", "simulator_image_digest", "trials", "acceptance"],
+  "properties": {
+    "schema_version": {"const": "farpoint.benchmark.v2"},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "simulator_image_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "trials": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trial_id", "episode_id", "variation_id", "split", "status", "success", "dataset_valid"],
+        "properties": {
+          "trial_id": {"type": "string", "minLength": 1},
+          "episode_id": {"type": "string", "minLength": 1},
+          "variation_id": {"type": "string", "minLength": 1},
+          "split": {"enum": ["train", "validation", "test", "reserve"]},
+          "status": {"enum": ["completed", "failed", "cancelled"]},
+          "success": {"type": "boolean"},
+          "dataset_valid": {"type": "boolean"}
+        }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted", "required_success_rate", "observed_success_rate", "required_successes", "observed_successes"],
+      "properties": {
+        "accepted": {"type": "boolean"},
+        "required_success_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "observed_success_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "required_successes": {"type": "integer", "minimum": 0},
+        "observed_successes": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

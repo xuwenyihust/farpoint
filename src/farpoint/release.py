@@ -21,6 +21,8 @@ def _parquet_safe(value: Any) -> Any:
     if isinstance(value, bool) or value is None:
         return value
     if isinstance(value, int):
+        if -(2**63) <= value <= 2**63 - 1:
+            return value
         return str(value)
     if isinstance(value, dict):
         return {str(key): _parquet_safe(item) for key, item in value.items()}

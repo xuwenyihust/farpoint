@@ -1,4 +1,8 @@
-from farpoint.episode_metadata import normalize_episode_metadata
+from copy import deepcopy
+
+from farpoint.episode_metadata import normalize_episode_metadata, normalize_episode_metadata_v2
+
+from v2_fixtures import episode_metadata_v2
 
 
 def test_legacy_metadata_is_explicitly_labeled_without_rewriting_provenance():
@@ -35,3 +39,30 @@ def test_profiled_metadata_preserves_v11_variation():
     assert normalized["source_generation"] == "farpoint_v1_1_profiled"
     assert normalized["variation_id"] == "cylinder_position_left"
     assert normalized["grasp_profile"] == "cylinder_grip_v1"
+
+
+def test_v2_normalizer_adds_export_identity_without_inventing_scene_values():
+    expected = episode_metadata_v2()
+    raw = deepcopy(expected)
+    del raw["schema_version"]
+    del raw["identity"]
+    raw["episode_id"] = "episode-0000"
+    raw["trial_id"] = "trial-0000"
+    normalized = normalize_episode_metadata_v2(
+        raw,
+        {"success": True, "dataset_valid": True},
+        split="train",
+        dataset_episode_index=0,
+    )
+    assert normalized == expected
+
+
+def test_v2_normalizer_refuses_missing_provenance():
+    raw = episode_metadata_v2()
+    raw.pop("provenance")
+    try:
+        normalize_episode_metadata_v2(raw, split="train", dataset_episode_index=0)
+    except ValueError as error:
+        assert "provenance" in str(error)
+    else:
+        raise AssertionError("missing provenance should fail")
