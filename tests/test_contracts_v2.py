@@ -8,27 +8,18 @@ from farpoint.contracts import (
 from v2_fixtures import GIT_COMMIT, SHA, dataset_sidecar_v2, episode_metadata_v2
 
 
+def complete_variation_plan():
+    from pathlib import Path
+    from farpoint.position_plan import generate_position_plan, load_position_config
+
+    config = Path(__file__).resolve().parents[1] / "configs" / "variations" / "farpoint_v1_3_cube_position.json"
+    return generate_position_plan(load_position_config(config))
+
+
 def test_all_v2_contracts_accept_complete_typed_metadata():
     episode = episode_metadata_v2()
     dataset = dataset_sidecar_v2([episode])
-    variation = {
-        "schema_version": "farpoint.variation.v2",
-        "plan_id": "cube_position_5x5x3_v1",
-        "task_id": episode["task"]["task_id"],
-        "config_revision": "1",
-        "dimensions": [
-            {"name": "object_position_x", "kind": "continuous_grid", "values": [0.4, 0.5], "unit": "m"},
-            {"name": "object_position_y", "kind": "continuous_grid", "values": [-0.1, 0.1], "unit": "m"},
-        ],
-        "frozen_factors": {
-            "object_shape": "cube",
-            "object_dimensions_m": [0.05, 0.05, 0.05],
-            "object_yaw_degrees": 0.0,
-            "appearance_profile_id": "yellow_matte_v1",
-            "camera_profile_id": "front_rgb_v1",
-            "lighting_profile_id": "studio_v1",
-        },
-    }
+    variation = complete_variation_plan()
     benchmark = {
         "schema_version": "farpoint.benchmark.v2",
         "benchmark_id": "farpoint_v1_3_cube_position",
