@@ -1138,7 +1138,11 @@ def main():
             GroundPlane(task["scene"]["ground"]["path"], positions=[0, 0, 0])
         light = DistantLight(task["scene"]["lighting"]["path"])
         light.set_intensities(task["scene"]["lighting"]["intensity"])
-        object_type = variation["object_type"] if variation else "cube"
+        object_type = (
+            variation.get("object_type")
+            or variation.get("resolved", {}).get("object_shape")
+            or "cube"
+        ) if variation else "cube"
         for scene_key in ["table", "target_zone", "pick_object"]:
             shape = make_visual_shape(
                 Cube,
