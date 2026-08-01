@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import json
+import math
 import re
-from pathlib import Path
+from importlib.resources import files
 from typing import Any
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_FILES = {
-    "farpoint.dataset.v2": PROJECT_ROOT / "schemas" / "farpoint_dataset_v2.schema.json",
-    "farpoint.episode.v2": PROJECT_ROOT / "schemas" / "farpoint_episode_v2.schema.json",
-    "farpoint.variation.v2": PROJECT_ROOT / "schemas" / "farpoint_variation_v2.schema.json",
-    "farpoint.benchmark.v2": PROJECT_ROOT / "schemas" / "farpoint_benchmark_v2.schema.json",
+    "farpoint.dataset.v2": "farpoint_dataset_v2.schema.json",
+    "farpoint.episode.v2": "farpoint_episode_v2.schema.json",
+    "farpoint.variation.v2": "farpoint_variation_v2.schema.json",
+    "farpoint.benchmark.v2": "farpoint_benchmark_v2.schema.json",
 }
 SPLITS = ("train", "validation", "test")
 SHAPE_TERMS = {
@@ -26,10 +26,10 @@ SHAPE_TERMS = {
 def load_schema(schema_version: str) -> dict[str, Any]:
     """Load a public JSON Schema by its stable contract identifier."""
     try:
-        path = SCHEMA_FILES[schema_version]
+        filename = SCHEMA_FILES[schema_version]
     except KeyError as error:
         raise ValueError(f"unsupported schema version: {schema_version}") from error
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(files("farpoint.schemas").joinpath(filename).read_text(encoding="utf-8"))
 
 
 def validate_contract(payload: dict[str, Any], schema_version: str | None = None) -> list[str]:
@@ -138,4 +138,27 @@ def validate_benchmark_episode_links(
             errors.append(f"benchmark success mismatch for trial: {trial_id}")
         if trial.get("dataset_valid") != outcome.get("dataset_valid"):
             errors.append(f"benchmark dataset_valid mismatch for trial: {trial_id}")
+    return errors
+
+
+def validate_benchmark_semantics(benchmark: dict[str, Any]) -> list[str]:
+    """Check that benchmark acceptance is derived from its recorded trials."""
+    errors = []
+    trials = benchmark.get("trials") or []
+    acceptance = benchmark.get("acceptance") or {}
+    observed_successes = sum(trial.get("success") is True for trial in trials)
+    observed_rate = observed_successes / len(trials) if trials else 0.0
+    if acceptance.get("observed_successes") != observed_successes:
+        errors.append("benchmark observed_successes does not match its trials")
+    reported_rate = acceptance.get("observed_success_rate")
+    if not isinstance(reported_rate, (int, float)) or not math.isclose(
+        reported_rate, observed_rate, abs_tol=1e-9
+    ):
+        errors.append("benchmark observed_success_rate does not match its trials")
+    expected_accepted = (
+        observed_successes >= acceptance.get("required_successes", 0)
+        and observed_rate >= acceptance.get("required_success_rate", 0.0)
+    )
+    if acceptance.get("accepted") is not expected_accepted:
+        errors.append("benchmark accepted does not match its acceptance thresholds")
     return errors

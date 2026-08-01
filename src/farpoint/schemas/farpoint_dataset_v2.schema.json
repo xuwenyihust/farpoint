@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/xuwenyihust/farpoint/schemas/farpoint_dataset_v2.schema.json",
+  "$id": "https://github.com/xuwenyihust/farpoint/src/farpoint/schemas/farpoint_dataset_v2.schema.json",
   "title": "Farpoint Dataset Contract v2",
   "type": "object",
   "additionalProperties": false,

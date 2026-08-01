@@ -14,7 +14,8 @@ Release versions and contract versions are independent:
 - Variation contract: `farpoint.variation.v2`
 - Benchmark contract: `farpoint.benchmark.v2`
 
-The machine-readable schemas are in [`schemas/`](../../schemas/).
+The machine-readable schemas are packaged in
+[`src/farpoint/schemas/`](../../src/farpoint/schemas/).
 
 ## Design Goals
 
@@ -47,6 +48,9 @@ dataset/
 inputs. The public Hugging Face package converts normalized episode metadata
 to `meta/episode_metadata.parquet` and removes non-standard JSON/JSONL inputs
 so the Dataset Viewer does not mistake them for dataset splits.
+
+Seed fields are stored as decimal strings in the public Parquet metadata. This
+keeps one stable Arrow type while preserving simulator seeds beyond int64.
 
 ## Episode Metadata
 
@@ -85,6 +89,9 @@ The task ID must resolve in the dataset sidecar, the instruction must resolve
 in LeRobot's task table, and the object shape must agree with episode scene and
 variation metadata.
 
+Task IDs and instructions form a one-to-one mapping. Two task IDs may not
+collapse onto the same LeRobot instruction and task index.
+
 ## Splits
 
 Selections explicitly assign every episode to `train`, `validation`, or
@@ -97,6 +104,11 @@ split ranges. The validator compares:
 - Optional benchmark trial split assignments
 
 No seed-derived or filename-derived split is accepted implicitly.
+
+Full v2 validation reads every data, episode, and task Parquet shard; checks
+episode boundaries, timestamps, terminal flags, finite state/action vectors,
+and task indexes; decodes the front-camera MP4 files; and compares decoded
+frame counts with the tabular trajectory.
 
 ## Provenance and Benchmark Links
 

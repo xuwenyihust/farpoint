@@ -14,6 +14,7 @@ def episode_metadata_v2(
     shape="cube",
     instruction=None,
     position=None,
+    frame_count=2,
 ):
     position = position or [0.5, 0.0, 0.05]
     instruction = instruction or f"Pick up the {shape} and place it in the target zone."
@@ -117,7 +118,7 @@ def episode_metadata_v2(
             "cameras": ["observation.images.front"],
             "image_width": 640,
             "image_height": 360,
-            "frame_count": 100,
+            "frame_count": frame_count,
         },
         "outcome": {
             "success": True,

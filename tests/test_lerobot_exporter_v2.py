@@ -3,6 +3,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from export_lerobot_dataset import (
@@ -52,6 +54,25 @@ def test_sidecar_derives_multiple_tasks_and_splits_from_episodes():
     )
     assert sidecar["splits"] == {"train": 1, "validation": 1, "test": 0}
     assert [task["object_shape"] for task in sidecar["tasks"]] == ["cube", "cylinder"]
+
+
+def test_sidecar_rejects_ambiguous_task_ids_for_one_instruction():
+    first = episode_metadata_v2()
+    second = deepcopy(first)
+    second["identity"]["episode_id"] = "episode-0001"
+    second["identity"]["trial_id"] = "trial-0001"
+    second["identity"]["dataset_episode_index"] = 1
+    second["identity"]["task_id"] = "another-task-id"
+    second["task"]["task_id"] = "another-task-id"
+    with pytest.raises(ValueError, match="cannot share one LeRobot instruction"):
+        build_dataset_sidecar(
+            "farpoint-test",
+            [first, second],
+            fps=20,
+            image_width=640,
+            image_height=360,
+            selected_names=["joint_0"],
+        )
 
 
 class FakeLeRobotDataset:

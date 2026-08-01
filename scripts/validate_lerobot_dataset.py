@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from farpoint.contracts import (  # noqa: E402
     SPLITS,
     validate_benchmark_episode_links,
+    validate_benchmark_semantics,
     validate_contract,
     validate_episode_semantics,
 )
@@ -142,6 +144,185 @@ def read_tasks(root: Path) -> list[dict[str, Any]]:
     return _read_parquet(parquet)
 
 
+def _read_required_parquet_rows(
+    paths: list[Path], root: Path, label: str, result: dict[str, Any]
+) -> list[dict[str, Any]]:
+    rows = []
+    for path in paths:
+        relative = path.relative_to(root)
+        if path.stat().st_size == 0:
+            add_error(result, f"{label} Parquet is empty: {relative}")
+            continue
+        try:
+            shard_rows = _read_parquet(path)
+        except (OSError, ValueError, RuntimeError) as error:
+            add_error(result, f"cannot read {label} Parquet {relative}: {error}")
+            continue
+        if not shard_rows:
+            add_error(result, f"{label} Parquet has no rows: {relative}")
+            continue
+        rows.extend(shard_rows)
+    return rows
+
+
+def _as_done(value: Any) -> bool | None:
+    if isinstance(value, (list, tuple)):
+        return bool(value[0]) if len(value) == 1 else None
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def _finite_vector(value: Any, expected_length: int) -> bool:
+    return (
+        isinstance(value, (list, tuple))
+        and len(value) == expected_length
+        and all(isinstance(item, (int, float)) and math.isfinite(item) for item in value)
+    )
+
+
+def _feature_length(info: dict[str, Any], feature: str) -> int:
+    definition = (info.get("features") or {}).get(feature) or {}
+    names = definition.get("names")
+    if isinstance(names, (list, tuple)) and names:
+        return len(names)
+    shape = definition.get("shape")
+    if isinstance(shape, (list, tuple)) and shape and isinstance(shape[0], int):
+        return shape[0]
+    return 0
+
+
+def _decode_video_frames(path: Path) -> int:
+    try:
+        import av
+    except ImportError as error:  # pragma: no cover - data dependency guard
+        raise RuntimeError("PyAV is required to validate dataset videos") from error
+    with av.open(str(path)) as container:
+        streams = list(container.streams.video)
+        if not streams:
+            raise ValueError("file contains no video stream")
+        return sum(1 for _ in container.decode(streams[0]))
+
+
+def validate_v2_artifacts(
+    root: Path,
+    episodes: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
+    info: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    """Read and cross-check the LeRobot tables and videos used by consumers."""
+    task_indexes = [row.get("task_index") for row in tasks]
+    task_names = [row.get("task") or row.get("instruction") for row in tasks]
+    if any(not isinstance(index, int) or index < 0 for index in task_indexes):
+        add_error(result, "LeRobot tasks must have non-negative integer task_index values")
+    if len(set(task_indexes)) != len(task_indexes):
+        add_error(result, "LeRobot task indexes must be unique")
+    if len(set(task_names)) != len(task_names) or any(not name for name in task_names):
+        add_error(result, "LeRobot task instructions must be present and unique")
+    task_index_by_instruction = dict(zip(task_names, task_indexes, strict=False))
+
+    data_rows = _read_required_parquet_rows(
+        sorted((root / "data").rglob("*.parquet")), root, "data", result
+    )
+    standard_episodes = _read_required_parquet_rows(
+        sorted((root / "meta" / "episodes").rglob("*.parquet")),
+        root,
+        "episode metadata",
+        result,
+    )
+    if not data_rows or not standard_episodes:
+        return
+
+    required_columns = {
+        "observation.state", "action", "timestamp", "frame_index", "episode_index",
+        "task_index", "next.done",
+    }
+    for field in sorted(required_columns):
+        if any(field not in row for row in data_rows):
+            add_error(result, f"data Parquet is missing values for required field: {field}")
+
+    rows_by_episode: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for row_index, row in enumerate(data_rows):
+        episode_index = row.get("episode_index")
+        if not isinstance(episode_index, int):
+            add_error(result, f"data row {row_index} has an invalid episode_index")
+            continue
+        rows_by_episode[episode_index].append(row)
+
+    expected_episode_indexes = set(range(len(episodes)))
+    if set(rows_by_episode) != expected_episode_indexes:
+        add_error(result, "data Parquet episode indexes do not match normalized metadata")
+    state_length = _feature_length(info, "observation.state")
+    action_length = _feature_length(info, "action")
+    if state_length <= 0:
+        add_error(result, "observation.state must declare a positive vector length")
+    if action_length <= 0:
+        add_error(result, "action must declare a positive vector length")
+
+    for episode_index, episode in enumerate(episodes):
+        rows = rows_by_episode.get(episode_index, [])
+        expected_frames = (episode.get("recording") or {}).get("frame_count")
+        if len(rows) != expected_frames:
+            add_error(result, f"episode {episode_index} frame count does not match recording metadata")
+        if [row.get("frame_index") for row in rows] != list(range(len(rows))):
+            add_error(result, f"episode {episode_index} frame indexes are not contiguous")
+        timestamps = [row.get("timestamp") for row in rows]
+        if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in timestamps):
+            add_error(result, f"episode {episode_index} has invalid timestamps")
+        elif any(right <= left for left, right in zip(timestamps, timestamps[1:], strict=False)):
+            add_error(result, f"episode {episode_index} timestamps are not strictly increasing")
+        done_values = [_as_done(row.get("next.done")) for row in rows]
+        if not rows or done_values != [False] * (len(rows) - 1) + [True]:
+            add_error(result, f"episode {episode_index} must end with exactly one terminal frame")
+        if any(not _finite_vector(row.get("observation.state"), state_length) for row in rows):
+            add_error(result, f"episode {episode_index} has invalid observation.state values")
+        if any(not _finite_vector(row.get("action"), action_length) for row in rows):
+            add_error(result, f"episode {episode_index} has invalid action values")
+        instruction = (episode.get("task") or {}).get("instruction")
+        expected_task_index = task_index_by_instruction.get(instruction)
+        if expected_task_index is None:
+            add_error(result, f"episode {episode_index} task instruction has no task index")
+        elif any(row.get("task_index") != expected_task_index for row in rows):
+            add_error(result, f"episode {episode_index} data rows use the wrong task_index")
+
+    standard_by_index = {row.get("episode_index"): row for row in standard_episodes}
+    if len(standard_by_index) != len(standard_episodes):
+        add_error(result, "LeRobot episode metadata indexes must be unique")
+    if set(standard_by_index) != expected_episode_indexes:
+        add_error(result, "LeRobot episode metadata indexes do not match normalized metadata")
+    offset = 0
+    for episode_index, episode in enumerate(episodes):
+        row = standard_by_index.get(episode_index) or {}
+        length = (episode.get("recording") or {}).get("frame_count")
+        if row.get("length") != length:
+            add_error(result, f"LeRobot episode {episode_index} length mismatch")
+        if row.get("dataset_from_index") != offset or row.get("dataset_to_index") != offset + length:
+            add_error(result, f"LeRobot episode {episode_index} frame offsets are invalid")
+        offset += length
+    if info.get("total_episodes") is not None and info.get("total_episodes") != len(episodes):
+        add_error(result, "meta/info.json total_episodes does not match metadata")
+    if info.get("total_frames") is not None and info.get("total_frames") != len(data_rows):
+        add_error(result, "meta/info.json total_frames does not match data Parquet")
+
+    video_frames = 0
+    for path in sorted((root / "videos" / "observation.images.front").rglob("*.mp4")):
+        relative = path.relative_to(root)
+        if path.stat().st_size == 0:
+            add_error(result, f"video is empty: {relative}")
+            continue
+        try:
+            decoded = _decode_video_frames(path)
+        except (OSError, ValueError, RuntimeError) as error:
+            add_error(result, f"cannot decode video {relative}: {error}")
+            continue
+        if decoded == 0:
+            add_error(result, f"video has no decodable frames: {relative}")
+        video_frames += decoded
+    if video_frames != len(data_rows):
+        add_error(result, "front camera decoded frame count does not match data Parquet")
+
+
 def validate_v2_dataset(
     root: Path,
     sidecar: dict[str, Any],
@@ -198,6 +379,9 @@ def validate_v2_dataset(
     task_by_id = {task.get("task_id"): task for task in dataset_tasks}
     if len(task_by_id) != len(dataset_tasks):
         add_error(result, "dataset task ids must be unique")
+    dataset_task_instructions = [task.get("instruction") for task in dataset_tasks]
+    if len(set(dataset_task_instructions)) != len(dataset_task_instructions):
+        add_error(result, "dataset task instructions must map to unique task ids")
     for index, episode in enumerate(episodes):
         task = episode.get("task") or {}
         if task_by_id.get(task.get("task_id")) != task:
@@ -238,11 +422,14 @@ def validate_v2_dataset(
     try:
         lerobot_tasks = read_tasks(root)
         task_instructions = {
-            row.get("task") or row.get("instruction") for row in lerobot_tasks if isinstance(row, dict)
+            row.get("task") or row.get("instruction")
+            for row in lerobot_tasks
+            if isinstance(row, dict)
         }
         for task in task_by_id.values():
             if task.get("instruction") not in task_instructions:
                 add_error(result, f"task is missing from LeRobot tasks table: {task.get('task_id')}")
+        validate_v2_artifacts(root, episodes, lerobot_tasks, info, result)
     except (OSError, ValueError, RuntimeError) as error:
         add_error(result, f"cannot read LeRobot tasks: {error}")
 
@@ -251,6 +438,8 @@ def validate_v2_dataset(
             benchmark = read_json(benchmark_path)
             for error in validate_contract(benchmark):
                 add_error(result, f"benchmark contract: {error}")
+            for error in validate_benchmark_semantics(benchmark):
+                add_error(result, f"benchmark acceptance: {error}")
             for error in validate_benchmark_episode_links(benchmark, episodes):
                 add_error(result, f"benchmark link: {error}")
         except (OSError, json.JSONDecodeError) as error:

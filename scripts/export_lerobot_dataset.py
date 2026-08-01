@@ -75,6 +75,7 @@ def build_dataset_sidecar(
     if not records:
         raise ValueError("cannot build a dataset sidecar without episodes")
     tasks = {}
+    task_id_by_instruction = {}
     split_counts = Counter()
     first = records[0]
     for record in records:
@@ -82,6 +83,11 @@ def build_dataset_sidecar(
         previous = tasks.setdefault(task["task_id"], task)
         if previous != task:
             raise ValueError(f"task id has conflicting definitions: {task['task_id']}")
+        existing_task_id = task_id_by_instruction.setdefault(
+            task["instruction"], task["task_id"]
+        )
+        if existing_task_id != task["task_id"]:
+            raise ValueError("different task ids cannot share one LeRobot instruction")
         split_counts[record["identity"]["split"]] += 1
         for key in ("robot", "gripper", "arm_dof", "gripper_dof"):
             if record["embodiment"][key] != first["embodiment"][key]:

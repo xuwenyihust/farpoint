@@ -1,5 +1,6 @@
 from farpoint.contracts import (
     validate_benchmark_episode_links,
+    validate_benchmark_semantics,
     validate_contract,
     validate_episode_semantics,
 )
@@ -56,6 +57,7 @@ def test_all_v2_contracts_accept_complete_typed_metadata():
     assert validate_contract(episode) == []
     assert validate_contract(variation) == []
     assert validate_contract(benchmark) == []
+    assert validate_benchmark_semantics(benchmark) == []
     assert validate_episode_semantics(episode) == []
     assert validate_benchmark_episode_links(benchmark, [episode]) == []
 
@@ -95,3 +97,19 @@ def test_benchmark_link_detects_trial_identity_mismatch():
     assert validate_benchmark_episode_links(benchmark, [episode]) == [
         "benchmark episode_id mismatch for trial: trial-0000"
     ]
+
+
+def test_benchmark_acceptance_cannot_disagree_with_trials():
+    benchmark = {
+        "trials": [{"success": False}],
+        "acceptance": {
+            "accepted": True,
+            "required_success_rate": 1.0,
+            "observed_success_rate": 1.0,
+            "required_successes": 1,
+            "observed_successes": 1,
+        },
+    }
+    errors = validate_benchmark_semantics(benchmark)
+    assert "benchmark observed_successes does not match its trials" in errors
+    assert "benchmark accepted does not match its acceptance thresholds" in errors

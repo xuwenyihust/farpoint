@@ -16,18 +16,22 @@ REQUIRED_VIEWER_PATHS = (
 )
 
 
-def _parquet_safe(value: Any) -> Any:
-    """Keep metadata lossless when a simulator emits integers beyond int64."""
+def _parquet_safe(value: Any, field_name: str | None = None) -> Any:
+    """Convert metadata to one stable, lossless Arrow representation."""
     if isinstance(value, bool) or value is None:
         return value
     if isinstance(value, int):
-        if -(2**63) <= value <= 2**63 - 1:
-            return value
-        return str(value)
+        if field_name == "seed" or (field_name and field_name.endswith("_seed")):
+            return str(value)
+        if not -(2**63) <= value <= 2**63 - 1:
+            raise ValueError(
+                f"integer field {field_name or '<unknown>'} exceeds the Parquet int64 range"
+            )
+        return value
     if isinstance(value, dict):
-        return {str(key): _parquet_safe(item) for key, item in value.items()}
+        return {str(key): _parquet_safe(item, str(key)) for key, item in value.items()}
     if isinstance(value, list):
-        return [_parquet_safe(item) for item in value]
+        return [_parquet_safe(item, field_name) for item in value]
     return value
 
 

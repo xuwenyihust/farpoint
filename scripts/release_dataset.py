@@ -74,6 +74,14 @@ def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def benchmark_accepted(benchmark: dict | None) -> bool:
+    if not isinstance(benchmark, dict):
+        return False
+    if benchmark.get("schema_version") == "farpoint.benchmark.v2":
+        return (benchmark.get("acceptance") or {}).get("accepted") is True
+    return benchmark.get("accepted") is True
+
+
 def build_release(args: argparse.Namespace, spec: dict) -> dict:
     if args.output_dir.exists():
         raise FileExistsError(f"output directory already exists: {args.output_dir}")
@@ -81,6 +89,7 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
     benchmark_dir = args.output_dir / "benchmark"
     canonical_dir = args.output_dir / "canonical"
     public_dir = args.output_dir / "public"
+    benchmark_validation_path = None
 
     if args.source_dataset:
         canonical_source = args.source_dataset.resolve()
@@ -89,7 +98,9 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
             raise ValueError(
                 "source dataset failed validation: " + "; ".join(source_validation["errors"])
             )
-        shutil.copytree(canonical_source, canonical_dir)
+        is_v2 = source_validation.get("schema_version") == "farpoint.dataset.v2"
+        if is_v2 and not args.benchmark_manifest:
+            raise ValueError("Farpoint v2 releases require --benchmark-manifest")
         benchmark_id = args.benchmark_id or f"farpoint_{spec['tag'].replace('.', '_')}_release"
         if args.benchmark_manifest:
             manifest = json.loads(args.benchmark_manifest.read_text(encoding="utf-8"))
@@ -121,7 +132,16 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
                     for record in records
                 ],
             }
-        write_json(benchmark_dir / "manifest.json", manifest)
+        benchmark_validation_path = benchmark_dir / "manifest.json"
+        write_json(benchmark_validation_path, manifest)
+        if is_v2:
+            source_validation = validate_dataset(canonical_source, benchmark_validation_path)
+            if not source_validation["valid"]:
+                raise ValueError(
+                    "source dataset failed benchmark validation: "
+                    + "; ".join(source_validation["errors"])
+                )
+        shutil.copytree(canonical_source, canonical_dir)
         benchmark = {"benchmark_id": manifest.get("benchmark_id", benchmark_id), **manifest}
     else:
         from export_lerobot_v1_mini import export_mini
@@ -148,7 +168,11 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
             raise ValueError("no complete episodes available for export")
         export_mini(selected, canonical_dir, spec["dataset_id"])
 
-    canonical_validation = validate_dataset(canonical_dir)
+    canonical_validation = (
+        validate_dataset(canonical_dir, benchmark_validation_path)
+        if benchmark_validation_path
+        else validate_dataset(canonical_dir)
+    )
     if not canonical_validation["valid"]:
         raise ValueError(
             "canonical dataset failed validation: " + "; ".join(canonical_validation["errors"])
@@ -175,9 +199,18 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
 def validate_release(release_dir: Path, spec: dict) -> dict:
     release_dir = release_dir.resolve()
     manifest = json.loads((release_dir / "release.json").read_text(encoding="utf-8"))
-    canonical = validate_dataset(release_dir / "canonical")
+    benchmark_path = release_dir / "benchmark" / "manifest.json"
+    v2_dataset = (release_dir / "canonical" / "meta" / "farpoint_v2.json").is_file()
+    preflight_errors = []
+    if v2_dataset and not benchmark_path.is_file():
+        preflight_errors.append("Farpoint v2 release is missing benchmark/manifest.json")
+    canonical = (
+        validate_dataset(release_dir / "canonical", benchmark_path)
+        if v2_dataset and benchmark_path.is_file()
+        else validate_dataset(release_dir / "canonical")
+    )
     public = audit_viewer_package(release_dir / "public")
-    errors = []
+    errors = preflight_errors
     if manifest.get("release_version") != spec["tag"]:
         errors.append("release manifest version does not match release.toml")
     if manifest.get("dataset_id") != spec["dataset_id"]:
@@ -187,7 +220,7 @@ def validate_release(release_dir: Path, spec: dict) -> dict:
     if manifest.get("release_spec_sha256") != file_sha256(Path(spec["path"])):
         errors.append("release.toml changed after the release was built")
     benchmark = manifest.get("benchmark")
-    if not isinstance(benchmark, dict) or benchmark.get("accepted") is not True:
+    if not benchmark_accepted(benchmark):
         errors.append("release benchmark has not passed acceptance")
     errors.extend(canonical.get("errors", []))
     errors.extend(public.get("errors", []))
