@@ -11,8 +11,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from farpoint.registry import EpisodeRegistry
-from farpoint.retention import RetentionManager
+from farpoint.registry import EpisodeRegistry  # noqa: E402
+from farpoint.retention import RetentionManager  # noqa: E402
 
 
 def utc_now():

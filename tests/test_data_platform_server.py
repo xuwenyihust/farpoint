@@ -8,7 +8,7 @@ from pathlib import Path
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from data_platform_server import build_preview_manifest, valid_basic_auth
+from data_platform_server import build_preview_manifest, valid_basic_auth  # noqa: E402
 
 
 class DataPlatformAuthenticationTests(unittest.TestCase):

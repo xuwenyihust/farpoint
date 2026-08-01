@@ -39,6 +39,11 @@ Run the local test suite:
 pytest -q
 ```
 
+Contributions use feature branches and owner-reviewed pull requests. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the required checks and
+[docs/development-workflow.md](docs/development-workflow.md) for the pilot,
+benchmark, dataset, and release process.
+
 Isaac Sim examples use the NVIDIA container image
 `nvcr.io/nvidia/isaac-sim:6.0.0`. Configure the target GPU host explicitly:
 
