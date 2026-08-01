@@ -99,6 +99,17 @@ def runtime_directory(root: Path, benchmark_id: str, trial_id: str, attempt: int
     return path
 
 
+def prepare_container_output_directories() -> None:
+    for directory in (
+        PROJECT_ROOT / "outputs",
+        EPISODES_ROOT,
+        EPISODES_ROOT / "_resources",
+        EPISODES_ROOT / "_phases",
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(0o777)
+
+
 def audit_episode(
     episode: Path,
     trial: dict,
@@ -233,6 +244,7 @@ def main() -> int:
         parser.error("cooldown values cannot be negative")
 
     checked_git_revision(args.git_commit)
+    prepare_container_output_directories()
     plan = load_position_plan(args.plan)
     validate_formal_plan(plan)
     trials = selected_trials(plan, args.mode)
