@@ -4,12 +4,20 @@
   "title": "Farpoint Variation Plan Contract v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "plan_id", "task_id", "config_revision", "dimensions", "frozen_factors"],
+  "required": [
+    "schema_version", "plan_id", "task_id", "config_revision",
+    "planner_revision", "planner_sha256", "config_sha256", "plan_sha256",
+    "dimensions", "varied_axes", "grid", "frozen_factors", "trials"
+  ],
   "properties": {
     "schema_version": {"const": "farpoint.variation.v2"},
     "plan_id": {"type": "string", "minLength": 1},
     "task_id": {"type": "string", "minLength": 1},
     "config_revision": {"type": "string", "minLength": 1},
+    "planner_revision": {"type": "string", "minLength": 1},
+    "planner_sha256": {"$ref": "#/$defs/sha256"},
+    "config_sha256": {"$ref": "#/$defs/sha256"},
+    "plan_sha256": {"$ref": "#/$defs/sha256"},
     "dimensions": {
       "type": "array",
       "minItems": 1,
@@ -25,17 +33,123 @@
         }
       }
     },
-    "frozen_factors": {
+    "varied_axes": {
+      "const": ["object_initial_position_x_m", "object_initial_position_y_m"]
+    },
+    "grid": {"$ref": "#/$defs/grid"},
+    "frozen_factors": {"$ref": "#/$defs/frozenFactors"},
+    "trials": {
+      "type": "array",
+      "minItems": 75,
+      "maxItems": 75,
+      "items": {"$ref": "#/$defs/trial"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "bounds": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {"type": "number"}
+    },
+    "grid": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["object_shape", "object_dimensions_m", "object_yaw_degrees", "appearance_profile_id", "camera_profile_id", "lighting_profile_id"],
+      "required": [
+        "x_bounds_m", "y_bounds_m", "rows", "columns",
+        "primary_slots_per_cell", "reserve_candidates_per_slot", "interior_fraction"
+      ],
       "properties": {
-        "object_shape": {"type": "string", "minLength": 1},
-        "object_dimensions_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
-        "object_yaw_degrees": {"type": "number"},
+        "x_bounds_m": {"$ref": "#/$defs/bounds"},
+        "y_bounds_m": {"$ref": "#/$defs/bounds"},
+        "rows": {"const": 5},
+        "columns": {"const": 5},
+        "primary_slots_per_cell": {"const": 3},
+        "reserve_candidates_per_slot": {"const": 2},
+        "interior_fraction": {"$ref": "#/$defs/bounds"}
+      }
+    },
+    "frozenFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object_shape", "object_dimensions_m", "object_initial_z_m",
+        "object_yaw_degrees", "object_mass_kg", "material_id",
+        "appearance_profile_id", "target_position_m", "camera_profile_id",
+        "lighting_profile_id", "robot_pose_profile_id", "controller_profile_id",
+        "physics_profile_id", "recording_profile_id"
+      ],
+      "properties": {
+        "object_shape": {"const": "cube"},
+        "object_dimensions_m": {"$ref": "#/$defs/vector3"},
+        "object_initial_z_m": {"type": "number"},
+        "object_yaw_degrees": {"const": 0.0},
+        "object_mass_kg": {"type": "number", "exclusiveMinimum": 0},
+        "material_id": {"type": "string", "minLength": 1},
         "appearance_profile_id": {"type": "string", "minLength": 1},
+        "target_position_m": {"$ref": "#/$defs/vector3"},
         "camera_profile_id": {"type": "string", "minLength": 1},
-        "lighting_profile_id": {"type": "string", "minLength": 1}
+        "lighting_profile_id": {"type": "string", "minLength": 1},
+        "robot_pose_profile_id": {"type": "string", "minLength": 1},
+        "controller_profile_id": {"type": "string", "minLength": 1},
+        "physics_profile_id": {"type": "string", "minLength": 1},
+        "recording_profile_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "vector2": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {"type": "number"}
+    },
+    "vector3": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {"type": "number"}
+    },
+    "seedMaterial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "plan_id", "cell_row", "cell_column", "slot", "reserve_index"],
+      "properties": {
+        "schema_version": {"const": "farpoint.variation.v2"},
+        "plan_id": {"type": "string", "minLength": 1},
+        "cell_row": {"type": "integer", "minimum": 0, "maximum": 4},
+        "cell_column": {"type": "integer", "minimum": 0, "maximum": 4},
+        "slot": {"type": "integer", "minimum": 0, "maximum": 2},
+        "reserve_index": {"type": "integer", "minimum": 0, "maximum": 2}
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "reserve_index", "seed", "seed_material", "object_position_xy_m"],
+      "properties": {
+        "candidate_id": {"type": "string", "minLength": 1},
+        "reserve_index": {"type": "integer", "minimum": 1, "maximum": 2},
+        "seed": {"type": "integer", "minimum": 0},
+        "seed_material": {"$ref": "#/$defs/seedMaterial"},
+        "object_position_xy_m": {"$ref": "#/$defs/vector2"}
+      }
+    },
+    "trial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trial_id", "variation_id", "cell_id", "row", "column", "slot", "split",
+        "seed", "seed_material", "object_position_xy_m", "reserve_candidates"
+      ],
+      "properties": {
+        "trial_id": {"type": "string", "minLength": 1},
+        "variation_id": {"type": "string", "minLength": 1},
+        "cell_id": {"type": "string", "pattern": "^r[0-9]{2}_c[0-9]{2}$"},
+        "row": {"type": "integer", "minimum": 0, "maximum": 4},
+        "column": {"type": "integer", "minimum": 0, "maximum": 4},
+        "slot": {"type": "integer", "minimum": 0, "maximum": 2},
+        "split": {"enum": ["train", "validation", "test"]},
+        "seed": {"type": "integer", "minimum": 0},
+        "seed_material": {"$ref": "#/$defs/seedMaterial"},
+        "object_position_xy_m": {"$ref": "#/$defs/vector2"},
+        "reserve_candidates": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "items": {"$ref": "#/$defs/candidate"}
+        }
       }
     }
   }

@@ -5,6 +5,8 @@
 - [Architecture](architecture.md): system boundaries and data flow
 - [Isaac Sim Setup](isaac-sim.md): public container and runtime requirements
 - [Task Schema](task-schema.md): simulation task configuration
+- [Cube Position Baseline](cube-position-baseline.md): deterministic 5 by 5
+  position planning, immutable trial manifests, and pilot acceptance
 
 ## Dataset V1
 

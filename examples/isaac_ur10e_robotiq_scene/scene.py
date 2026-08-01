@@ -53,6 +53,7 @@ from farpoint.perception import (
     look_at_calibration,
     xy_error,
 )
+from farpoint.position_plan import apply_position_trial, load_position_plan
 from farpoint.variation import load_variation_config, resolve_variation
 
 
@@ -1001,9 +1002,26 @@ def main():
     started_at = utc_now()
     base_task = parse_simple_yaml(TASK_PATH)
     episode_seed = int(os.environ.get("FARPOINT_EPISODE_SEED", "0"))
+    position_plan_path = os.environ.get("FARPOINT_POSITION_PLAN") or None
+    trial_id = os.environ.get("FARPOINT_TRIAL_ID") or None
+    reserve_index = int(os.environ.get("FARPOINT_RESERVE_INDEX", "0"))
     variation_id = os.environ.get("FARPOINT_VARIATION_ID") or None
     variation = None
-    if variation_id:
+    position_trial = None
+    if bool(position_plan_path) != bool(trial_id):
+        raise ValueError("FARPOINT_POSITION_PLAN and FARPOINT_TRIAL_ID must be provided together")
+    if position_plan_path:
+        position_plan = load_position_plan(position_plan_path)
+        base_task, position_trial = apply_position_trial(
+            base_task,
+            position_plan,
+            trial_id,
+            reserve_index=reserve_index,
+        )
+        variation = position_trial["variation"]
+        variation_id = variation["variation_id"]
+        episode_seed = int(position_trial["seed"])
+    elif variation_id:
         variation_config_path = Path(
             os.environ.get(
                 "FARPOINT_VARIATION_CONFIG",
@@ -6418,6 +6436,12 @@ def main():
         metrics["episode_seed"] = episode_seed
         metrics["variation_id"] = variation_id
         metrics["variation"] = variation
+        metrics["trial_id"] = trial_id
+        metrics["position_plan_id"] = position_trial["plan_id"] if position_trial else None
+        metrics["position_plan_sha256"] = (
+            position_trial["plan_sha256"] if position_trial else None
+        )
+        metrics["reserve_index"] = reserve_index if position_trial else None
         metrics["benchmark_id"] = benchmark_id
         metrics["benchmark_repeat"] = benchmark_repeat
         metrics["randomization"] = randomization
@@ -6428,6 +6452,13 @@ def main():
             "episode_seed": episode_seed,
             "variation_id": variation_id,
             "variation": variation,
+            "trial_id": trial_id,
+            "split": position_trial["split"] if position_trial else None,
+            "position_plan_id": position_trial["plan_id"] if position_trial else None,
+            "position_plan_sha256": (
+                position_trial["plan_sha256"] if position_trial else None
+            ),
+            "reserve_index": reserve_index if position_trial else None,
             "benchmark_id": benchmark_id,
             "benchmark_repeat": benchmark_repeat,
             "randomization": randomization,

@@ -10,6 +10,9 @@ REMOTE_RUNTIME="${FARPOINT_REMOTE_RUNTIME:-${HOME}/.cache/farpoint/isaac-sim}"
 ISAAC_IMAGE="${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.0}"
 EPISODE_SEED="${FARPOINT_EPISODE_SEED:-0}"
 VARIATION_ID="${FARPOINT_VARIATION_ID:-}"
+POSITION_PLAN="${FARPOINT_POSITION_PLAN:-}"
+TRIAL_ID="${FARPOINT_TRIAL_ID:-}"
+RESERVE_INDEX="${FARPOINT_RESERVE_INDEX:-0}"
 FRAME_LIMIT="${FARPOINT_FRAME_LIMIT:-}"
 BENCHMARK_ID="${FARPOINT_BENCHMARK_ID:-}"
 BENCHMARK_REPEAT="${FARPOINT_BENCHMARK_REPEAT:-0}"
@@ -95,6 +98,9 @@ fi
 echo "Remote root: ${REMOTE_ROOT}"
 echo "Isaac image: ${ISAAC_IMAGE}"
 echo "Episode seed: ${EPISODE_SEED}"
+if [[ -n "${TRIAL_ID}" ]]; then
+  echo "Position trial: ${TRIAL_ID} (reserve ${RESERVE_INDEX})"
+fi
 if [[ -n "${BENCHMARK_ID}" ]]; then
   echo "Benchmark: ${BENCHMARK_ID}"
 fi
@@ -128,7 +134,7 @@ REMOTE_LOG="${REMOTE_LOG_DIR}/${EXAMPLE_NAME}_${RUN_ID}.log"
 
 set +e
 record_local_phase "remote_example_start" host="${DGX_HOST}" log="${REMOTE_LOG}"
-ssh "${SSH_OPTIONS[@]}" "${DGX_HOST}" "bash -lc 'cd \"${REMOTE_ROOT}\" && set -o pipefail && FARPOINT_RUN_TIMEOUT_SECONDS=\"${RUN_TIMEOUT_SECONDS}\" FARPOINT_STARTUP_TIMEOUT_SECONDS=\"${STARTUP_TIMEOUT_SECONDS}\" FARPOINT_VARIATION_ID=\"${VARIATION_ID}\" FARPOINT_FRAME_LIMIT=\"${FRAME_LIMIT}\" bash scripts/run_remote_isaac_example.sh \"${EXAMPLE_PATH}\" \"${ISAAC_IMAGE}\" \"${REMOTE_RUN_RUNTIME}\" \"${RUN_ID}\" \"${EPISODE_SEED}\" \"${BENCHMARK_ID}\" \"${BENCHMARK_REPEAT}\" \"${VARIATION_ID}\" 2>&1 | tee \"${REMOTE_LOG}\"'"
+ssh "${SSH_OPTIONS[@]}" "${DGX_HOST}" "bash -lc 'cd \"${REMOTE_ROOT}\" && set -o pipefail && FARPOINT_RUN_TIMEOUT_SECONDS=\"${RUN_TIMEOUT_SECONDS}\" FARPOINT_STARTUP_TIMEOUT_SECONDS=\"${STARTUP_TIMEOUT_SECONDS}\" FARPOINT_FRAME_LIMIT=\"${FRAME_LIMIT}\" bash scripts/run_remote_isaac_example.sh \"${EXAMPLE_PATH}\" \"${ISAAC_IMAGE}\" \"${REMOTE_RUN_RUNTIME}\" \"${RUN_ID}\" \"${EPISODE_SEED}\" \"${BENCHMARK_ID}\" \"${BENCHMARK_REPEAT}\" \"${VARIATION_ID}\" \"${POSITION_PLAN}\" \"${TRIAL_ID}\" \"${RESERVE_INDEX}\" 2>&1 | tee \"${REMOTE_LOG}\"'"
 STATUS=$?
 record_local_phase "remote_example_end" host="${DGX_HOST}" status="${STATUS}"
 set -e

@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Run and audit the nine-episode v1.3 cube position pilot on a GPU host."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+import sys
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+from farpoint.position_pilot import audit_pilot_episode, find_episode, pilot_trials  # noqa: E402
+from farpoint.position_plan import load_position_plan  # noqa: E402
+
+
+DEFAULT_PLAN = PROJECT_ROOT / "configs" / "plans" / "farpoint_v1_3_cube_position_baseline.json"
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
+    parser.add_argument("--pilot-id", required=True)
+    parser.add_argument("--git-commit", required=True)
+    parser.add_argument("--image", default=os.environ.get("ISAAC_SIM_IMAGE", "nvcr.io/nvidia/isaac-sim:6.0.0"))
+    parser.add_argument("--runtime-root", type=Path, default=Path.home() / ".cache" / "farpoint" / "isaac-sim" / "pilot-runs")
+    parser.add_argument("--episode-root", type=Path, default=PROJECT_ROOT / "outputs" / "episodes")
+    parser.add_argument("--audit-only", action="store_true")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--cooldown-seconds", type=int, default=10)
+    args = parser.parse_args()
+    if not re.fullmatch(r"cube_position_pilot_[0-9]{8}_[0-9a-f]{7,40}", args.pilot_id):
+        parser.error("--pilot-id must contain the date and Git SHA")
+    if not re.fullmatch(r"[0-9a-f]{40}", args.git_commit):
+        parser.error("--git-commit must be a full 40-character SHA")
+    if args.cooldown_seconds < 0:
+        parser.error("--cooldown-seconds cannot be negative")
+
+    plan = load_position_plan(args.plan)
+    selected = pilot_trials(plan)
+    output = PROJECT_ROOT / "outputs" / "benchmarks" / args.pilot_id / "manifest.json"
+    if output.exists() and not (args.resume or args.audit_only):
+        parser.error(f"{args.pilot_id} already exists; use --resume or --audit-only")
+    manifest = {
+        "schema_version": "farpoint.position-pilot.v1",
+        "pilot_id": args.pilot_id,
+        "execution_status": "RUNNING",
+        "quality_status": "NOT_EVALUATED",
+        "release_status": "PILOT",
+        "git_commit": args.git_commit,
+        "position_plan_id": plan["plan_id"],
+        "position_plan_sha256": plan["plan_sha256"],
+        "task_id": plan["task_id"],
+        "image": args.image,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "planned_trials": 9,
+        "acceptance": {
+            "required_successes": 9,
+            "contact_only": True,
+            "max_perception_xy_error_m": 0.02,
+            "min_lift_height_m": 0.15,
+            "min_bilateral_contact_frames": 20,
+            "min_transport_contact_frames": 120,
+            "max_final_target_xy_error_m": 0.05,
+            "min_settle_frames": 120,
+            "require_dataset": True,
+            "require_visual_replay_source": True,
+            "require_preview": True,
+            "require_telemetry": True,
+        },
+        "trials": [],
+    }
+    write_json(output, manifest)
+
+    relative_plan = args.plan.resolve().relative_to(PROJECT_ROOT.resolve())
+    if not args.audit_only:
+        for ordinal, trial in enumerate(selected, start=1):
+            existing = find_episode(args.episode_root, args.pilot_id, trial["trial_id"])
+            if existing and args.resume:
+                print(f"SKIP {trial['trial_id']}: {existing.name}", flush=True)
+                continue
+            if ordinal > 1 and args.cooldown_seconds:
+                time.sleep(args.cooldown_seconds)
+            run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S") + f"_{trial['cell_id']}"
+            runtime = args.runtime_root / run_id
+            runtime.mkdir(parents=True, exist_ok=True)
+            command = [
+                "bash", "scripts/run_remote_isaac_example.sh",
+                "examples/isaac_perception_contact_scene", args.image, str(runtime), run_id,
+                str(trial["seed"]), args.pilot_id, "0", "", str(relative_plan), trial["trial_id"], "0",
+            ]
+            print(f"RUN {ordinal}/9 {trial['trial_id']} xy={trial['object_position_xy_m']}", flush=True)
+            subprocess.run(command, cwd=PROJECT_ROOT, check=False)
+
+    audited = []
+    for trial in selected:
+        episode = find_episode(args.episode_root, args.pilot_id, trial["trial_id"])
+        audited.append(
+            audit_pilot_episode(
+                episode,
+                trial,
+                plan_sha256=plan["plan_sha256"],
+                episode_root=args.episode_root,
+            )
+        )
+    passed = sum(item["accepted"] for item in audited)
+    manifest["trials"] = audited
+    manifest["completed_trials"] = sum(item["episode_id"] is not None for item in audited)
+    manifest["passed_trials"] = passed
+    manifest["execution_status"] = "FINISHED"
+    manifest["quality_status"] = "PASS" if passed == 9 else "FAIL"
+    manifest["accepted"] = passed == 9
+    manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
+    write_json(output, manifest)
+    print(f"POSITION_PILOT {'PASS' if manifest['accepted'] else 'FAIL'} {passed}/9 {output}")
+    return 0 if manifest["accepted"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
