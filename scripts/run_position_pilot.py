@@ -40,6 +40,8 @@ def main() -> int:
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--cooldown-seconds", type=int, default=10)
+    parser.add_argument("--run-timeout-seconds", type=int, default=900)
+    parser.add_argument("--startup-timeout-seconds", type=int, default=120)
     args = parser.parse_args()
     if not re.fullmatch(r"cube_position_pilot_[0-9]{8}_[0-9a-f]{7,40}", args.pilot_id):
         parser.error("--pilot-id must contain the date and Git SHA")
@@ -47,6 +49,18 @@ def main() -> int:
         parser.error("--git-commit must be a full 40-character SHA")
     if args.cooldown_seconds < 0:
         parser.error("--cooldown-seconds cannot be negative")
+    if args.run_timeout_seconds < 1 or args.startup_timeout_seconds < 1:
+        parser.error("pilot timeouts must be positive")
+
+    image_digest_result = subprocess.run(
+        ["docker", "image", "inspect", args.image, "--format", "{{index .RepoDigests 0}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    image_digest = image_digest_result.stdout.strip().partition("@")[-1]
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_digest):
+        parser.error(f"could not resolve an immutable image digest for {args.image}")
 
     plan = load_position_plan(args.plan)
     selected = pilot_trials(plan)
@@ -64,6 +78,7 @@ def main() -> int:
         "position_plan_sha256": plan["plan_sha256"],
         "task_id": plan["task_id"],
         "image": args.image,
+        "image_digest": image_digest,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "planned_trials": 9,
         "acceptance": {
@@ -113,7 +128,10 @@ def main() -> int:
                 str(trial["seed"]), args.pilot_id, "0", "", str(relative_plan), trial["trial_id"], "0",
             ]
             print(f"RUN {ordinal}/9 {trial['trial_id']} xy={trial['object_position_xy_m']}", flush=True)
-            subprocess.run(command, cwd=PROJECT_ROOT, check=False)
+            run_env = os.environ.copy()
+            run_env["FARPOINT_RUN_TIMEOUT_SECONDS"] = str(args.run_timeout_seconds)
+            run_env["FARPOINT_STARTUP_TIMEOUT_SECONDS"] = str(args.startup_timeout_seconds)
+            subprocess.run(command, cwd=PROJECT_ROOT, env=run_env, check=False)
             if find_episode(args.episode_root, args.pilot_id, trial["trial_id"]) is None:
                 print(
                     f"FAIL_FAST {trial['trial_id']}: runner produced no episode",

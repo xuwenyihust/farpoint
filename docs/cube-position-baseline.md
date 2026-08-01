@@ -87,6 +87,10 @@ The pilot passes only at 9/9 accepted episodes. Each episode must prove:
 - Valid dataset observations, RGB replay source, depth, previews, and telemetry
 - Exact plan, trial, and requested-position identity
 
+The pilot runner resolves and records the immutable Isaac image digest and
+uses an explicit 900-second per-episode timeout so full diagnostics can be
+written even on terminal task failures.
+
 Generated pilot manifests and episode artifacts remain under ignored
 `outputs/`. Formal 75-attempt benchmarking and dataset publication happen only
 after the position-planner PR is reviewed and merged.
