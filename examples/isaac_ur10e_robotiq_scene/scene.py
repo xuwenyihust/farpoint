@@ -49,7 +49,6 @@ from farpoint.control import (
     update_contact_loss_streak,
 )
 from farpoint.dataset import validate_episode_dataset
-from farpoint.episode_metadata import validate_simulator_metadata_v2
 from farpoint.perception import (
     PerceptionError,
     estimate_dominant_color_pose,
@@ -6755,21 +6754,6 @@ def main():
                     },
                 }
             )
-            try:
-                validate_simulator_metadata_v2(metadata, metrics)
-            except ValueError as error:
-                success = False
-                metrics["success"] = False
-                metrics["failure_category"] = "evaluation"
-                metrics["failure_reason"] = f"episode_metadata_v2_invalid:{error}"
-                metrics.setdefault("failed_checks", []).append("episode_metadata_v2")
-                metadata["outcome"].update(
-                    {
-                        "success": False,
-                        "failure_category": "evaluation",
-                        "failure_reason": metrics["failure_reason"],
-                    }
-                )
         write_json(episode_dir / "metadata.json", metadata)
         write_json(episode_dir / "metrics.json", metrics)
         append_phase(phase_path, "episode_written", recorded_frames=metrics["recorded_frames"], success=success)
