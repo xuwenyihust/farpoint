@@ -24,5 +24,16 @@ environment. Publishing creates the requested Hub tag after the upload.
 The source dataset path is intentionally explicit. Simulation execution remains
 an upstream step so a release command never starts Isaac Sim unexpectedly.
 
+For the intra-task diversity pilot, audit a deterministic two-seed matrix and
+create its benchmark manifest with:
+
+```text
+python scripts/create_variation_pilot.py \\
+  --episode-root outputs/episodes \\
+  --config configs/farpoint_v1_1_variations.json \\
+  --output outputs/benchmarks/farpoint_v1_1_pilot/manifest.json \\
+  --benchmark-id farpoint_v1_1_pilot
+```
+
 Isaac Sim containers, DGX paths, credentials, and generated artifacts belong in
 configuration or environment variables, never in reusable library modules.
