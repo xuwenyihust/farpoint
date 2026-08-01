@@ -93,6 +93,28 @@ class BenchmarkReportTests(unittest.TestCase):
         self.assertTrue(result["acceptance"]["require_contact_only"])
         self.assertEqual(result["acceptance"]["min_object_lift_height"], 0.15)
 
+    def test_v2_manifest_uses_nested_acceptance_and_formal_defaults(self):
+        result = normalize_manifest(
+            {
+                "schema_version": "farpoint.benchmark.v2",
+                "benchmark_id": "formal",
+                "task_id": "isaac_perception_contact_scene",
+                "trials": [{"success": True}, {"success": False}],
+                "acceptance": {
+                    "accepted": True,
+                    "required_success_rate": 0.5,
+                    "observed_success_rate": 0.5,
+                    "required_successes": 1,
+                    "observed_successes": 1,
+                },
+            }
+        )
+
+        self.assertEqual(result["planned_trials"], 2)
+        self.assertEqual(result["passed_trials"], 1)
+        self.assertEqual(result["acceptance"]["min_success_rate"], 0.5)
+        self.assertTrue(result["acceptance"]["require_dataset"])
+
     def test_position_pilot_checks_are_required_for_report_acceptance(self):
         manifest = {
             "pilot_id": "pilot",

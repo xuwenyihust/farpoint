@@ -168,6 +168,7 @@ def main() -> int:
                 "bash", "scripts/run_remote_isaac_example.sh",
                 "examples/isaac_perception_contact_scene", args.image, str(runtime), run_id,
                 str(trial["seed"]), args.pilot_id, "0", "", str(relative_plan), trial["trial_id"], "0",
+                args.git_commit, plan["config_sha256"], image_digest,
             ]
             print(f"RUN {ordinal}/9 {trial['trial_id']} xy={trial['object_position_xy_m']}", flush=True)
             run_env = os.environ.copy()

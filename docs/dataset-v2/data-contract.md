@@ -127,8 +127,9 @@ The v2 exporter consumes an explicit selection manifest:
   "dataset_id": "farpoint-ur10e-robotiq-2f85",
   "episodes": [
     {
-      "episode_dir": "/path/to/episode",
-      "trial_id": "cube-r00-c00-s00",
+      "episode_dir": "outputs/episodes/episode_0001",
+      "trial_id": "primary_r00_c00_s00",
+      "variation_id": "position_r00_c00_s00",
       "split": "train"
     }
   ]
@@ -138,10 +139,11 @@ The v2 exporter consumes an explicit selection manifest:
 Run the exporter and validator with:
 
 ```bash
-python scripts/export_lerobot_dataset.py selection.json /path/to/candidate
-python scripts/validate_lerobot_dataset.py /path/to/candidate \
-  --benchmark-manifest /path/to/benchmark.json
+python scripts/export_lerobot_dataset.py selection.json outputs/datasets/candidate
+python scripts/validate_lerobot_dataset.py outputs/datasets/candidate \
+  --benchmark-manifest outputs/benchmarks/formal/manifest.json
 ```
 
-The selection manifest is operational input and must not be published when it
-contains machine-local paths.
+Release selections use repository-relative episode paths and must never contain
+machine-local absolute paths. The selection manifest is operational input and
+is not part of the public Dataset Viewer package.

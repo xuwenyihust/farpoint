@@ -1,6 +1,10 @@
 from copy import deepcopy
 
-from farpoint.episode_metadata import normalize_episode_metadata, normalize_episode_metadata_v2
+from farpoint.episode_metadata import (
+    normalize_episode_metadata,
+    normalize_episode_metadata_v2,
+    validate_simulator_metadata_v2,
+)
 
 from v2_fixtures import episode_metadata_v2
 
@@ -66,3 +70,21 @@ def test_v2_normalizer_refuses_missing_provenance():
         assert "provenance" in str(error)
     else:
         raise AssertionError("missing provenance should fail")
+
+
+def test_simulator_v2_metadata_is_validated_before_persistence():
+    raw = episode_metadata_v2()
+    raw["episode_id"] = raw["identity"]["episode_id"]
+    raw["trial_id"] = raw["identity"]["trial_id"]
+    raw["split"] = raw["identity"]["split"]
+    validated = validate_simulator_metadata_v2(raw)
+    assert validated["schema_version"] == "farpoint.episode.v2"
+    assert validated["provenance"] == raw["provenance"]
+
+    raw["recording"].pop("fps")
+    try:
+        validate_simulator_metadata_v2(raw)
+    except ValueError as error:
+        assert "recording" in str(error)
+    else:
+        raise AssertionError("invalid simulator recording metadata should fail")

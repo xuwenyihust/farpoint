@@ -133,3 +133,19 @@ def normalize_episode_metadata_v2(
     if errors:
         raise ValueError("invalid farpoint.episode.v2 metadata: " + "; ".join(errors))
     return record
+
+
+def validate_simulator_metadata_v2(
+    metadata: dict[str, Any], metrics: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Validate simulator-authored v2 sections before an episode is persisted."""
+    split = metadata.get("split")
+    if split not in {"train", "validation", "test"}:
+        raise ValueError("simulator v2 metadata must define a public dataset split")
+    return normalize_episode_metadata_v2(
+        metadata,
+        metrics,
+        split=split,
+        dataset_episode_index=0,
+        trial_id=metadata.get("trial_id"),
+    )

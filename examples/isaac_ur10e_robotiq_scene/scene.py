@@ -1,5 +1,6 @@
 import ast
 import contextlib
+import hashlib
 import json
 import math
 import os
@@ -48,6 +49,7 @@ from farpoint.control import (
     update_contact_loss_streak,
 )
 from farpoint.dataset import validate_episode_dataset
+from farpoint.episode_metadata import validate_simulator_metadata_v2
 from farpoint.perception import (
     PerceptionError,
     estimate_dominant_color_pose,
@@ -127,6 +129,67 @@ def write_json(path, payload):
 
 def utc_now():
     return datetime.now(timezone.utc)
+
+
+def sha256_json(payload):
+    encoded = json.dumps(
+        payload,
+        default=json_default,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def rotation_matrix_quaternion_xyzw(matrix):
+    """Convert a 3x3 rotation matrix to a normalized XYZW quaternion."""
+    matrix = np.asarray(matrix, dtype=np.float64)
+    trace = float(np.trace(matrix))
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        w = 0.25 * scale
+        x = (matrix[2, 1] - matrix[1, 2]) / scale
+        y = (matrix[0, 2] - matrix[2, 0]) / scale
+        z = (matrix[1, 0] - matrix[0, 1]) / scale
+    else:
+        diagonal = np.diag(matrix)
+        index = int(np.argmax(diagonal))
+        if index == 0:
+            scale = math.sqrt(1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2]) * 2.0
+            w = (matrix[2, 1] - matrix[1, 2]) / scale
+            x = 0.25 * scale
+            y = (matrix[0, 1] + matrix[1, 0]) / scale
+            z = (matrix[0, 2] + matrix[2, 0]) / scale
+        elif index == 1:
+            scale = math.sqrt(1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2]) * 2.0
+            w = (matrix[0, 2] - matrix[2, 0]) / scale
+            x = (matrix[0, 1] + matrix[1, 0]) / scale
+            y = 0.25 * scale
+            z = (matrix[1, 2] + matrix[2, 1]) / scale
+        else:
+            scale = math.sqrt(1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1]) * 2.0
+            w = (matrix[1, 0] - matrix[0, 1]) / scale
+            x = (matrix[0, 2] + matrix[2, 0]) / scale
+            y = (matrix[1, 2] + matrix[2, 1]) / scale
+            z = 0.25 * scale
+    quaternion = np.asarray([x, y, z, w], dtype=np.float64)
+    quaternion /= np.linalg.norm(quaternion)
+    return quaternion.tolist()
+
+
+def measured_joint_smoothness(joint_history):
+    if len(joint_history) < 3:
+        return None
+    accelerations = []
+    for index in range(2, len(joint_history)):
+        previous = np.asarray(joint_history[index - 2], dtype=np.float64)
+        current = np.asarray(joint_history[index - 1], dtype=np.float64)
+        following = np.asarray(joint_history[index], dtype=np.float64)
+        width = min(len(previous), len(current), len(following))
+        accelerations.append(
+            float(np.linalg.norm(following[:width] - 2.0 * current[:width] + previous[:width]))
+        )
+    return sum(accelerations) / len(accelerations) if accelerations else None
 
 
 def append_phase(path, phase, **fields):
@@ -1009,6 +1072,7 @@ def main():
     variation_id = os.environ.get("FARPOINT_VARIATION_ID") or None
     variation = None
     position_trial = None
+    position_plan = None
     if bool(position_plan_path) != bool(trial_id):
         raise ValueError("FARPOINT_POSITION_PLAN and FARPOINT_TRIAL_ID must be provided together")
     if position_plan_path:
@@ -6515,6 +6579,11 @@ def main():
         metrics["benchmark_repeat"] = benchmark_repeat
         metrics["randomization"] = randomization
 
+        joint_smoothness = measured_joint_smoothness(joint_history)
+        metrics["joint_smoothness_score"] = (
+            round(joint_smoothness, 8) if joint_smoothness is not None else None
+        )
+
         metadata = {
             "episode_id": episode_id,
             "run_id": os.environ.get("FARPOINT_RUN_ID"),
@@ -6544,6 +6613,163 @@ def main():
             "preview_enabled": preview_enabled,
             "preview_resolution": camera_config.get("resolution"),
         }
+        if position_trial:
+            git_commit = os.environ.get("FARPOINT_GIT_COMMIT", "")
+            image_name = os.environ.get(
+                "FARPOINT_SIMULATOR_IMAGE",
+                "nvcr.io/nvidia/isaac-sim:6.0.0",
+            )
+            image_digest = os.environ.get("FARPOINT_SIMULATOR_IMAGE_DIGEST", "")
+            configured_sha = os.environ.get("FARPOINT_CONFIG_SHA256", "")
+            if not (
+                len(git_commit) == 40
+                and all(character in "0123456789abcdef" for character in git_commit)
+            ):
+                raise ValueError("FARPOINT_GIT_COMMIT must be a full lowercase Git SHA")
+            if not (
+                image_digest.startswith("sha256:")
+                and len(image_digest) == len("sha256:") + 64
+            ):
+                raise ValueError("FARPOINT_SIMULATOR_IMAGE_DIGEST must be an immutable digest")
+            if configured_sha != position_plan["config_sha256"]:
+                raise ValueError("FARPOINT_CONFIG_SHA256 does not match the position plan")
+            if camera_intrinsics is None or camera_to_world is None:
+                raise ValueError("release metadata requires measured camera calibration")
+            frozen = position_plan["frozen_factors"]
+            camera_rotation = np.asarray(camera_to_world, dtype=np.float64)[:3, :3]
+            camera_position = np.asarray(camera_to_world, dtype=np.float64)[:3, 3].tolist()
+            camera_quaternion = rotation_matrix_quaternion_xyzw(camera_rotation)
+            camera_yaw = math.degrees(
+                math.atan2(float(camera_rotation[1, 0]), float(camera_rotation[0, 0]))
+            )
+            calibration_payload = {
+                "intrinsics": np.asarray(camera_intrinsics, dtype=np.float64).tolist(),
+                "extrinsics": np.asarray(camera_to_world, dtype=np.float64).tolist(),
+                "resolution": camera_config["resolution"],
+            }
+            object_position = list(ground_truth_pick_start_position)
+            target_position = list(ground_truth_place_target_position)
+            identity_orientation = [0.0, 0.0, 0.0, 1.0]
+            recording_fps = (1.0 / rendering_dt) / int(
+                dataset_config["observation_every_n_frames"]
+            )
+            metadata.update(
+                {
+                    "provenance": {
+                        "git_commit": git_commit,
+                        "config_sha256": position_plan["config_sha256"],
+                        "simulator": "Isaac Sim 6.0.0",
+                        "physics_engine": "PhysX",
+                        "simulator_image": image_name,
+                        "simulator_image_digest": image_digest,
+                        "robot_asset_id": "ur10e_robotiq_2f85_usd_v1",
+                        "robot_asset_path": robot_config["asset_path"],
+                        "episode_seed": episode_seed,
+                        "derived_seed": position_trial["seed"],
+                    },
+                    "task": {
+                        "task_id": task["name"],
+                        "instruction": task["language_instruction"],
+                        "object_shape": frozen["object_shape"],
+                        "success_criteria_id": "contact_pick_place_v1",
+                    },
+                    "embodiment": {
+                        "robot": robot_config["name"],
+                        "gripper": "robotiq_2f85",
+                        "arm_dof": len(ARM_JOINT_NAMES),
+                        "gripper_dof": max(1, robot.num_dof - len(ARM_JOINT_NAMES)),
+                        "controller": frozen["controller_profile_id"],
+                        "control_mode": "articulation_position_drive",
+                        "grasp_mode": pickup_config["grasp_mode"],
+                    },
+                    "scene": {
+                        "coordinate_frame": "world",
+                        "object": {
+                            "shape": frozen["object_shape"],
+                            "dimensions_m": frozen["object_dimensions_m"],
+                            "mass_kg": float(pick_object_config["mass"]),
+                            "material_id": frozen["material_id"],
+                            "initial_pose": {
+                                "position_m": object_position,
+                                "orientation_xyzw": identity_orientation,
+                                "yaw_degrees": frozen["object_yaw_degrees"],
+                                "coordinate_frame": "world",
+                            },
+                        },
+                        "target": {
+                            "target_id": target_zone_config["path"],
+                            "pose": {
+                                "position_m": target_position,
+                                "orientation_xyzw": identity_orientation,
+                                "yaw_degrees": 0.0,
+                                "coordinate_frame": "world",
+                            },
+                        },
+                        "camera": {
+                            "profile_id": frozen["camera_profile_id"],
+                            "calibration_id": "front_rgbd_" + sha256_json(calibration_payload)[:16],
+                            "intrinsics": {
+                                "fx": float(camera_intrinsics[0, 0]),
+                                "fy": float(camera_intrinsics[1, 1]),
+                                "cx": float(camera_intrinsics[0, 2]),
+                                "cy": float(camera_intrinsics[1, 2]),
+                            },
+                            "extrinsics": {
+                                "position_m": camera_position,
+                                "orientation_xyzw": camera_quaternion,
+                                "yaw_degrees": camera_yaw,
+                                "coordinate_frame": "world",
+                            },
+                        },
+                        "lighting_profile_id": frozen["lighting_profile_id"],
+                        "appearance_profile_id": frozen["appearance_profile_id"],
+                    },
+                    "recording": {
+                        "fps": recording_fps,
+                        "cameras": ["observation.images.front"],
+                        "image_width": int(camera_config["resolution"][0]),
+                        "image_height": int(camera_config["resolution"][1]),
+                        "frame_count": int(dataset_validation["observation_count"]),
+                    },
+                    "outcome": {
+                        "success": success,
+                        "dataset_valid": bool(dataset_validation["valid"]),
+                        "failure_category": metrics.get("failure_category"),
+                        "failure_reason": metrics.get("failure_reason"),
+                        "quality": {
+                            "final_xy_error_m": metrics.get("final_target_xy_distance"),
+                            "perception_error_m": metrics.get(
+                                "initial_object_perception_xy_error"
+                            ),
+                            "bilateral_contact_frames": metrics.get(
+                                "bilateral_contact_frames"
+                            ),
+                            "lift_height_m": metrics.get("object_lift_height"),
+                            "settling_error": metrics.get(
+                                "post_release_settling_motion"
+                            ),
+                            "joint_smoothness_score": metrics.get(
+                                "joint_smoothness_score"
+                            ),
+                        },
+                    },
+                }
+            )
+            try:
+                validate_simulator_metadata_v2(metadata, metrics)
+            except ValueError as error:
+                success = False
+                metrics["success"] = False
+                metrics["failure_category"] = "evaluation"
+                metrics["failure_reason"] = f"episode_metadata_v2_invalid:{error}"
+                metrics.setdefault("failed_checks", []).append("episode_metadata_v2")
+                metadata["outcome"].update(
+                    {
+                        "success": False,
+                        "failure_category": "evaluation",
+                        "failure_reason": metrics["failure_reason"],
+                    }
+                )
         write_json(episode_dir / "metadata.json", metadata)
         write_json(episode_dir / "metrics.json", metrics)
         append_phase(phase_path, "episode_written", recorded_frames=metrics["recorded_frames"], success=success)

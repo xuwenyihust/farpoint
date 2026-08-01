@@ -175,3 +175,41 @@ retained as infrastructure failures and retried with the identical trial and
 seed. No task failure was retried or replaced, and no reserve candidate was
 used. This accepted manifest is therefore eligible for the formal 75-primary
 v1.3 cube-position benchmark.
+
+## Formal Benchmark Readiness
+
+The release-grade runner keeps operational state separate from the immutable
+benchmark contract. Run a three-episode metadata and runner pilot from the
+owner-approved feature commit before merging its readiness PR:
+
+```bash
+python3 scripts/run_position_benchmark.py pilot \
+  --git-commit <full-feature-commit-sha>
+```
+
+The pilot uses the two opposite workspace corners and the center. All three
+episodes must pass the task and artifact gates, and their simulator-authored
+metadata must normalize as `farpoint.episode.v2`.
+
+After the readiness PR is merged, run the formal benchmark from that exact,
+clean `main` revision:
+
+```bash
+python3 scripts/run_position_benchmark.py formal \
+  --git-commit <full-merged-main-sha>
+```
+
+The runner writes resumable operational progress to `run-state.json`. Resume
+the identical benchmark ID with `--resume`; completed trials are never run
+again. Infrastructure failures may retry the same trial and seed up to three
+times. Any attempt that produces an episode is a task result and cannot be
+retried or replaced, even when the task fails.
+
+Only a run with all 75 primary episodes can produce a strict
+`farpoint.benchmark.v2` `manifest.json`. Acceptance requires at least 68
+successful, dataset-valid episodes (90%). No reserve candidate contributes to
+the formal result. An accepted run also produces a repository-relative,
+successful-only `release-selection.json` for the LeRobot v3 exporter.
+
+Generated episodes, progress files, reports, and selections remain under the
+ignored `outputs/` tree. They are release evidence, not source files.
