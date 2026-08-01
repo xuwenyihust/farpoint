@@ -3,6 +3,8 @@ from pathlib import Path
 
 from farpoint.release import audit_viewer_package, prepare_viewer_package
 
+from v2_fixtures import episode_metadata_v2
+
 
 def make_package(root: Path):
     for relative in (
@@ -45,3 +47,54 @@ def test_prepare_viewer_package_removes_sidecars_and_writes_metadata(tmp_path, m
     assert audit_viewer_package(destination)["valid"] is True
     table = pyarrow.parquet.read_table(destination / "meta/episode_metadata.parquet")
     assert table.column("seed")[0].as_py() == str(2**80)
+
+
+def test_public_metadata_keeps_seed_identifiers_as_strings(tmp_path):
+    pytest = __import__("pytest")
+    pyarrow = pytest.importorskip("pyarrow")
+    source = tmp_path / "source"
+    destination = tmp_path / "public"
+    make_package(source)
+    (source / "meta/episode_metadata.jsonl").write_text(
+        json.dumps({"episode_id": "episode_1", "seed": 7, "success": True}) + "\n"
+    )
+    prepare_viewer_package(source, destination)
+    table = pyarrow.parquet.read_table(destination / "meta/episode_metadata.parquet")
+    assert table.column("seed")[0].as_py() == "7"
+
+
+def test_public_metadata_uses_one_seed_type_across_int64_boundary(tmp_path):
+    pytest = __import__("pytest")
+    pyarrow = pytest.importorskip("pyarrow")
+    source = tmp_path / "source"
+    destination = tmp_path / "public"
+    make_package(source)
+    rows = [
+        {"episode_id": "episode_1", "derived_seed": 7, "success": True},
+        {"episode_id": "episode_2", "derived_seed": 2**80, "success": True},
+    ]
+    (source / "meta/episode_metadata.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    prepare_viewer_package(source, destination)
+    table = pyarrow.parquet.read_table(destination / "meta/episode_metadata.parquet")
+    assert table.column("derived_seed").to_pylist() == ["7", str(2**80)]
+
+
+def test_viewer_package_preserves_nested_v2_metadata_as_typed_parquet(tmp_path):
+    pytest = __import__("pytest")
+    pyarrow = pytest.importorskip("pyarrow")
+    source = tmp_path / "source"
+    destination = tmp_path / "public"
+    make_package(source)
+    (source / "meta/episode_metadata.jsonl").write_text(
+        json.dumps(episode_metadata_v2()) + "\n", encoding="utf-8"
+    )
+    prepare_viewer_package(source, destination)
+    table = pyarrow.parquet.read_table(destination / "meta/episode_metadata.parquet")
+    row = table.to_pylist()[0]
+    assert row["identity"]["dataset_episode_index"] == 0
+    assert row["provenance"]["episode_seed"] == "7"
+    assert row["provenance"]["derived_seed"] == "7001"
+    assert row["scene"]["object"]["shape"] == "cube"
+    assert row["variation"]["resolved"]["object_position_m"] == [0.5, 0.0, 0.05]

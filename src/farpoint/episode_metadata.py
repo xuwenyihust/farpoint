@@ -3,6 +3,19 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Any
+
+from farpoint.contracts import task_definition, validate_contract, validate_episode_semantics
+
+
+QUALITY_FIELDS = (
+    "final_xy_error_m",
+    "perception_error_m",
+    "bilateral_contact_frames",
+    "lift_height_m",
+    "settling_error",
+    "joint_smoothness_score",
+)
 
 def normalize_episode_metadata(metadata: dict, metrics: dict | None = None) -> dict:
     """Return a stable metadata record without rewriting the raw source metadata.
@@ -57,3 +70,66 @@ def normalize_episode_metadata(metadata: dict, metrics: dict | None = None) -> d
         "success": bool(metrics.get("success")),
         "dataset_valid": bool(metrics.get("dataset_valid")),
     }
+
+
+def normalize_episode_metadata_v2(
+    metadata: dict[str, Any],
+    metrics: dict[str, Any] | None = None,
+    *,
+    split: str,
+    dataset_episode_index: int,
+    trial_id: str | None = None,
+) -> dict[str, Any]:
+    """Build a strict v2 release record from simulator-authored structured metadata.
+
+    The simulator is responsible for measured scene and provenance values. This
+    function adds export identity and outcome fields, but never invents missing
+    calibration, asset, pose, or randomization values.
+    """
+    metrics = metrics or {}
+    task = task_definition(metadata)
+    source_identity = metadata.get("identity") or {}
+    episode_id = metadata.get("episode_id") or source_identity.get("episode_id")
+    if not episode_id:
+        raise ValueError("episode metadata must define episode_id")
+
+    required_sections = ("provenance", "embodiment", "scene", "variation", "recording")
+    missing = [section for section in required_sections if not isinstance(metadata.get(section), dict)]
+    if missing:
+        raise ValueError("episode metadata is missing structured sections: " + ", ".join(missing))
+
+    outcome_source = metadata.get("outcome") or {}
+    quality_source = outcome_source.get("quality") or metrics.get("quality") or metrics
+    record = {
+        "schema_version": "farpoint.episode.v2",
+        "identity": {
+            "episode_id": str(episode_id),
+            "trial_id": str(
+                trial_id or metadata.get("trial_id") or source_identity.get("trial_id") or episode_id
+            ),
+            "task_id": task["task_id"],
+            "split": split,
+            "dataset_episode_index": dataset_episode_index,
+        },
+        "provenance": deepcopy(metadata["provenance"]),
+        "task": task,
+        "embodiment": deepcopy(metadata["embodiment"]),
+        "scene": deepcopy(metadata["scene"]),
+        "variation": deepcopy(metadata["variation"]),
+        "recording": deepcopy(metadata["recording"]),
+        "outcome": {
+            "success": bool(outcome_source.get("success", metrics.get("success"))),
+            "dataset_valid": bool(
+                outcome_source.get("dataset_valid", metrics.get("dataset_valid"))
+            ),
+            "failure_category": outcome_source.get(
+                "failure_category", metrics.get("failure_category")
+            ),
+            "failure_reason": outcome_source.get("failure_reason", metrics.get("failure_reason")),
+            "quality": {field: quality_source.get(field) for field in QUALITY_FIELDS},
+        },
+    }
+    errors = validate_contract(record) + validate_episode_semantics(record)
+    if errors:
+        raise ValueError("invalid farpoint.episode.v2 metadata: " + "; ".join(errors))
+    return record

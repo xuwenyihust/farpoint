@@ -52,13 +52,19 @@ jobs:
         run: >-
           pytest -q
           tests/test_dataset.py
+          tests/test_contracts_v2.py
           tests/test_episode_metadata.py
           tests/test_lerobot_dataset_validator.py
+          tests/test_lerobot_exporter_v2.py
           tests/test_lerobot_v1_exporter.py
           tests/test_release.py
           tests/test_release_cli.py
           tests/test_release_spec.py
           tests/test_v3_audit.py
+      - name: Build and inspect distribution
+        run: |
+          python -m pip wheel --no-deps --wheel-dir dist .
+          python scripts/check_distribution.py dist
 
   dashboard-qa:
     name: Dashboard browser QA

@@ -2,9 +2,13 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from validate_lerobot_dataset import validate_dataset
+
+from v2_fixtures import GIT_COMMIT, SHA, dataset_sidecar_v2, episode_metadata_v2
 
 
 def write_json(path, payload):
@@ -104,3 +108,173 @@ def test_missing_required_feature_fails(tmp_path):
     result = validate_dataset(tmp_path)
     assert result["valid"] is False
     assert "meta/info.json is missing feature: action" in result["errors"]
+
+
+def make_valid_v2_dataset(root: Path):
+    pytest = __import__("pytest")
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    av = pytest.importorskip("av")
+    episodes = [
+        episode_metadata_v2(),
+        episode_metadata_v2(
+            episode_id="episode-0001",
+            trial_id="trial-0001",
+            split="validation",
+            dataset_episode_index=1,
+            position=[0.55, 0.05, 0.05],
+        ),
+        episode_metadata_v2(
+            episode_id="episode-0002",
+            trial_id="trial-0002",
+            split="test",
+            dataset_episode_index=2,
+            position=[0.6, -0.05, 0.05],
+        ),
+    ]
+    write_json(root / "meta" / "farpoint_v2.json", dataset_sidecar_v2(episodes))
+    info = valid_info()
+    info["splits"] = {"train": "0:1", "validation": "1:2", "test": "2:3"}
+    info["total_episodes"] = 3
+    info["total_frames"] = 6
+    info["total_tasks"] = 1
+    write_json(root / "meta" / "info.json", info)
+    write_json(root / "meta" / "stats.json", {})
+    tasks_path = root / "meta" / "tasks.parquet"
+    tasks_path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(
+        pa.Table.from_pylist(
+            [{"task_index": 0, "task": episodes[0]["task"]["instruction"]}]
+        ),
+        tasks_path,
+    )
+    (root / "meta" / "episode_metadata.jsonl").write_text(
+        "".join(json.dumps(episode) + "\n" for episode in episodes), encoding="utf-8"
+    )
+    episode_rows = []
+    data_rows = []
+    offset = 0
+    for episode_index, episode in enumerate(episodes):
+        length = episode["recording"]["frame_count"]
+        episode_rows.append(
+            {
+                "episode_index": episode_index,
+                "tasks": [episode["task"]["instruction"]],
+                "length": length,
+                "dataset_from_index": offset,
+                "dataset_to_index": offset + length,
+            }
+        )
+        for frame_index in range(length):
+            data_rows.append(
+                {
+                    "observation.state": [0.0] * 7,
+                    "action": [0.1] * 7,
+                    "timestamp": frame_index * 0.05,
+                    "frame_index": frame_index,
+                    "episode_index": episode_index,
+                    "task_index": 0,
+                    "next.done": frame_index == length - 1,
+                }
+            )
+        offset += length
+    episode_path = root / "meta" / "episodes" / "chunk-000" / "file-000.parquet"
+    data_path = root / "data" / "chunk-000" / "file-000.parquet"
+    episode_path.parent.mkdir(parents=True, exist_ok=True)
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(episode_rows), episode_path)
+    pq.write_table(pa.Table.from_pylist(data_rows), data_path)
+
+    video_path = (
+        root
+        / "videos"
+        / "observation.images.front"
+        / "chunk-000"
+        / "file-000.mp4"
+    )
+    video_path.parent.mkdir(parents=True, exist_ok=True)
+    container = av.open(str(video_path), mode="w")
+    stream = container.add_stream("libx264", rate=20)
+    stream.width = 16
+    stream.height = 16
+    stream.pix_fmt = "yuv420p"
+    for frame_index in range(len(data_rows)):
+        array = np.full((16, 16, 3), frame_index, dtype=np.uint8)
+        frame = av.VideoFrame.from_ndarray(array, format="rgb24")
+        for packet in stream.encode(frame):
+            container.mux(packet)
+    for packet in stream.encode():
+        container.mux(packet)
+    container.close()
+    benchmark = {
+        "schema_version": "farpoint.benchmark.v2",
+        "benchmark_id": "farpoint_v1_3_cube_position",
+        "task_id": episodes[0]["task"]["task_id"],
+        "git_commit": GIT_COMMIT,
+        "config_sha256": SHA,
+        "simulator_image_digest": f"sha256:{SHA}",
+        "trials": [
+            {
+                "trial_id": episode["identity"]["trial_id"],
+                "episode_id": episode["identity"]["episode_id"],
+                "variation_id": episode["variation"]["variation_id"],
+                "split": episode["identity"]["split"],
+                "status": "completed",
+                "success": True,
+                "dataset_valid": True,
+            }
+            for episode in episodes
+        ],
+        "acceptance": {
+            "accepted": True,
+            "required_success_rate": 0.9,
+            "observed_success_rate": 1.0,
+            "required_successes": 3,
+            "observed_successes": 3,
+        },
+    }
+    benchmark_path = root / "benchmark.json"
+    write_json(benchmark_path, benchmark)
+    return benchmark_path
+
+
+def test_v2_dataset_validates_tasks_splits_variations_and_benchmark(tmp_path):
+    benchmark = make_valid_v2_dataset(tmp_path)
+    result = validate_dataset(tmp_path, benchmark)
+    assert result["valid"] is True, result["errors"]
+    assert result["compatibility_mode"] == "v2"
+
+
+def test_v2_dataset_rejects_split_count_drift(tmp_path):
+    make_valid_v2_dataset(tmp_path)
+    sidecar = dataset_sidecar_v2([episode_metadata_v2()])
+    write_json(tmp_path / "meta" / "farpoint_v2.json", sidecar)
+    result = validate_dataset(tmp_path)
+    assert result["valid"] is False
+    assert any("split count mismatch" in error for error in result["errors"])
+
+
+def test_v2_dataset_rejects_wrong_task_index(tmp_path):
+    make_valid_v2_dataset(tmp_path)
+    pytest = __import__("pytest")
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    task_path = tmp_path / "meta" / "tasks.parquet"
+    pq.write_table(
+        pa.Table.from_pylist(
+            [{"task_index": 999, "task": "Pick up the cube and place it in the target zone."}]
+        ),
+        task_path,
+    )
+    result = validate_dataset(tmp_path)
+    assert result["valid"] is False
+    assert any("wrong task_index" in error for error in result["errors"])
+
+
+def test_v2_dataset_rejects_empty_or_unreadable_artifacts(tmp_path):
+    make_valid_v2_dataset(tmp_path)
+    data_path = tmp_path / "data" / "chunk-000" / "file-000.parquet"
+    data_path.write_bytes(b"")
+    result = validate_dataset(tmp_path)
+    assert result["valid"] is False
+    assert any("data Parquet is empty" in error for error in result["errors"])
