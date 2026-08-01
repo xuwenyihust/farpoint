@@ -19,6 +19,12 @@ CONFIG_PATH = (
     / "variations"
     / "farpoint_v1_3_cube_position.json"
 )
+EXPANDED_CONFIG_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "configs"
+    / "variations"
+    / "farpoint_v1_3_cube_position_expanded.json"
+)
 
 
 def plan():
@@ -118,3 +124,16 @@ def test_config_change_produces_a_new_config_and_plan_hash():
     updated = generate_position_plan(changed)
     assert updated["config_sha256"] != baseline["config_sha256"]
     assert updated["plan_sha256"] != baseline["plan_sha256"]
+
+
+def test_expanded_candidate_preserves_frozen_factors_and_changes_only_xy_bounds():
+    baseline = generate_position_plan(load_position_config(CONFIG_PATH))
+    expanded = generate_position_plan(load_position_config(EXPANDED_CONFIG_PATH))
+
+    assert expanded["plan_id"] == "farpoint_v1_3_cube_position_expanded_candidate"
+    assert expanded["grid"]["x_bounds_m"] == [0.84, 1.1]
+    assert expanded["grid"]["y_bounds_m"] == [0.18, 0.38]
+    assert expanded["frozen_factors"] == baseline["frozen_factors"]
+    assert expanded["plan_sha256"] != baseline["plan_sha256"]
+    assert len(expanded["trials"]) == 75
+    assert validate_contract(expanded) == []

@@ -1,12 +1,22 @@
 import json
 from pathlib import Path
 
-from farpoint.position_pilot import audit_pilot_episode, pilot_trials
+import pytest
+
+from farpoint.position_pilot import (
+    audit_pilot_episode,
+    pilot_kind,
+    pilot_trials,
+    workspace_coverage,
+)
 from farpoint.position_plan import generate_position_plan, load_position_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "variations" / "farpoint_v1_3_cube_position.json"
+EXPANDED_CONFIG = (
+    ROOT / "configs" / "variations" / "farpoint_v1_3_cube_position_expanded.json"
+)
 
 
 def test_pilot_selects_the_nine_edge_center_cross_product_cells():
@@ -14,6 +24,29 @@ def test_pilot_selects_the_nine_edge_center_cross_product_cells():
     assert [(item["row"], item["column"], item["slot"]) for item in selected] == [
         (row, column, 0) for row in (0, 2, 4) for column in (0, 2, 4)
     ]
+
+
+def test_workspace_feasibility_selection_meets_the_required_position_span():
+    selected = pilot_trials(
+        generate_position_plan(load_position_config(EXPANDED_CONFIG))
+    )
+    coverage = workspace_coverage(selected)
+
+    assert coverage["accepted"] is True
+    assert coverage["x_span_m"] >= 0.20
+    assert coverage["y_span_m"] >= 0.16
+    assert len({tuple(trial["object_position_xy_m"]) for trial in selected}) == 9
+
+
+def test_pilot_id_distinguishes_baseline_and_workspace_feasibility():
+    assert pilot_kind("cube_position_pilot_20260801_a645c7c") == (
+        "cube_position_grid_pilot"
+    )
+    assert pilot_kind("cube_position_workspace_feasibility_20260801_abcdef0") == (
+        "cube_position_workspace_feasibility"
+    )
+    with pytest.raises(ValueError, match="supported prefix"):
+        pilot_kind("cube_position_experiment_20260801_abcdef0")
 
 
 def test_pilot_audit_requires_every_quality_and_artifact_gate(tmp_path):

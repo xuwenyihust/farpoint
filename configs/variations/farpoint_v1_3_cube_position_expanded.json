@@ -1,0 +1,31 @@
+{
+  "schema_version": "farpoint.variation.v2",
+  "plan_id": "farpoint_v1_3_cube_position_expanded_candidate",
+  "task_id": "isaac_perception_contact_scene",
+  "config_revision": "1",
+  "grid": {
+    "x_bounds_m": [0.84, 1.1],
+    "y_bounds_m": [0.18, 0.38],
+    "rows": 5,
+    "columns": 5,
+    "primary_slots_per_cell": 3,
+    "reserve_candidates_per_slot": 2,
+    "interior_fraction": [0.1, 0.9]
+  },
+  "frozen_factors": {
+    "object_shape": "cube",
+    "object_dimensions_m": [0.055, 0.055, 0.055],
+    "object_initial_z_m": 0.5,
+    "object_yaw_degrees": 0.0,
+    "object_mass_kg": 0.08,
+    "material_id": "high_friction_default_v1",
+    "appearance_profile_id": "red_default_v1",
+    "target_position_m": [0.96, -0.03, 0.42],
+    "camera_profile_id": "front_rgbd_640x360_v1",
+    "lighting_profile_id": "distant_1000_v1",
+    "robot_pose_profile_id": "ur10e_tabletop_v1",
+    "controller_profile_id": "hybrid_rmpflow_lula_ik_v1",
+    "physics_profile_id": "physx_contact_pickup_v1",
+    "recording_profile_id": "farpoint_multimodal_v1"
+  }
+}

@@ -133,13 +133,23 @@ def load_trial(trial, report_dir):
 
     preview_images = sorted((episode_dir / "preview").glob("*.png")) if episode_dir else []
     preview = preview_images[len(preview_images) // 2] if preview_images else None
+    resolved_position = (
+        (metadata.get("variation") or {}).get("resolved", {}).get("object_position_m")
+        or []
+    )
+    planned_position = trial.get("object_position_xy_m") or []
+    pick_object_xy = (metadata.get("randomization") or {}).get("pick_object_xy")
+    if not pick_object_xy and len(resolved_position) >= 2:
+        pick_object_xy = resolved_position[:2]
+    if not pick_object_xy and len(planned_position) >= 2:
+        pick_object_xy = planned_position[:2]
     return {
         **trial,
         "success": bool(metrics.get("success", trial.get("success"))),
         "failure_category": metrics.get("failure_category") or trial.get("failure_category"),
         "failure_reason": metrics.get("failure_reason") or trial.get("failure_reason"),
         "failed_checks": metrics.get("failed_checks", []),
-        "pick_object_xy": (metadata.get("randomization") or {}).get("pick_object_xy"),
+        "pick_object_xy": pick_object_xy,
         "target_zone_xy": (metadata.get("randomization") or {}).get("target_zone_xy"),
         "final_target_xy_distance": metrics.get(
             "final_target_xy_distance", trial.get("final_target_xy_distance")
@@ -237,6 +247,19 @@ def summarize(manifest, trials, reproducibility_trials=None):
     peak_gpu_values = finite_numbers(trial.get("peak_gpu") for trial in trials)
     workload_memory_values = finite_numbers(trial.get("workload_memory") for trial in trials)
     host_pressure_values = finite_numbers(trial.get("host_pressure") for trial in trials)
+    positions = [
+        [float(position[0]), float(position[1])]
+        for position in (trial.get("pick_object_xy") for trial in trials)
+        if isinstance(position, (list, tuple)) and len(position) >= 2
+    ]
+    x_values = [position[0] for position in positions]
+    y_values = [position[1] for position in positions]
+    workspace_coverage = {
+        "x_range_m": [min(x_values), max(x_values)] if x_values else None,
+        "y_range_m": [min(y_values), max(y_values)] if y_values else None,
+        "x_span_m": max(x_values) - min(x_values) if x_values else None,
+        "y_span_m": max(y_values) - min(y_values) if y_values else None,
+    }
     failure_counts = Counter(
         trial.get("failure_category") or "unclassified"
         for trial in trials
@@ -313,6 +336,18 @@ def summarize(manifest, trials, reproducibility_trials=None):
             and all(bool(value) for value in checks.values())
             for checks in (trial.get("checks") for trial in trials)
         )
+    if acceptance.get("min_selected_x_span_m") is not None:
+        acceptance_checks["workspace_x_span"] = (
+            workspace_coverage["x_span_m"] is not None
+            and workspace_coverage["x_span_m"]
+            >= float(acceptance["min_selected_x_span_m"])
+        )
+    if acceptance.get("min_selected_y_span_m") is not None:
+        acceptance_checks["workspace_y_span"] = (
+            workspace_coverage["y_span_m"] is not None
+            and workspace_coverage["y_span_m"]
+            >= float(acceptance["min_selected_y_span_m"])
+        )
     required_checks = [
         acceptance_checks["planned_trials_completed"],
         acceptance_checks["minimum_success_rate"],
@@ -356,6 +391,7 @@ def summarize(manifest, trials, reproducibility_trials=None):
         "peak_host_memory_pressure_percent": max(host_pressure_values)
         if host_pressure_values
         else None,
+        "workspace_coverage": workspace_coverage,
         "failure_counts": dict(sorted(failure_counts.items())),
         "acceptance": acceptance,
         "acceptance_checks": acceptance_checks,
@@ -415,10 +451,17 @@ def build_report(manifest_path):
         category = trial.get("failure_category") or "none"
         reason = (trial.get("failure_reason") or "Completed successfully").replace("_", " ")
         seed = str(int(trial["seed"])) if trial.get("seed") is not None else "Unavailable"
+        position = trial.get("pick_object_xy")
+        position_text = (
+            f"{float(position[0]):.3f}, {float(position[1]):.3f}"
+            if isinstance(position, (list, tuple)) and len(position) >= 2
+            else "Unavailable"
+        )
         table_rows.append(
             f'<tr data-status="{status}" data-failure="{html.escape(category)}">'
             f'<td>{preview}</td>'
             f"<td>{seed}</td>"
+            f"<td>{position_text}</td>"
             f'<td>{int(trial.get("repeat", 0)) + 1}</td>'
             f'<td>{episode}</td>'
             f'<td class="{status_class}">{status}</td>'
@@ -464,12 +507,15 @@ def build_report(manifest_path):
         "contact_only": "No temporary grasp joint is used",
         "dataset_valid": "Every trial exports a valid dataset",
         "pilot_episode_checks": "Every pilot episode passes all artifact and quality checks",
+        "workspace_x_span": "Selected positions cover the required X span",
+        "workspace_y_span": "Selected positions cover the required Y span",
     }
     for key, value in summary["acceptance_checks"].items():
         state = "NOT RUN" if value is None else ("PASS" if value else "FAIL")
         state_class = "pending" if value is None else ("pass" if value else "fail")
         acceptance_rows.append(
-            f"<tr><td>{html.escape(labels[key])}</td><td class=\"{state_class}\">{state}</td></tr>"
+            f"<tr><td>{html.escape(labels.get(key, key.replace('_', ' ').title()))}</td>"
+            f'<td class="{state_class}">{state}</td></tr>'
         )
     reproducibility_rows = []
     for detail in summary["reproducibility"]["details"]:
@@ -499,6 +545,15 @@ def build_report(manifest_path):
     else:
         reproducibility_state = "NOT RUN"
         reproducibility_class = "pending"
+    coverage = summary["workspace_coverage"]
+    coverage_metrics = ""
+    if coverage["x_span_m"] is not None:
+        coverage_metrics = (
+            '<div class="metric"><span>Position X Span</span>'
+            f'<strong>{coverage["x_span_m"]:.3f} m</strong></div>'
+            '<div class="metric"><span>Position Y Span</span>'
+            f'<strong>{coverage["y_span_m"]:.3f} m</strong></div>'
+        )
     report_path = report_dir / "index.html"
     report_path.write_text(
         f"""<!doctype html>
@@ -574,6 +629,7 @@ def build_report(manifest_path):
       <div class="metric"><span>Median Runtime</span><strong>{fmt_metric(summary["median_runtime_seconds"], " s", 1)}</strong></div>
       <div class="metric"><span>Peak GPU Load</span><strong>{format_number(summary["peak_gpu_percent"], "%", 0)}</strong></div>
       <div class="metric"><span>Peak Workload Memory</span><strong>{format_memory_mib(summary["peak_workload_memory_mib"])}</strong></div>
+      {coverage_metrics}
       <div class="metric"><span>Reproducibility</span><strong class="{reproducibility_class}">{reproducibility_state}</strong></div>
     </section>
 
@@ -616,7 +672,7 @@ def build_report(manifest_path):
       </div>
       <table>
         <thead><tr>
-          <th>Preview</th><th>Seed</th><th>Run</th><th>Episode</th><th>Status</th>
+          <th>Preview</th><th>Seed</th><th>Object XY (m)</th><th>Run</th><th>Episode</th><th>Status</th>
           <th>Failure Stage</th><th>Reason</th><th>Target Error</th><th>Perception Error</th><th>Lift</th>
           <th>Bilateral Contact</th><th>Dataset</th>
           <th>Settle Frames</th><th>Runtime</th><th>Peak GPU</th><th>Workload Memory</th><th>Host Pressure</th>
