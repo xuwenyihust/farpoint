@@ -417,7 +417,7 @@ class EpisodeRegistry:
         report = self.layout.reports / "benchmarks" / benchmark_id / "index.html"
         return {
             "benchmark_id": benchmark_id,
-            "task_name": manifest.get("task_name"),
+            "task_name": manifest.get("task_name") or manifest.get("task_id"),
             "task_type": manifest.get("task_type"),
             "status": status,
             "created_at": manifest.get("created_at"),

@@ -17,6 +17,7 @@ from farpoint.control import (
     placement_converged,
     rate_limit_revolute_joint_targets,
     rmpflow_world_target,
+    simulation_stop_reason,
     tactile_contact_hold_target,
     tactile_search_active,
     temporal_contact_confirmed,
@@ -71,6 +72,38 @@ def test_transport_grasp_support_accepts_only_rigid_relative_motion():
     assert not slipped["present"]
     assert slipped["source"] is None
     assert slipped["rigidity_error"] == pytest.approx(0.02)
+
+
+def test_simulation_stops_as_soon_as_release_has_settled():
+    assert (
+        simulation_stop_reason(
+            1119,
+            nominal_frame_count=5200,
+            extension_frames=1200,
+            release_complete_frame=1000,
+            required_settle_frames=120,
+            grasp_validated=True,
+        )
+        == "release_settled"
+    )
+
+
+def test_simulation_extension_is_available_only_after_validated_grasp():
+    common = {
+        "nominal_frame_count": 5200,
+        "extension_frames": 1200,
+        "release_complete_frame": None,
+        "required_settle_frames": 120,
+    }
+    assert (
+        simulation_stop_reason(5199, grasp_validated=False, **common)
+        == "nominal_budget_exhausted"
+    )
+    assert simulation_stop_reason(5199, grasp_validated=True, **common) is None
+    assert (
+        simulation_stop_reason(6399, grasp_validated=True, **common)
+        == "extension_budget_exhausted"
+    )
 
 
 def test_tactile_contact_hold_target_starts_from_measured_preload():

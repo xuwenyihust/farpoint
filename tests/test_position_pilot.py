@@ -62,3 +62,20 @@ def test_pilot_audit_requires_every_quality_and_artifact_gate(tmp_path):
     result = audit_pilot_episode(episode, trial, plan_sha256=plan["plan_sha256"], episode_root=episode_root)
     assert result["accepted"] is False
     assert "bilateral_contact" in result["errors"]
+
+
+def test_missing_pilot_episode_preserves_planned_trial_identity(tmp_path):
+    plan = generate_position_plan(load_position_config(CONFIG))
+    trial = pilot_trials(plan)[0]
+
+    result = audit_pilot_episode(
+        None,
+        trial,
+        plan_sha256=plan["plan_sha256"],
+        episode_root=tmp_path,
+    )
+
+    assert result["episode_id"] is None
+    assert result["trial_id"] == trial["trial_id"]
+    assert result["seed"] == trial["seed"]
+    assert result["cell_id"] == trial["cell_id"]

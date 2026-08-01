@@ -92,5 +92,24 @@ uses an explicit 900-second per-episode timeout so full diagnostics can be
 written even on terminal task failures.
 
 Generated pilot manifests and episode artifacts remain under ignored
-`outputs/`. Formal 75-attempt benchmarking and dataset publication happen only
-after the position-planner PR is reviewed and merged.
+`outputs/`. A passing pilot gates the formal 75-attempt benchmark; it is not a
+dataset release by itself.
+
+## Accepted Goal 2 Pilot
+
+`cube_position_pilot_20260801_a645c7c` passed all nine planned trials with no
+failed acceptance checks. Its immutable runtime identity is:
+
+- Code revision: `a645c7c94b1f3a0acc62a78f5ff33d1db4243816`
+- Position plan SHA256:
+  `736cb89f26a8d2a943d54f381cec5fd2f7e5c86d258b995dbdaf0fde28185993`
+- Isaac Sim image: `nvcr.io/nvidia/isaac-sim:6.0.0`
+- Image digest:
+  `sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d`
+
+Across the nine accepted episodes, perception XY error was
+`0.015893-0.016689 m`, lift height was `0.2262-0.2283 m`, continuous transport
+contact was `1201-1879` frames, final target XY error was
+`0.00116-0.00809 m`, and every release was observed for 120 settling frames.
+Every episode included valid RGB-D observations, preview frames, telemetry,
+and contact-only grasp evidence without a temporary grasp joint.

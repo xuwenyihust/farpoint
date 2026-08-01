@@ -158,13 +158,15 @@ pickup:
   grasp_proof_lift_enabled: true
   grasp_proof_lift_height_meters: 0.02
   grasp_proof_lift_frames: 90
-  grasp_proof_hold_frames: 240
-  grasp_proof_hold_max_frames: 240
+  grasp_proof_hold_frames: 30
+  grasp_proof_hold_max_frames: 60
   grasp_proof_lower_frames: 90
   grasp_proof_min_object_lift_meters: 0.012
   grasp_proof_required_contact_frames: 12
   grasp_proof_terminal_contact_frames: 5
+  grasp_proof_min_force_newtons: 0.15
   grasp_proof_max_rigidity_error_meters: 0.015
+  recovery_extension_frames: 1200
   grasp_contact_loss_frames: 45
   transport_rigidity_max_error_meters: 0.015
   max_grasp_retries: 1
