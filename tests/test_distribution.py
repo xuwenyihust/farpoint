@@ -1,6 +1,10 @@
+import sys
 import zipfile
+from pathlib import Path
 
-from scripts.check_distribution import REQUIRED_MEMBERS, check_distribution
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from check_distribution import REQUIRED_MEMBERS, check_distribution  # noqa: E402
 
 
 def test_distribution_check_requires_runtime_schemas(tmp_path):
