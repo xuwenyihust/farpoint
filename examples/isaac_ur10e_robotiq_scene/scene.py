@@ -37,6 +37,7 @@ from farpoint.control import (
     placement_converged,
     rate_limit_revolute_joint_targets,
     rmpflow_world_target,
+    simulation_stop_reason,
     tactile_contact_hold_target,
     tactile_search_active,
     temporal_contact_confirmed,
@@ -2172,6 +2173,34 @@ def main():
                 )
             ),
         )
+        grasp_proof_min_force = max(
+            0.0,
+            float(
+                pickup_config.get(
+                    "grasp_proof_min_force_newtons",
+                    pickup_config.get(
+                        "grasp_validation_min_force_newtons",
+                        bilateral_hold_min_force,
+                    ),
+                )
+            ),
+        )
+        recovery_extension_frames = max(
+            0,
+            int(pickup_config.get("recovery_extension_frames", 0)),
+        )
+        required_release_settle_frames = max(
+            1,
+            int(
+                task["success_criteria"].get(
+                    "min_release_settle_frames",
+                    45,
+                )
+            ),
+        )
+        simulation_frame_cap = frame_count + recovery_extension_frames
+        frames_simulated = 0
+        simulation_stop = None
         grasp_motion_start_frame = None
         actual_release_frame = None
         grasp_recovery_state = "initial"
@@ -2401,7 +2430,8 @@ def main():
             observation_context as observations,
             labels_context as labels,
         ):
-            for frame in range(frame_count):
+            for frame in range(simulation_frame_cap):
+                frames_simulated = frame + 1
                 if (
                     contact_only
                     and bilateral_contact_validated
@@ -5045,7 +5075,16 @@ def main():
                             grasp_proof_max_rigidity_error,
                             float(transport_support["rigidity_error"]),
                         )
-                    if validation_terminal_contact:
+                    grasp_proof_contact = bilateral_grasp_ready(
+                        left_contact_force,
+                        right_contact_force,
+                        measured_finger_position,
+                        min_force=grasp_proof_min_force,
+                        min_finger_position=(
+                            bilateral_min_finger_position
+                        ),
+                    )
+                    if grasp_proof_contact:
                         grasp_proof_contact_streak += 1
                     else:
                         grasp_proof_contact_streak = 0
@@ -5595,6 +5634,29 @@ def main():
                         + "\n"
                     )
                     dataset_observation_count += 1
+                simulation_stop = simulation_stop_reason(
+                    frame,
+                    nominal_frame_count=frame_count,
+                    extension_frames=recovery_extension_frames,
+                    release_complete_frame=soft_release_complete_frame,
+                    required_settle_frames=(
+                        required_release_settle_frames
+                    ),
+                    grasp_validated=bilateral_contact_validated,
+                )
+                if simulation_stop is not None:
+                    append_phase(
+                        phase_path,
+                        "simulation_stopped",
+                        frame=frame,
+                        reason=simulation_stop,
+                        frames_simulated=frames_simulated,
+                        nominal_frame_count=frame_count,
+                        recovery_extension_frames=(
+                            recovery_extension_frames
+                        ),
+                    )
+                    break
 
         if preview_enabled and not (perception_enabled or dataset_enabled):
             rep.orchestrator.wait_until_complete()
@@ -5745,6 +5807,9 @@ def main():
         metrics = {
             "success": False,
             "frames_requested": frame_count,
+            "frames_simulated": frames_simulated,
+            "recovery_extension_frames": recovery_extension_frames,
+            "simulation_stop_reason": simulation_stop,
             "record_every_n_frames": record_every,
             "control_frequency_hz": round(1.0 / rendering_dt, 3),
             "physics_frequency_hz": round(1.0 / physics_dt, 3),
@@ -6225,6 +6290,7 @@ def main():
             "grasp_proof_terminal_contact_frames": (
                 grasp_proof_terminal_contact_frames
             ),
+            "grasp_proof_min_force_newtons": grasp_proof_min_force,
             "grasp_proof_contact_rebuild_wait_frame": (
                 grasp_proof_contact_rebuild_wait_frame
             ),

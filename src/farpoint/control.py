@@ -769,6 +769,32 @@ def transport_grasp_support(
     }
 
 
+def simulation_stop_reason(
+    frame,
+    *,
+    nominal_frame_count,
+    extension_frames,
+    release_complete_frame,
+    required_settle_frames,
+    grasp_validated,
+):
+    """Return why a bounded episode should stop, or ``None`` to continue."""
+    simulated_frames = int(frame) + 1
+    nominal_frames = max(1, int(nominal_frame_count))
+    maximum_frames = nominal_frames + max(0, int(extension_frames))
+    if release_complete_frame is not None:
+        settled_frames = int(frame) - int(release_complete_frame) + 1
+        if settled_frames >= max(1, int(required_settle_frames)):
+            return "release_settled"
+    if simulated_frames < nominal_frames:
+        return None
+    if not grasp_validated:
+        return "nominal_budget_exhausted"
+    if simulated_frames >= maximum_frames:
+        return "extension_budget_exhausted"
+    return None
+
+
 def apply_place_hover_guard(
     grasp_position,
     nominal_grasp_position,
