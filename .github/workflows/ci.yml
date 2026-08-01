@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install -e '.[dev,data]'
+      - name: Lint
+        run: ruff check src scripts tests
+      - name: Check release identity
+        run: python scripts/check_release_version.py
+      - name: Validate variation plan
+        run: python scripts/plan_variations.py --json
+      - name: Run unit and contract tests
+        run: pytest -q --cov=farpoint --cov-report=term-missing --cov-fail-under=75
+
+  data-contract:
+    name: Dataset contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install data validation dependencies
+        run: python -m pip install -e '.[dev,data]'
+      - name: Run dataset and release safety tests
+        run: >-
+          pytest -q
+          tests/test_dataset.py
+          tests/test_episode_metadata.py
+          tests/test_lerobot_dataset_validator.py
+          tests/test_lerobot_v1_exporter.py
+          tests/test_release.py
+          tests/test_release_cli.py
+          tests/test_release_spec.py
+          tests/test_v3_audit.py
+
+  dashboard-qa:
+    name: Dashboard browser QA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Dashboard QA dependencies
+        run: python -m pip install -e '.[dev,qa]'
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Run Dashboard browser acceptance tests
+        env:
+          FARPOINT_RUN_BROWSER_QA: "1"
+        run: pytest -q tests/test_dashboard_browser.py

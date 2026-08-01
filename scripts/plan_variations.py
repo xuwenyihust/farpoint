@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print the deterministic Farpoint V1.1 variation plan without simulation."""
+"""Print a deterministic Farpoint variation plan without simulation."""
 
 import argparse
 import json
@@ -9,10 +9,12 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from farpoint.variation import load_variation_config, plan_variations
+from farpoint.variation import load_variation_config, plan_variations  # noqa: E402
 
 
-DEFAULT_CONFIG = PROJECT_ROOT / "configs" / "farpoint_v1_1_variations.json"
+DEFAULT_CONFIG = (
+    PROJECT_ROOT / "configs" / "variations" / "ur10e_robotiq_2f85_pickup.json"
+)
 
 
 def main():

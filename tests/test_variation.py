@@ -13,7 +13,8 @@ from farpoint.variation import (
 CONFIG_PATH = (
     Path(__file__).resolve().parents[1]
     / "configs"
-    / "farpoint_v1_1_variations.json"
+    / "variations"
+    / "ur10e_robotiq_2f85_pickup.json"
 )
 
 

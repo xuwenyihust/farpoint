@@ -1007,7 +1007,12 @@ def main():
         variation_config_path = Path(
             os.environ.get(
                 "FARPOINT_VARIATION_CONFIG",
-                str(PROJECT_ROOT / "configs" / "farpoint_v1_1_variations.json"),
+                str(
+                    PROJECT_ROOT
+                    / "configs"
+                    / "variations"
+                    / "ur10e_robotiq_2f85_pickup.json"
+                ),
             )
         )
         variation_config = load_variation_config(variation_config_path)

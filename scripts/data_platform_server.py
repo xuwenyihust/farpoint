@@ -19,9 +19,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from data_platform_cli import build_reports
-from farpoint.registry import EpisodeRegistry
-from farpoint.retention import RetentionManager
+from data_platform_cli import build_reports  # noqa: E402
+from farpoint.registry import EpisodeRegistry  # noqa: E402
+from farpoint.retention import RetentionManager  # noqa: E402
 
 
 def valid_basic_auth(header, expected_token):

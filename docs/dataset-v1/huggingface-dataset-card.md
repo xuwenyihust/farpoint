@@ -57,6 +57,8 @@ this Hugging Face repository contains the released dataset artifacts.
   `farpoint_v1_1_profiled` in `meta/episode_metadata.jsonl`.
 - `v1.1.1`: the same 29 episodes with Viewer-compatible metadata in
   `meta/episode_metadata.parquet`.
+- `v1.2.0`: the same validated 29-episode corpus, published through the
+  reproducible Farpoint release pipeline with a Viewer-safe public package.
 
 The default revision tracks the latest release. Earlier releases remain
 available through their Hugging Face revision tags.

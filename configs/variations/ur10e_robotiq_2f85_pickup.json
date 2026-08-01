@@ -1,6 +1,6 @@
 {
   "schema_version": "farpoint.variation.v1",
-  "dataset_version": "farpoint_v1.1",
+  "config_revision": 1,
   "task_name": "isaac_ur10e_robotiq_scene",
   "description": "Six bounded cube and cylinder position profiles for the UR10e Robotiq 2F-85 tabletop pickup pilot.",
   "fixed_parameters": {

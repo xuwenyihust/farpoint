@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
-
 
 def normalize_episode_metadata(metadata: dict, metrics: dict | None = None) -> dict:
     """Return a stable metadata record without rewriting the raw source metadata.
