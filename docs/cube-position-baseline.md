@@ -148,3 +148,30 @@ failures may rerun the same trial and seed.
 If the feasibility gate passes, this exact candidate manifest and SHA become
 the formal 75-primary plan. If it fails, do not run the formal benchmark;
 change the bounds or controller under a new plan identity and repeat the gate.
+
+### Accepted Expanded Workspace Pilot
+
+`cube_position_workspace_feasibility_20260801_d095f5d` passed all nine
+edge/center trials. Its immutable runtime identity is:
+
+- Code revision: `d095f5de33a5df958b22782eb73f14c004a679f4`
+- Position plan SHA256:
+  `f13bb891d6044145a0e2c5b65982f91810298f0a8387328cc933fb51bd0da8db`
+- Isaac Sim image: `nvcr.io/nvidia/isaac-sim:6.0.0`
+- Image digest:
+  `sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d`
+
+The selected positions spanned `0.224391 m` in X and `0.182146 m` in Y,
+exceeding both workspace coverage gates. Across the nine accepted episodes,
+perception XY error was `0.015421-0.017307 m`, lift height was
+`0.2251-0.2548 m`, continuous transport contact was `1204-1982` frames,
+final target XY error was `0.00096-0.01746 m`, and every release was observed
+for 120 settling frames. Each episode contained `352-455` synchronized dataset
+observations and passed all contact-only, RGB-D, preview, and telemetry checks.
+
+The run recorded 11 infrastructure attempts. Two attempts reached the
+five-minute Isaac Kit startup timeout before producing an episode; both were
+retained as infrastructure failures and retried with the identical trial and
+seed. No task failure was retried or replaced, and no reserve candidate was
+used. This accepted manifest is therefore eligible for the formal 75-primary
+v1.3 cube-position benchmark.
