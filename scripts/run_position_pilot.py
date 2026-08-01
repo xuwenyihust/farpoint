@@ -41,7 +41,7 @@ def main() -> int:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--cooldown-seconds", type=int, default=10)
     parser.add_argument("--run-timeout-seconds", type=int, default=900)
-    parser.add_argument("--startup-timeout-seconds", type=int, default=120)
+    parser.add_argument("--startup-timeout-seconds", type=int, default=300)
     args = parser.parse_args()
     if not re.fullmatch(r"cube_position_pilot_[0-9]{8}_[0-9a-f]{7,40}", args.pilot_id):
         parser.error("--pilot-id must contain the date and Git SHA")
