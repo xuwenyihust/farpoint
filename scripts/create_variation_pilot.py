@@ -104,6 +104,7 @@ def build_pilot(episode_root: Path, config_path: Path, output: Path, benchmark_i
         "task_name": config["task_name"],
         "task_type": "intra_task_diversity_pilot_v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": datetime.now(timezone.utc).isoformat(),
         "planned_trials": expected,
         "completed_trials": len(trials),
         "passed_trials": sum(1 for trial in trials if trial["success"]),
