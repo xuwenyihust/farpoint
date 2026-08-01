@@ -1058,9 +1058,8 @@ def main():
     preview_dir = episode_dir / "preview"
     observations_path = episode_dir / "observations.jsonl"
     labels_path = episode_dir / "labels.jsonl"
-    frame_count = int(
-        os.environ.get("FARPOINT_FRAME_LIMIT", task["frames"])
-    )
+    frame_limit = os.environ.get("FARPOINT_FRAME_LIMIT")
+    frame_count = int(frame_limit) if frame_limit else int(task["frames"])
     record_every = int(task["record_every_n_frames"])
     camera_config = task.get("camera", {})
     perception_config = task.get("perception", {})

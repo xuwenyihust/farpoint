@@ -53,7 +53,7 @@ def main() -> int:
     output = PROJECT_ROOT / "outputs" / "benchmarks" / args.pilot_id / "manifest.json"
     if output.exists() and not (args.resume or args.audit_only):
         parser.error(f"{args.pilot_id} already exists; use --resume or --audit-only")
-    manifest = {
+    new_manifest = {
         "schema_version": "farpoint.position-pilot.v1",
         "pilot_id": args.pilot_id,
         "execution_status": "RUNNING",
@@ -82,6 +82,14 @@ def main() -> int:
         },
         "trials": [],
     }
+    if output.exists():
+        manifest = json.loads(output.read_text(encoding="utf-8"))
+        if manifest.get("git_commit") != args.git_commit:
+            parser.error("existing pilot Git commit does not match --git-commit")
+        if manifest.get("position_plan_sha256") != plan["plan_sha256"]:
+            parser.error("existing pilot position plan does not match --plan")
+    else:
+        manifest = new_manifest
     write_json(output, manifest)
 
     relative_plan = args.plan.resolve().relative_to(PROJECT_ROOT.resolve())
@@ -106,6 +114,12 @@ def main() -> int:
             ]
             print(f"RUN {ordinal}/9 {trial['trial_id']} xy={trial['object_position_xy_m']}", flush=True)
             subprocess.run(command, cwd=PROJECT_ROOT, check=False)
+            if find_episode(args.episode_root, args.pilot_id, trial["trial_id"]) is None:
+                print(
+                    f"FAIL_FAST {trial['trial_id']}: runner produced no episode",
+                    flush=True,
+                )
+                break
 
     audited = []
     for trial in selected:
