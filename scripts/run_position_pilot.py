@@ -95,7 +95,10 @@ def main() -> int:
                 time.sleep(args.cooldown_seconds)
             run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S") + f"_{trial['cell_id']}"
             runtime = args.runtime_root / run_id
-            runtime.mkdir(parents=True, exist_ok=True)
+            for directory in ("cache", "compute", "config", "data", "logs", "pkg", "hub"):
+                path = runtime / directory
+                path.mkdir(parents=True, exist_ok=True)
+                path.chmod(0o777)
             command = [
                 "bash", "scripts/run_remote_isaac_example.sh",
                 "examples/isaac_perception_contact_scene", args.image, str(runtime), run_id,
