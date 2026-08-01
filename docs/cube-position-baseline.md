@@ -113,3 +113,38 @@ contact was `1201-1879` frames, final target XY error was
 `0.00116-0.00809 m`, and every release was observed for 120 settling frames.
 Every episode included valid RGB-D observations, preview frames, telemetry,
 and contact-only grasp evidence without a temporary grasp joint.
+
+## Expanded Workspace Feasibility
+
+The accepted Goal 2 pilot proves the pipeline over a deliberately narrow
+`0.06 x 0.06 m` sampling region. It does not claim that the whole tabletop is
+reachable. The next candidate expands the cube-center sampling workspace to:
+
+- X range: `[0.84, 1.10]` meters
+- Y range: `[0.18, 0.38]` meters
+- Candidate area: `0.26 x 0.20 m`
+
+The original configuration and manifest remain immutable. The expanded
+candidate uses
+`configs/variations/farpoint_v1_3_cube_position_expanded.json` and
+`configs/plans/farpoint_v1_3_cube_position_expanded_candidate.json`.
+
+Before any formal 75-trial benchmark, run the nine edge/center trials with:
+
+```bash
+python3 scripts/run_position_pilot.py \
+  --plan configs/plans/farpoint_v1_3_cube_position_expanded_candidate.json \
+  --pilot-id cube_position_workspace_feasibility_YYYYMMDD_<git-sha> \
+  --git-commit <full-git-sha>
+```
+
+The feasibility gate requires all nine episodes to pass the same contact,
+perception, lift, transport, placement, settling, dataset, preview, and
+telemetry checks as the narrow pilot. The selected positions must additionally
+span at least `0.20 m` in X and `0.16 m` in Y. Task failures reject the
+candidate; they are not replaced with reserve trials. Only infrastructure
+failures may rerun the same trial and seed.
+
+If the feasibility gate passes, this exact candidate manifest and SHA become
+the formal 75-primary plan. If it fails, do not run the formal benchmark;
+change the bounds or controller under a new plan identity and repeat the gate.

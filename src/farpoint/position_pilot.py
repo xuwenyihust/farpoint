@@ -4,10 +4,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 
 PILOT_COORDINATES = (0, 2, 4)
+PILOT_ID_PATTERN = re.compile(
+    r"(?P<prefix>cube_position_pilot|cube_position_workspace_feasibility)"
+    r"_[0-9]{8}_[0-9a-f]{7,40}"
+)
+WORKSPACE_FEASIBILITY_PREFIX = "cube_position_workspace_feasibility"
+WORKSPACE_MIN_X_SPAN_M = 0.20
+WORKSPACE_MIN_Y_SPAN_M = 0.16
 REQUIRED_EPISODE_FILES = (
     "metadata.json",
     "metrics.json",
@@ -30,6 +38,37 @@ def pilot_trials(plan: dict[str, Any]) -> list[dict[str, Any]]:
     if len(selected) != 9:
         raise ValueError(f"pilot selection must contain 9 trials, found {len(selected)}")
     return selected
+
+
+def pilot_kind(pilot_id: str) -> str:
+    """Validate a pilot ID and return its stable report type."""
+    match = PILOT_ID_PATTERN.fullmatch(pilot_id)
+    if match is None:
+        raise ValueError("pilot ID must contain a supported prefix, date, and Git SHA")
+    if match.group("prefix") == WORKSPACE_FEASIBILITY_PREFIX:
+        return "cube_position_workspace_feasibility"
+    return "cube_position_grid_pilot"
+
+
+def workspace_coverage(trials: list[dict[str, Any]]) -> dict[str, Any]:
+    """Measure whether selected trials exercise the expanded workspace envelope."""
+    if not trials:
+        raise ValueError("workspace coverage requires at least one trial")
+    positions = [trial["object_position_xy_m"] for trial in trials]
+    x_values = [float(position[0]) for position in positions]
+    y_values = [float(position[1]) for position in positions]
+    x_span = max(x_values) - min(x_values)
+    y_span = max(y_values) - min(y_values)
+    return {
+        "x_range_m": [min(x_values), max(x_values)],
+        "y_range_m": [min(y_values), max(y_values)],
+        "x_span_m": x_span,
+        "y_span_m": y_span,
+        "min_x_span_m": WORKSPACE_MIN_X_SPAN_M,
+        "min_y_span_m": WORKSPACE_MIN_Y_SPAN_M,
+        "accepted": x_span >= WORKSPACE_MIN_X_SPAN_M
+        and y_span >= WORKSPACE_MIN_Y_SPAN_M,
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -56,6 +95,7 @@ def pilot_trial_identity(trial: dict[str, Any]) -> dict[str, Any]:
         "slot": trial["slot"],
         "split": trial["split"],
         "seed": trial["seed"],
+        "object_position_xy_m": trial["object_position_xy_m"],
     }
 
 
