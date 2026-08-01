@@ -229,9 +229,19 @@ class EpisodeRegistry:
             for path in self._episode_dirs()
         ]
         episode_rows.extend(self._active_run_rows(now, episode_rows))
+        benchmark_paths = []
+        for directory in sorted(self.layout.benchmarks.iterdir()):
+            if not directory.is_dir():
+                continue
+            manifest = directory / "manifest.json"
+            run_state = directory / "run-state.json"
+            if manifest.is_file():
+                benchmark_paths.append(manifest)
+            elif run_state.is_file():
+                benchmark_paths.append(run_state)
         benchmark_rows = [
             row
-            for path in sorted(self.layout.benchmarks.glob("*/manifest.json"))
+            for path in benchmark_paths
             if (row := self._benchmark_row(path)) is not None
         ]
         with self.connect() as connection:
@@ -402,12 +412,34 @@ class EpisodeRegistry:
             manifest = read_json(manifest_path)
         except (OSError, ValueError):
             return None
-        completed = int(manifest.get("completed_trials") or len(manifest.get("trials", [])))
-        planned = int(manifest.get("planned_trials") or 0)
+        runtime = {}
+        runtime_path = manifest_path.parent / "run-state.json"
+        if manifest_path.name == "manifest.json" and runtime_path.is_file():
+            try:
+                runtime = read_json(runtime_path)
+            except (OSError, ValueError):
+                runtime = {}
+        acceptance = manifest.get("acceptance") or {}
+        completed = int(
+            manifest.get("completed_trials")
+            or runtime.get("completed_trials")
+            or len(manifest.get("trials", []))
+        )
+        planned = int(
+            manifest.get("planned_trials")
+            or runtime.get("planned_trials")
+            or len(manifest.get("trials", []))
+        )
         accepted = manifest.get("accepted")
+        if accepted is None:
+            accepted = acceptance.get("accepted")
         if accepted is True:
             status = "PASS"
-        elif manifest.get("finished_at"):
+        elif manifest.get("execution_status") == "ABORTED":
+            status = "FAIL"
+        elif manifest.get("execution_status") == "RUNNING":
+            status = "RUNNING"
+        elif manifest.get("finished_at") or runtime.get("finished_at"):
             status = "FAIL"
         elif completed:
             status = "RUNNING"
@@ -418,14 +450,25 @@ class EpisodeRegistry:
         return {
             "benchmark_id": benchmark_id,
             "task_name": manifest.get("task_name") or manifest.get("task_id"),
-            "task_type": manifest.get("task_type"),
+            "task_type": manifest.get("task_type") or runtime.get("task_type"),
             "status": status,
-            "created_at": manifest.get("created_at"),
-            "finished_at": manifest.get("finished_at"),
+            "created_at": manifest.get("created_at") or runtime.get("created_at"),
+            "finished_at": manifest.get("finished_at") or runtime.get("finished_at"),
             "planned_trials": planned,
             "completed_trials": completed,
-            "passed_trials": int(manifest.get("passed_trials") or 0),
-            "success_rate": manifest.get("success_rate"),
+            "passed_trials": int(
+                manifest.get("passed_trials")
+                or runtime.get("passed_trials")
+                or acceptance.get("observed_successes")
+                or 0
+            ),
+            "success_rate": (
+                manifest.get("success_rate")
+                if manifest.get("success_rate") is not None
+                else runtime.get(
+                    "success_rate", acceptance.get("observed_success_rate")
+                )
+            ),
             "accepted": self._boolean(accepted),
             "manifest_path": str(manifest_path),
             "report_path": str(report) if report.exists() else None,

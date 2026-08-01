@@ -44,6 +44,34 @@ def make_episode(root, episode_id, success=None, benchmark_id=None, run_id=None)
 
 
 class EpisodeRegistryTests(unittest.TestCase):
+    def test_scans_running_benchmark_state_before_final_manifest_exists(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outputs = Path(directory) / "outputs"
+            state_path = outputs / "benchmarks" / "formal" / "run-state.json"
+            write_json(
+                state_path,
+                {
+                    "schema_version": "farpoint.benchmark-run.v1",
+                    "benchmark_id": "formal",
+                    "task_id": "task",
+                    "task_type": "cube_position_formal",
+                    "execution_status": "RUNNING",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "planned_trials": 75,
+                    "completed_trials": 2,
+                    "passed_trials": 2,
+                    "success_rate": 1.0,
+                    "accepted": False,
+                    "trials": [{"success": True}, {"success": True}],
+                },
+            )
+            registry = EpisodeRegistry(outputs)
+            registry.scan()
+            row = registry.list_benchmarks()[0]
+            self.assertEqual(row["status"], "RUNNING")
+            self.assertEqual(row["completed_trials"], 2)
+            self.assertEqual(Path(row["manifest_path"]).name, "run-state.json")
+
     def test_canonicalizes_legacy_benchmark_aliases_for_ui_rows(self):
         with tempfile.TemporaryDirectory() as directory:
             outputs = Path(directory) / "outputs"
