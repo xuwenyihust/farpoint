@@ -70,6 +70,7 @@ def main() -> int:
     new_manifest = {
         "schema_version": "farpoint.position-pilot.v1",
         "pilot_id": args.pilot_id,
+        "benchmark_id": args.pilot_id,
         "execution_status": "RUNNING",
         "quality_status": "NOT_EVALUATED",
         "release_status": "PILOT",
@@ -77,19 +78,27 @@ def main() -> int:
         "position_plan_id": plan["plan_id"],
         "position_plan_sha256": plan["plan_sha256"],
         "task_id": plan["task_id"],
+        "task_name": plan["task_id"],
+        "task_type": "cube_position_grid_pilot",
         "image": args.image,
         "image_digest": image_digest,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "planned_trials": 9,
         "acceptance": {
             "required_successes": 9,
+            "min_success_rate": 1.0,
             "contact_only": True,
+            "require_contact_only": True,
             "max_perception_xy_error_m": 0.02,
+            "max_perception_xy_error": 0.02,
             "min_lift_height_m": 0.15,
+            "min_object_lift_height": 0.15,
             "min_bilateral_contact_frames": 20,
             "min_transport_contact_frames": 120,
             "max_final_target_xy_error_m": 0.05,
+            "max_final_target_xy_distance": 0.05,
             "min_settle_frames": 120,
+            "min_release_settle_frames": 120,
             "require_dataset": True,
             "require_visual_replay_source": True,
             "require_preview": True,
@@ -105,6 +114,13 @@ def main() -> int:
             parser.error("existing pilot position plan does not match --plan")
     else:
         manifest = new_manifest
+    manifest["benchmark_id"] = args.pilot_id
+    manifest["task_name"] = plan["task_id"]
+    manifest["task_type"] = "cube_position_grid_pilot"
+    manifest["acceptance"] = {
+        **new_manifest["acceptance"],
+        **manifest.get("acceptance", {}),
+    }
     write_json(output, manifest)
 
     relative_plan = args.plan.resolve().relative_to(PROJECT_ROOT.resolve())
@@ -154,6 +170,7 @@ def main() -> int:
     manifest["trials"] = audited
     manifest["completed_trials"] = sum(item["episode_id"] is not None for item in audited)
     manifest["passed_trials"] = passed
+    manifest["success_rate"] = passed / len(selected)
     manifest["execution_status"] = "FINISHED"
     manifest["quality_status"] = "PASS" if passed == 9 else "FAIL"
     manifest["accepted"] = passed == 9

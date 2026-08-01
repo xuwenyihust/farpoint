@@ -59,6 +59,34 @@ def write_json(path, payload):
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def normalize_manifest(manifest):
+    """Map legacy position-pilot fields onto the benchmark report contract."""
+    normalized = dict(manifest)
+    normalized["benchmark_id"] = normalized.get("benchmark_id") or normalized.get(
+        "pilot_id"
+    )
+    normalized["task_name"] = normalized.get("task_name") or normalized.get(
+        "task_id", "unknown_task"
+    )
+    acceptance = dict(normalized.get("acceptance") or {})
+    aliases = {
+        "max_final_target_xy_distance": "max_final_target_xy_error_m",
+        "min_object_lift_height": "min_lift_height_m",
+        "min_release_settle_frames": "min_settle_frames",
+        "max_perception_xy_error": "max_perception_xy_error_m",
+        "require_contact_only": "contact_only",
+    }
+    for canonical, legacy in aliases.items():
+        if canonical not in acceptance and legacy in acceptance:
+            acceptance[canonical] = acceptance[legacy]
+    if "min_success_rate" not in acceptance:
+        planned = max(1, int(normalized.get("planned_trials") or 0))
+        required = int(acceptance.get("required_successes", planned))
+        acceptance["min_success_rate"] = required / planned
+    normalized["acceptance"] = acceptance
+    return normalized
+
+
 def finite_numbers(values):
     result = []
     for value in values:
@@ -160,6 +188,8 @@ def load_trial(trial, report_dir):
 def reproducibility_summary(trials):
     groups = defaultdict(list)
     for trial in trials:
+        if trial.get("seed") is None:
+            continue
         groups[int(trial["seed"])].append(trial)
     repeated = {seed: rows for seed, rows in groups.items() if len(rows) > 1}
     if not repeated:
@@ -194,6 +224,7 @@ def reproducibility_summary(trials):
 
 
 def summarize(manifest, trials, reproducibility_trials=None):
+    manifest = normalize_manifest(manifest)
     reproducibility_trials = reproducibility_trials or []
     passed = sum(1 for trial in trials if trial["success"])
     completed = len(trials)
@@ -276,6 +307,12 @@ def summarize(manifest, trials, reproducibility_trials=None):
             and int(trial.get("dataset_observation_count") or 0) > 0
             for trial in trials
         )
+    if any(trial.get("checks") for trial in trials):
+        acceptance_checks["pilot_episode_checks"] = bool(trials) and all(
+            checks
+            and all(bool(value) for value in checks.values())
+            for checks in (trial.get("checks") for trial in trials)
+        )
     required_checks = [
         acceptance_checks["planned_trials_completed"],
         acceptance_checks["minimum_success_rate"],
@@ -336,7 +373,7 @@ def fmt_metric(value, suffix="", digits=3):
 
 
 def build_report(manifest_path):
-    manifest = read_json(manifest_path)
+    manifest = normalize_manifest(read_json(manifest_path))
     benchmark_id = manifest["benchmark_id"]
     report_dir = REPORTS_ROOT / "benchmarks" / benchmark_id
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -354,7 +391,15 @@ def build_report(manifest_path):
         for name in sorted(summary["failure_counts"])
     )
     table_rows = []
-    for trial in sorted(trials, key=lambda row: (int(row["seed"]), int(row.get("repeat", 0)))):
+    for trial in sorted(
+        trials,
+        key=lambda row: (
+            row.get("seed") is None,
+            int(row.get("seed") or 0),
+            int(row.get("repeat", 0)),
+            str(row.get("trial_id") or ""),
+        ),
+    ):
         status = "PASS" if trial["success"] else "FAIL"
         status_class = "pass" if trial["success"] else "fail"
         preview = (
@@ -369,10 +414,11 @@ def build_report(manifest_path):
         )
         category = trial.get("failure_category") or "none"
         reason = (trial.get("failure_reason") or "Completed successfully").replace("_", " ")
+        seed = str(int(trial["seed"])) if trial.get("seed") is not None else "Unavailable"
         table_rows.append(
             f'<tr data-status="{status}" data-failure="{html.escape(category)}">'
             f'<td>{preview}</td>'
-            f'<td>{int(trial["seed"])}</td>'
+            f"<td>{seed}</td>"
             f'<td>{int(trial.get("repeat", 0)) + 1}</td>'
             f'<td>{episode}</td>'
             f'<td class="{status_class}">{status}</td>'
@@ -417,6 +463,7 @@ def build_report(manifest_path):
         "transport_contact": "Contact persists through transport",
         "contact_only": "No temporary grasp joint is used",
         "dataset_valid": "Every trial exports a valid dataset",
+        "pilot_episode_checks": "Every pilot episode passes all artifact and quality checks",
     }
     for key, value in summary["acceptance_checks"].items():
         state = "NOT RUN" if value is None else ("PASS" if value else "FAIL")

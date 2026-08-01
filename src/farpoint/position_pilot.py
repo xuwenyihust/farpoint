@@ -48,6 +48,17 @@ def find_episode(episode_root: Path, pilot_id: str, trial_id: str) -> Path | Non
     return sorted(matches)[-1][1] if matches else None
 
 
+def pilot_trial_identity(trial: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "trial_id": trial["trial_id"],
+        "variation_id": trial["variation_id"],
+        "cell_id": trial["cell_id"],
+        "slot": trial["slot"],
+        "split": trial["split"],
+        "seed": trial["seed"],
+    }
+
+
 def audit_pilot_episode(
     episode_dir: Path | None,
     trial: dict[str, Any],
@@ -58,7 +69,7 @@ def audit_pilot_episode(
     errors = []
     if episode_dir is None:
         return {
-            "trial_id": trial["trial_id"],
+            **pilot_trial_identity(trial),
             "episode_id": None,
             "accepted": False,
             "errors": ["episode_missing"],
@@ -70,7 +81,7 @@ def audit_pilot_episode(
         metrics = _read_json(episode_dir / "metrics.json")
     except (OSError, ValueError) as error:
         return {
-            "trial_id": trial["trial_id"],
+            **pilot_trial_identity(trial),
             "episode_id": episode_dir.name,
             "accepted": False,
             "errors": [*errors, f"invalid_json:{error}"],
@@ -110,12 +121,7 @@ def audit_pilot_episode(
     }
     errors.extend(name for name, passed in checks.items() if not passed)
     return {
-        "trial_id": trial["trial_id"],
-        "variation_id": trial["variation_id"],
-        "cell_id": trial["cell_id"],
-        "slot": trial["slot"],
-        "split": trial["split"],
-        "seed": trial["seed"],
+        **pilot_trial_identity(trial),
         "episode_id": metadata.get("episode_id", episode_dir.name),
         "episode_path": str(episode_dir),
         "accepted": not errors,
