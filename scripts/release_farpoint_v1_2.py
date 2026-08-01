@@ -51,7 +51,7 @@ def publish_huggingface(package: Path, repo_id: str, version: str, commit_messag
         tag=version,
         tag_message=f"Farpoint dataset release {version}",
     )
-    return {"commit": getattr(commit, "oid", str(commit)), "tag": str(tag)}
+    return {"commit": getattr(commit, "oid", str(commit)), "tag": version}
 
 
 def run(args: argparse.Namespace) -> dict:
