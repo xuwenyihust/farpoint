@@ -43,6 +43,7 @@ def publish_huggingface(package: Path, repo_id: str, version: str, commit_messag
         repo_type="dataset",
         folder_path=str(package),
         commit_message=commit_message,
+        delete_patterns=["meta/*.json", "meta/*.jsonl"],
     )
     tag = api.create_tag(
         repo_id=repo_id,
@@ -67,7 +68,35 @@ def run(args: argparse.Namespace) -> dict:
         if not source_validation["valid"]:
             raise ValueError("source dataset failed validation: " + "; ".join(source_validation["errors"]))
         shutil.copytree(canonical_source, canonical_dir)
-        benchmark = {"source": "existing_dataset", "dataset_root": str(canonical_source)}
+        benchmark_id = args.benchmark_id or f"farpoint_{args.release_version.replace('.', '_')}_release"
+        if args.benchmark_manifest:
+            manifest = json.loads(args.benchmark_manifest.read_text(encoding="utf-8"))
+        else:
+            source_metadata = canonical_source / "meta" / "episode_metadata.jsonl"
+            records = [
+                json.loads(line)
+                for line in source_metadata.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ] if source_metadata.is_file() else []
+            passed = sum(1 for record in records if record.get("success"))
+            manifest = {
+                "schema_version": "benchmark.v1",
+                "benchmark_id": benchmark_id,
+                "task_name": args.task_name,
+                "task_type": args.task_type,
+                "planned_trials": len(records),
+                "completed_trials": len(records),
+                "passed_trials": passed,
+                "success_rate": passed / len(records) if records else 0.0,
+                "accepted": bool(records) and passed / len(records) >= args.min_success_rate,
+                "provenance": {"type": "release_source_dataset", "source": str(canonical_source)},
+                "trials": [
+                    {"episode_id": record.get("episode_id"), "success": bool(record.get("success"))}
+                    for record in records
+                ],
+            }
+        write_json(benchmark_dir / "manifest.json", manifest)
+        benchmark = {"benchmark_id": manifest.get("benchmark_id", benchmark_id), **manifest}
     else:
         from export_lerobot_v1_mini import export_mini
 
@@ -126,6 +155,7 @@ def main() -> int:
     parser.add_argument("--dataset-id", default="farpoint_ur10e_robotiq_2f85")
     parser.add_argument("--release-version", default="v1.2.0")
     parser.add_argument("--benchmark-id")
+    parser.add_argument("--benchmark-manifest", type=Path)
     parser.add_argument("--task-name", default="isaac_perception_contact_scene")
     parser.add_argument("--task-type", default="variation_expansion_v1")
     parser.add_argument("--min-success-rate", type=float, default=0.90)
