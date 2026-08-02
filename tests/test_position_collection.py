@@ -6,12 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from farpoint.contracts import validate_collection_semantics, validate_contract
+from farpoint.contracts import (
+    validate_collection_episode_links,
+    validate_collection_semantics,
+    validate_contract,
+)
 from farpoint.position_collection import (
     acceptance_snapshot,
     append_new_attempt,
     build_collection_manifest,
     build_collection_selection,
+    build_coverage_release_manifest,
     complete_import_pilot,
     dataset_split,
     finish_collection,
@@ -264,6 +269,85 @@ def test_recovery_collection_can_reach_balanced_acceptance_without_hiding_failur
     assert len({row["trial_id"] for row in selected}) == 50
     assert validate_contract(manifest) == []
     assert validate_collection_semantics(manifest) == []
+
+
+def test_coverage_release_ignores_yield_and_selects_every_success():
+    policy, plan, _, source = recovery_policy_and_source()
+    imported = import_source_attempts(source, policy, plan)
+    state = new_collection_state(
+        collection_id="coverage-release",
+        git_commit=GIT_COMMIT,
+        policy=policy,
+        policy_sha256="b" * 64,
+        imported_attempts=imported,
+    )
+    while state["covered_cells"] < 25 or set(state["selected_per_cell"].values()) != {2}:
+        trial = scheduled_trials(state, plan, policy)[0]
+        append_new_attempt(state, trial, audited(trial), policy)
+    finish_collection(state, policy)
+    manifest = build_collection_manifest(state, policy)
+    manifest["acceptance"]["required_task_yield"] = 1.0
+    manifest["acceptance"]["accepted"] = False
+    manifest["quality_status"] = "FAIL"
+    manifest["failure_reason"] = "task_yield_below_threshold"
+    assert validate_collection_semantics(manifest) == []
+
+    release = build_coverage_release_manifest(manifest)
+    selection = build_collection_selection(release, dataset_id="dataset", episode_root="episodes")
+    selected_attempts = {
+        row["trial_id"]: row
+        for row in release["attempts"]
+        if row["outcome_success"] and row["dataset_valid"]
+    }
+    episodes = [
+        {
+            "identity": {
+                "episode_id": selected_attempts[row["trial_id"]]["episode_id"],
+                "trial_id": row["trial_id"],
+                "split": row["split"],
+            },
+            "variation": {"variation_id": selected_attempts[row["trial_id"]]["variation_id"]},
+            "task": {"task_id": release["task_id"]},
+            "outcome": {"success": True, "dataset_valid": True},
+        }
+        for row in selection["episodes"]
+    ]
+
+    assert release["acceptance"]["accepted"] is False
+    assert release["release_acceptance"]["accepted"] is True
+    assert len(selection["episodes"]) == state["task_successes"] == 55
+    assert len(selection["episodes"]) > 50
+    assert selection["selection_policy"] == "coverage_first_all_successful"
+    assert all(
+        row["split"] == selected_attempts[row["trial_id"]]["source_split"]
+        for row in selection["episodes"]
+    )
+    assert validate_contract(release) == []
+    assert validate_collection_semantics(release) == []
+    assert validate_collection_episode_links(release, episodes) == []
+
+    tampered = copy.deepcopy(release)
+    tampered["release_acceptance"]["required_cells"] = 24
+    tampered["release_acceptance"]["accepted"] = False
+    assert "coverage release must require all 25 cells" in validate_collection_semantics(tampered)
+
+
+def test_coverage_release_refuses_incomplete_cell_coverage():
+    policy, plan, _, source = recovery_policy_and_source()
+    attempts = import_source_attempts(source, policy, plan)
+    state = new_collection_state(
+        collection_id="incomplete",
+        git_commit=GIT_COMMIT,
+        policy=policy,
+        policy_sha256="b" * 64,
+        imported_attempts=attempts,
+    )
+    finish_collection(state, policy, failure_reason="incomplete")
+    release = build_coverage_release_manifest(build_collection_manifest(state, policy))
+
+    assert release["release_acceptance"]["accepted"] is False
+    with pytest.raises(ValueError, match="requires accepted coverage"):
+        build_collection_selection(release, dataset_id="dataset")
 
 
 def test_recovery_pilot_evidence_requires_exact_two_of_three_strict_passes():

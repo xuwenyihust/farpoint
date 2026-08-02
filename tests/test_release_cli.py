@@ -42,6 +42,17 @@ def test_validate_release_rejects_unaccepted_benchmark(tmp_path, successful_audi
     assert "release benchmark has not passed acceptance" in result["errors"]
 
 
+def test_coverage_first_collection_release_is_accepted_without_yield_acceptance():
+    evidence = {
+        "schema_version": "farpoint.collection.v1",
+        "acceptance": {"accepted": False},
+        "release_policy": "coverage_first_all_successful",
+        "release_acceptance": {"accepted": True},
+    }
+
+    assert release_dataset.evidence_accepted(evidence) is True
+
+
 def test_stage_rejects_unknown_code_revision(tmp_path, successful_audits):
     spec = release_dataset.load_release_spec()
     release_fixture(tmp_path, spec, revision="unknown")
@@ -76,9 +87,7 @@ def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeyp
         release_dataset.publish_staged_release(tmp_path, spec, spec["tag"])
 
 
-def test_v2_release_requires_collection_or_benchmark_manifest(
-    tmp_path, monkeypatch
-):
+def test_v2_release_requires_collection_or_benchmark_manifest(tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()
     output = tmp_path / "release"
@@ -101,9 +110,7 @@ def test_v2_release_requires_collection_or_benchmark_manifest(
         release_dataset.build_release(args, release_dataset.load_release_spec())
 
 
-def test_validate_release_passes_v2_benchmark_to_dataset_validator(
-    tmp_path, monkeypatch
-):
+def test_validate_release_passes_v2_benchmark_to_dataset_validator(tmp_path, monkeypatch):
     spec = release_dataset.load_release_spec()
     release_fixture(tmp_path, spec)
     (tmp_path / "canonical" / "meta").mkdir(parents=True)
@@ -128,9 +135,7 @@ def test_validate_release_passes_v2_benchmark_to_dataset_validator(
     )
     result = release_dataset.validate_release(tmp_path, spec)
     assert result["valid"] is True
-    assert calls == [
-        (tmp_path / "canonical", tmp_path / "benchmark" / "manifest.json")
-    ]
+    assert calls == [(tmp_path / "canonical", tmp_path / "benchmark" / "manifest.json")]
 
 
 def test_validate_release_rejects_mismatched_v2_benchmark(tmp_path, monkeypatch):
@@ -215,6 +220,4 @@ def test_validate_release_accepts_collection_evidence(tmp_path, monkeypatch):
     result = release_dataset.validate_release(tmp_path, spec)
 
     assert result["valid"] is True
-    assert calls == [
-        (tmp_path / "canonical", tmp_path / "collection" / "manifest.json")
-    ]
+    assert calls == [(tmp_path / "canonical", tmp_path / "collection" / "manifest.json")]

@@ -482,35 +482,90 @@ def build_collection_manifest(state: dict[str, Any], policy: dict[str, Any]) -> 
     return manifest
 
 
+def coverage_release_snapshot(
+    manifest: dict[str, Any], *, required_cells: int = 25, minimum_successes_per_cell: int = 2
+) -> dict[str, Any]:
+    eligible = [
+        row
+        for row in manifest.get("attempts", [])
+        if row.get("outcome_success") is True and row.get("dataset_valid") is True
+    ]
+    successes_per_cell = dict(sorted(Counter(row["cell_id"] for row in eligible).items()))
+    covered_cells = sum(
+        count >= minimum_successes_per_cell for count in successes_per_cell.values()
+    )
+    accepted = covered_cells == required_cells
+    return {
+        "accepted": accepted,
+        "required_cells": required_cells,
+        "observed_covered_cells": covered_cells,
+        "minimum_successes_per_cell": minimum_successes_per_cell,
+        "successes_per_cell": successes_per_cell,
+        "eligible_episodes": len(eligible),
+        "split_counts": {
+            split: sum(row["source_split"] == split for row in eligible)
+            for split in ("train", "validation", "test")
+        },
+    }
+
+
+def build_coverage_release_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    errors = validate_contract(manifest) + validate_collection_semantics(manifest)
+    if errors:
+        raise ValueError("invalid collection manifest: " + "; ".join(errors))
+    release = deepcopy(manifest)
+    release["release_policy"] = "coverage_first_all_successful"
+    release["release_acceptance"] = coverage_release_snapshot(manifest)
+    errors = validate_contract(release) + validate_collection_semantics(release)
+    if errors:
+        raise ValueError("invalid coverage release manifest: " + "; ".join(errors))
+    return release
+
+
 def build_collection_selection(
     manifest: dict[str, Any], *, dataset_id: str, episode_root: str = "outputs/episodes"
 ) -> dict[str, Any]:
     errors = validate_contract(manifest) + validate_collection_semantics(manifest)
     if errors:
         raise ValueError("invalid collection manifest: " + "; ".join(errors))
-    if manifest["acceptance"]["accepted"] is not True:
+    coverage_first = manifest.get("release_policy") == "coverage_first_all_successful"
+    if coverage_first:
+        if (manifest.get("release_acceptance") or {}).get("accepted") is not True:
+            raise ValueError("release selection requires accepted coverage")
+    elif manifest["acceptance"]["accepted"] is not True:
         raise ValueError("release selection requires an accepted collection")
     root = Path(episode_root)
     if root.is_absolute():
         raise ValueError("selection episode root must be repository-relative")
     selected = []
     for attempt in manifest["attempts"]:
-        if not attempt["selected_for_dataset"]:
+        eligible = (
+            attempt["outcome_success"] and attempt["dataset_valid"]
+            if coverage_first
+            else attempt["selected_for_dataset"]
+        )
+        if not eligible:
             continue
         selected.append(
             {
                 "episode_dir": (root / attempt["episode_id"]).as_posix(),
                 "trial_id": attempt["trial_id"],
                 "variation_id": attempt["variation_id"],
-                "split": attempt["dataset_split"],
+                "split": (attempt["source_split"] if coverage_first else attempt["dataset_split"]),
             }
         )
-    return {
+    selection = {
         "schema_version": "farpoint.export-selection.v1",
         "dataset_id": dataset_id,
         "collection_id": manifest["collection_id"],
         "episodes": sorted(selected, key=lambda row: row["trial_id"]),
     }
+    if coverage_first:
+        selection["selection_policy"] = "coverage_first_all_successful"
+        trial_ids = [row["trial_id"] for row in selection["episodes"]]
+        if len(set(trial_ids)) != len(trial_ids):
+            raise ValueError("coverage release requires unique successful trial ids")
+    return selection
 
 
 def validate_resume_state(

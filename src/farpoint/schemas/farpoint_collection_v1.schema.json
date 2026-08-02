@@ -24,6 +24,28 @@
     "execution_status": {"enum": ["FINISHED", "ABORTED"]},
     "quality_status": {"enum": ["PASS", "FAIL", "NOT_EVALUATED"]},
     "failure_reason": {"type": ["string", "null"]},
+    "release_policy": {"const": "coverage_first_all_successful"},
+    "release_acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted", "required_cells", "observed_covered_cells",
+        "minimum_successes_per_cell", "successes_per_cell",
+        "eligible_episodes", "split_counts"
+      ],
+      "properties": {
+        "accepted": {"type": "boolean"},
+        "required_cells": {"type": "integer", "minimum": 1},
+        "observed_covered_cells": {"type": "integer", "minimum": 0},
+        "minimum_successes_per_cell": {"type": "integer", "minimum": 1},
+        "successes_per_cell": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        },
+        "eligible_episodes": {"type": "integer", "minimum": 0},
+        "split_counts": {"$ref": "#/$defs/splits"}
+      }
+    },
     "attempts": {
       "type": "array",
       "minItems": 1,
@@ -101,6 +123,10 @@
         "observed_splits": {"$ref": "#/$defs/splits"}
       }
     }
+  },
+  "dependentRequired": {
+    "release_policy": ["release_acceptance"],
+    "release_acceptance": ["release_policy"]
   },
   "$defs": {
     "splits": {
