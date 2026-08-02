@@ -752,6 +752,27 @@ def update_contact_loss_streak(
     return max(0, int(current_streak)) + 1
 
 
+def grasp_proof_evidence(
+    *,
+    object_lift,
+    minimum_object_lift,
+    bilateral_contact_frames,
+    required_contact_frames,
+    support_present,
+    maximum_rigidity_error,
+    maximum_allowed_rigidity_error,
+):
+    checks = {
+        "lift": float(object_lift) >= float(minimum_object_lift),
+        "contact_history": int(bilateral_contact_frames)
+        >= int(required_contact_frames),
+        "support": bool(support_present),
+        "rigidity": float(maximum_rigidity_error)
+        <= float(maximum_allowed_rigidity_error),
+    }
+    return {**checks, "passed": all(checks.values())}
+
+
 def transport_grasp_support(
     direct_contact,
     object_position,

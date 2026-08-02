@@ -32,6 +32,7 @@ from farpoint.control import (
     contact_pair_force_summary,
     filtered_contact_force,
     force_controlled_gripper_target,
+    grasp_proof_evidence,
     grasp_validation_decision,
     gripper_aperture_alignment,
     integral_visual_servo_grasp_target,
@@ -2130,6 +2131,8 @@ def main():
         grasp_proof_max_object_lift = 0.0
         grasp_proof_contact_streak = 0
         grasp_proof_max_contact_streak = 0
+        grasp_proof_contact_frames = 0
+        grasp_proof_max_contact_frames = 0
         grasp_proof_max_rigidity_error = 0.0
         grasp_proof_successes = 0
         grasp_proof_failures = 0
@@ -2485,6 +2488,7 @@ def main():
                 proof_max_contact_streak=(
                     grasp_proof_max_contact_streak
                 ),
+                proof_contact_frames=grasp_proof_contact_frames,
                 proof_max_rigidity_error_meters=(
                     grasp_proof_max_rigidity_error
                 ),
@@ -5036,6 +5040,7 @@ def main():
                             grasp_proof_max_contact_streak = (
                                 grasp_validation_terminal_stable_frames
                             )
+                            grasp_proof_contact_frames = 0
                             grasp_proof_max_rigidity_error = 0.0
                             grasp_proof_contact_rebuild_wait_frame = None
                             append_phase(
@@ -5159,11 +5164,16 @@ def main():
                     )
                     if grasp_proof_contact:
                         grasp_proof_contact_streak += 1
+                        grasp_proof_contact_frames += 1
                     else:
                         grasp_proof_contact_streak = 0
                     grasp_proof_max_contact_streak = max(
                         grasp_proof_max_contact_streak,
                         grasp_proof_contact_streak,
+                    )
+                    grasp_proof_max_contact_frames = max(
+                        grasp_proof_max_contact_frames,
+                        grasp_proof_contact_frames,
                     )
                     if (
                         grasp_proof_state == "lifting"
@@ -5182,31 +5192,44 @@ def main():
                             max_contact_streak=(
                                 grasp_proof_max_contact_streak
                             ),
+                            contact_frames=grasp_proof_contact_frames,
                         )
                     elif grasp_proof_state == "holding":
                         grasp_proof_hold_elapsed = (
                             frame - grasp_proof_start_frame
                         )
-                        proof_lift_passed = (
-                            grasp_proof_max_object_lift
-                            >= grasp_proof_min_object_lift
+                        proof_evidence = grasp_proof_evidence(
+                            object_lift=grasp_proof_max_object_lift,
+                            minimum_object_lift=(
+                                grasp_proof_min_object_lift
+                            ),
+                            bilateral_contact_frames=(
+                                grasp_proof_contact_frames
+                            ),
+                            required_contact_frames=(
+                                grasp_proof_required_contact_frames
+                            ),
+                            support_present=transport_support["present"],
+                            maximum_rigidity_error=(
+                                grasp_proof_max_rigidity_error
+                            ),
+                            maximum_allowed_rigidity_error=(
+                                grasp_proof_max_allowed_rigidity_error
+                            ),
                         )
-                        proof_contact_history_passed = (
-                            grasp_proof_max_contact_streak
-                            >= grasp_proof_required_contact_frames
-                        )
+                        proof_lift_passed = proof_evidence["lift"]
+                        proof_contact_history_passed = proof_evidence[
+                            "contact_history"
+                        ]
                         proof_terminal_contact_passed = (
                             grasp_proof_contact_streak
                             >= grasp_proof_terminal_contact_frames
                         )
                         proof_contact_passed = (
                             proof_contact_history_passed
-                            and transport_support["present"]
+                            and proof_evidence["support"]
                         )
-                        proof_rigidity_passed = (
-                            grasp_proof_max_rigidity_error
-                            <= grasp_proof_max_allowed_rigidity_error
-                        )
+                        proof_rigidity_passed = proof_evidence["rigidity"]
                         if (
                             grasp_proof_hold_elapsed
                             >= grasp_proof_hold_frames
@@ -5225,6 +5248,7 @@ def main():
                                 terminal_contact_streak=(
                                     grasp_proof_contact_streak
                                 ),
+                                contact_frames=grasp_proof_contact_frames,
                                 hold_frames=grasp_proof_hold_elapsed,
                                 max_rigidity_error_meters=(
                                     grasp_proof_max_rigidity_error
@@ -5259,6 +5283,7 @@ def main():
                                 max_contact_streak=(
                                     grasp_proof_max_contact_streak
                                 ),
+                                contact_frames=grasp_proof_contact_frames,
                                 terminal_contact_streak=(
                                     grasp_proof_contact_streak
                                 ),
@@ -6372,6 +6397,9 @@ def main():
             ),
             "grasp_proof_max_contact_streak": (
                 grasp_proof_max_contact_streak
+            ),
+            "grasp_proof_max_contact_frames": (
+                grasp_proof_max_contact_frames
             ),
             "grasp_proof_max_rigidity_error_meters": (
                 round(grasp_proof_max_rigidity_error, 6)
