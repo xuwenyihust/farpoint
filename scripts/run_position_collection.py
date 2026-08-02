@@ -60,15 +60,36 @@ DEFAULT_POLICY = (
 BENCHMARKS_ROOT = PROJECT_ROOT / "outputs" / "benchmarks"
 EPISODES_ROOT = PROJECT_ROOT / "outputs" / "episodes"
 EXAMPLE_PATH = "examples/isaac_perception_contact_scene"
+REQUIRED_SOURCE_ARTIFACTS = (
+    "metadata.json",
+    "metrics.json",
+    "observations.jsonl",
+    "phase_events.jsonl",
+    "trajectory.jsonl",
+    "labels.jsonl",
+)
+REQUIRED_SOURCE_DIRECTORIES = ("preview", "observations/rgb", "observations/depth")
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def resolve_source_episode(episode_id: str, source_episode_roots: list[Path]) -> tuple[Path, Path]:
+    for root in source_episode_roots:
+        episode = root / episode_id
+        if (
+            episode.is_dir()
+            and all((episode / relative).is_file() for relative in REQUIRED_SOURCE_ARTIFACTS)
+            and all((episode / relative).is_dir() for relative in REQUIRED_SOURCE_DIRECTORIES)
+        ):
+            return episode, root
+    raise ValueError(f"complete source episode artifacts are missing: {episode_id}")
+
+
 def verify_source_artifacts(
     source_state: dict,
-    source_episode_root: Path,
+    source_episode_roots: list[Path],
     plan: dict,
     policy: dict,
 ) -> None:
@@ -78,9 +99,7 @@ def verify_source_artifacts(
         source_state.get("attempts") if source_type == "collection" else source_state.get("trials")
     ) or []
     for index, recorded in enumerate(records):
-        episode = source_episode_root / recorded["episode_id"]
-        if not episode.is_dir():
-            raise ValueError(f"source episode directory is missing: {recorded['episode_id']}")
+        episode, episode_root = resolve_source_episode(recorded["episode_id"], source_episode_roots)
         audited = audit_episode(
             episode,
             by_id[recorded["trial_id"]],
@@ -92,7 +111,7 @@ def verify_source_artifacts(
             ),
             simulator_image_digest=policy["simulator_image_digest"],
             dataset_episode_index=index,
-            episode_root=source_episode_root,
+            episode_root=episode_root,
         )
         expected = {
             "trial_id": recorded["trial_id"],
@@ -121,13 +140,14 @@ def recorded_attempt_episode(state: dict, trial: dict) -> Path | None:
 
 
 def link_imported_episodes(
-    attempts: list[dict], source_episode_root: Path, destination_root: Path
+    attempts: list[dict], source_episode_roots: list[Path], destination_root: Path
 ) -> None:
     destination_root.mkdir(parents=True, exist_ok=True)
     for attempt in attempts:
         if not attempt["selected_for_dataset"]:
             continue
-        source = (source_episode_root / attempt["episode_id"]).resolve()
+        episode, _ = resolve_source_episode(attempt["episode_id"], source_episode_roots)
+        source = episode.resolve()
         destination = destination_root / attempt["episode_id"]
         if destination.exists() or destination.is_symlink():
             if destination.resolve() != source:
@@ -137,14 +157,15 @@ def link_imported_episodes(
 
 
 def import_selection_manifest(
-    collection_id: str, attempts: list[dict], source_episode_root: Path
+    collection_id: str, attempts: list[dict], source_episode_roots: list[Path]
 ) -> dict:
     episodes = []
     for attempt in attempts:
         if attempt["selected_for_dataset"]:
+            episode, _ = resolve_source_episode(attempt["episode_id"], source_episode_roots)
             episodes.append(
                 {
-                    "episode_dir": str((source_episode_root / attempt["episode_id"]).resolve()),
+                    "episode_dir": str(episode.resolve()),
                     "trial_id": attempt["trial_id"],
                     "variation_id": attempt["variation_id"],
                     "split": attempt["dataset_split"],
@@ -172,7 +193,7 @@ def main() -> int:
         type=Path,
         required=True,
     )
-    parser.add_argument("--source-episode-root", type=Path, required=True)
+    parser.add_argument("--source-episode-root", type=Path, action="append", required=True)
     parser.add_argument("--recovery-pilot-state", type=Path)
     parser.add_argument("--collection-id")
     parser.add_argument("--git-commit", required=True)
