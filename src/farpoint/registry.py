@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TERMINAL_STATUSES = {"PASS", "FAIL"}
 BENCHMARK_ALIASES = {
     "robotsim_v1_release_candidate": "farpoint_v1_release_candidate",
@@ -145,6 +145,7 @@ CREATE INDEX IF NOT EXISTS episodes_filter_idx
 ON episodes(status, task_name, benchmark_id, seed, started_at);
 CREATE TABLE IF NOT EXISTS benchmarks (
     benchmark_id TEXT PRIMARY KEY,
+    record_type TEXT NOT NULL DEFAULT 'BENCHMARK',
     task_name TEXT,
     task_type TEXT,
     status TEXT NOT NULL,
@@ -199,6 +200,13 @@ class EpisodeRegistry:
     @staticmethod
     def _initialize(connection):
         connection.executescript(SCHEMA)
+        benchmark_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(benchmarks)")
+        }
+        if "record_type" not in benchmark_columns:
+            connection.execute(
+                "ALTER TABLE benchmarks ADD COLUMN record_type TEXT NOT NULL DEFAULT 'BENCHMARK'"
+            )
         connection.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
             (str(SCHEMA_VERSION),),
@@ -420,21 +428,34 @@ class EpisodeRegistry:
             except (OSError, ValueError):
                 runtime = {}
         acceptance = manifest.get("acceptance") or {}
+        collection = manifest.get("schema_version") in {
+            "farpoint.collection.v1",
+            "farpoint.collection-run.v1",
+        }
         completed = int(
             manifest.get("completed_trials")
             or runtime.get("completed_trials")
+            or manifest.get("task_attempts")
+            or runtime.get("task_attempts")
+            or acceptance.get("observed_task_attempts")
             or len(manifest.get("trials", []))
+            or len(manifest.get("attempts", []))
         )
         planned = int(
             manifest.get("planned_trials")
             or runtime.get("planned_trials")
+            or acceptance.get("maximum_task_attempts")
+            or (runtime.get("acceptance") or {}).get("maximum_task_attempts")
             or len(manifest.get("trials", []))
+            or len(manifest.get("attempts", []))
         )
         accepted = manifest.get("accepted")
         if accepted is None:
             accepted = acceptance.get("accepted")
         if accepted is True:
             status = "PASS"
+        elif manifest.get("execution_status") == "PILOT_COMPLETE":
+            status = "PILOT"
         elif manifest.get("execution_status") == "ABORTED":
             status = "FAIL"
         elif manifest.get("execution_status") == "RUNNING":
@@ -445,12 +466,19 @@ class EpisodeRegistry:
             status = "RUNNING"
         else:
             status = "INCOMPLETE"
-        benchmark_id = str(manifest.get("benchmark_id") or manifest_path.parent.name)
+        benchmark_id = str(
+            manifest.get("collection_id")
+            or manifest.get("benchmark_id")
+            or manifest_path.parent.name
+        )
         report = self.layout.reports / "benchmarks" / benchmark_id / "index.html"
         return {
             "benchmark_id": benchmark_id,
+            "record_type": "COLLECTION" if collection else "BENCHMARK",
             "task_name": manifest.get("task_name") or manifest.get("task_id"),
-            "task_type": manifest.get("task_type") or runtime.get("task_type"),
+            "task_type": manifest.get("task_type")
+            or runtime.get("task_type")
+            or ("cube_position_collection" if collection else None),
             "status": status,
             "created_at": manifest.get("created_at") or runtime.get("created_at"),
             "finished_at": manifest.get("finished_at") or runtime.get("finished_at"),
@@ -459,14 +487,25 @@ class EpisodeRegistry:
             "passed_trials": int(
                 manifest.get("passed_trials")
                 or runtime.get("passed_trials")
+                or manifest.get("task_successes")
+                or runtime.get("task_successes")
+                or acceptance.get("observed_task_successes")
                 or acceptance.get("observed_successes")
                 or 0
             ),
             "success_rate": (
-                manifest.get("success_rate")
+                manifest.get("task_yield")
+                if manifest.get("task_yield") is not None
+                else manifest.get("success_rate")
                 if manifest.get("success_rate") is not None
                 else runtime.get(
-                    "success_rate", acceptance.get("observed_success_rate")
+                    "task_yield",
+                    runtime.get(
+                        "success_rate",
+                        acceptance.get(
+                            "observed_task_yield", acceptance.get("observed_success_rate")
+                        ),
+                    ),
                 )
             ),
             "accepted": self._boolean(accepted),

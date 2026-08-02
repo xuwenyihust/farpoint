@@ -110,6 +110,7 @@ def episode_metadata_v2(
             ],
             "cell_id": "r00_c00",
             "slot": 0,
+            "split": split,
             "requested": deepcopy(values),
             "resolved": deepcopy(values),
         },

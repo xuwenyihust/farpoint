@@ -113,6 +113,8 @@ def normalize_episode_metadata_v2(
 
     outcome_source = metadata.get("outcome") or {}
     quality_source = outcome_source.get("quality") or metrics.get("quality") or metrics
+    normalized_variation = deepcopy(metadata["variation"])
+    normalized_variation["split"] = split
     record = {
         "schema_version": "farpoint.episode.v2",
         "identity": {
@@ -128,7 +130,7 @@ def normalize_episode_metadata_v2(
         "task": task,
         "embodiment": deepcopy(metadata["embodiment"]),
         "scene": deepcopy(metadata["scene"]),
-        "variation": deepcopy(metadata["variation"]),
+        "variation": normalized_variation,
         "recording": deepcopy(metadata["recording"]),
         "outcome": {
             "success": bool(outcome_source.get("success", metrics.get("success"))),

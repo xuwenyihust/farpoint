@@ -86,6 +86,30 @@ class EpisodeRegistryTests(unittest.TestCase):
             row = registry.list_episodes()[0]
             self.assertEqual(row["benchmark_id"], "farpoint_v1_release_candidate")
 
+    def test_collection_import_pilot_has_collection_type_and_terminal_pilot_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outputs = Path(directory) / "outputs"
+            write_json(
+                outputs / "benchmarks" / "collection-pilot" / "run-state.json",
+                {
+                    "schema_version": "farpoint.collection-run.v1",
+                    "collection_id": "collection-pilot",
+                    "task_id": "task",
+                    "execution_status": "PILOT_COMPLETE",
+                    "task_attempts": 27,
+                    "task_successes": 23,
+                    "task_yield": 23 / 27,
+                    "attempts": [{"outcome_success": True}],
+                },
+            )
+
+            registry = EpisodeRegistry(outputs)
+            registry.scan()
+            row = registry.list_benchmarks()[0]
+
+            self.assertEqual(row["record_type"], "COLLECTION")
+            self.assertEqual(row["status"], "PILOT")
+
     def test_scans_terminal_incomplete_corrupt_and_running_records(self):
         with tempfile.TemporaryDirectory() as directory:
             outputs = Path(directory) / "outputs"

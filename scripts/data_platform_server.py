@@ -39,12 +39,16 @@ def valid_basic_auth(header, expected_token):
 
 
 def build_preview_manifest(episodes_root, episode_id):
-    episodes_root = Path(episodes_root).resolve()
     episode_id = unquote(str(episode_id))
     if not episode_id or "/" in episode_id or "\\" in episode_id:
         raise ValueError("invalid episode id")
-    episode_dir = (episodes_root / episode_id).resolve()
-    if episode_dir.parent != episodes_root or not episode_dir.is_dir():
+    try:
+        episode_dir = resolve_episode_asset(
+            episodes_root, f"{episode_id}/metadata.json"
+        ).parent
+    except ValueError as error:
+        raise FileNotFoundError(episode_id) from error
+    if not episode_dir.is_dir():
         raise FileNotFoundError(episode_id)
     frames = sorted((episode_dir / "preview").glob("*.png"))
     encoded_episode = quote(episode_id, safe="")
@@ -56,6 +60,27 @@ def build_preview_manifest(episodes_root, episode_id):
             for frame in frames
         ],
     }
+
+
+def resolve_episode_asset(episodes_root, relative):
+    """Resolve a local or symlinked episode asset without allowing path escape."""
+    episodes_root = Path(episodes_root).resolve()
+    relative_path = Path(unquote(str(relative)))
+    if relative_path.is_absolute() or not relative_path.parts or ".." in relative_path.parts:
+        raise ValueError("invalid episode asset path")
+    episode_id = relative_path.parts[0]
+    episode_root = (episodes_root / episode_id).resolve()
+    metadata_path = episode_root / "metadata.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError("episode asset root is not valid") from error
+    if metadata.get("episode_id") != episode_id:
+        raise ValueError("episode asset root identity mismatch")
+    target = (episodes_root / relative_path).resolve()
+    if target != episode_root and episode_root not in target.parents:
+        raise ValueError("episode asset path escapes its episode root")
+    return target
 
 
 class PlatformState:
@@ -163,10 +188,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
             self._json({"events": self._audit_events()})
         elif parsed.path.startswith("/reports/episodes/"):
             # Benchmark reports resolve ../../episodes/... to /reports/episodes/...
-            self._serve_under(
-                self.state.registry.layout.episodes,
-                parsed.path.removeprefix("/reports/episodes/"),
-            )
+            self._serve_episode_asset(parsed.path.removeprefix("/reports/episodes/"))
         elif parsed.path.startswith("/reports/"):
             self._serve_under(
                 self.state.registry.layout.reports,
@@ -174,15 +196,9 @@ class PlatformHandler(BaseHTTPRequestHandler):
             )
         elif parsed.path.startswith("/episodes/"):
             # Existing reports use relative ../../episodes/... asset links.
-            self._serve_under(
-                self.state.registry.layout.episodes,
-                parsed.path.removeprefix("/episodes/"),
-            )
+            self._serve_episode_asset(parsed.path.removeprefix("/episodes/"))
         elif parsed.path.startswith("/files/episodes/"):
-            self._serve_under(
-                self.state.registry.layout.episodes,
-                parsed.path.removeprefix("/files/episodes/"),
-            )
+            self._serve_episode_asset(parsed.path.removeprefix("/files/episodes/"))
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -278,6 +294,14 @@ class PlatformHandler(BaseHTTPRequestHandler):
         root = Path(root).resolve()
         target = (root / unquote(relative)).resolve()
         if target != root and root not in target.parents:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        self._serve_file(target)
+
+    def _serve_episode_asset(self, relative):
+        try:
+            target = resolve_episode_asset(self.state.registry.layout.episodes, relative)
+        except ValueError:
             self.send_error(HTTPStatus.FORBIDDEN)
             return
         self._serve_file(target)

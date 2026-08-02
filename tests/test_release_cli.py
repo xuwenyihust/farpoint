@@ -76,7 +76,7 @@ def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeyp
         release_dataset.publish_staged_release(tmp_path, spec, spec["tag"])
 
 
-def test_v2_release_requires_formal_benchmark_manifest(
+def test_v2_release_requires_collection_or_benchmark_manifest(
     tmp_path, monkeypatch
 ):
     source = tmp_path / "source"
@@ -97,7 +97,7 @@ def test_v2_release_requires_formal_benchmark_manifest(
         benchmark_manifest=None,
         benchmark_id=None,
     )
-    with pytest.raises(ValueError, match="require --benchmark-manifest"):
+    with pytest.raises(ValueError, match="require --collection-manifest or --benchmark-manifest"):
         release_dataset.build_release(args, release_dataset.load_release_spec())
 
 
@@ -178,3 +178,43 @@ def test_validate_release_rejects_missing_v2_benchmark_file(tmp_path, monkeypatc
     result = release_dataset.validate_release(tmp_path, spec)
     assert result["valid"] is False
     assert "Farpoint v2 release is missing benchmark/manifest.json" in result["errors"]
+
+
+def test_validate_release_accepts_collection_evidence(tmp_path, monkeypatch):
+    spec = release_dataset.load_release_spec()
+    (tmp_path / "canonical" / "meta").mkdir(parents=True)
+    (tmp_path / "canonical" / "meta" / "farpoint_v2.json").write_text("{}")
+    (tmp_path / "public").mkdir()
+    collection = {
+        "schema_version": "farpoint.collection.v1",
+        "acceptance": {"accepted": True},
+    }
+    release_dataset.write_json(tmp_path / "collection" / "manifest.json", collection)
+    release_dataset.write_json(
+        tmp_path / "release.json",
+        {
+            "release_version": spec["tag"],
+            "dataset_id": spec["dataset_id"],
+            "hf_repo_id": spec["hf_repo_id"],
+            "code_revision": "abc123",
+            "release_spec_sha256": release_dataset.file_sha256(Path(spec["path"])),
+            "collection": collection,
+        },
+    )
+    calls = []
+
+    def validate_dataset(path, evidence_path=None):
+        calls.append((Path(path), evidence_path))
+        return {"valid": True, "errors": []}
+
+    monkeypatch.setattr(release_dataset, "validate_dataset", validate_dataset)
+    monkeypatch.setattr(
+        release_dataset, "audit_viewer_package", lambda _: {"valid": True, "errors": []}
+    )
+
+    result = release_dataset.validate_release(tmp_path, spec)
+
+    assert result["valid"] is True
+    assert calls == [
+        (tmp_path / "canonical", tmp_path / "collection" / "manifest.json")
+    ]

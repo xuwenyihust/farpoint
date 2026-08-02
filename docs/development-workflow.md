@@ -40,14 +40,19 @@ Formal benchmarks run from an exact commit already merged to `main`, use a
 frozen config hash and holdout seeds, and may not be tuned in place. A failure
 requires a new fix PR, a new pilot, and a new release candidate.
 
+Adaptive dataset collections are reported separately from fixed-sample
+benchmarks. Their manifests retain every task outcome used to calculate yield,
+distinguish selected episodes from unselected successes, and freeze coverage,
+attempt-budget, and stopping rules before execution.
+
 Every run records the Git revision, config hash, Isaac image digest, seeds,
 episode IDs, artifact completeness, and distinct execution and quality states.
 
 ## Dataset workflow
 
-1. Export only eligible benchmark episodes into a new candidate directory.
+1. Export only eligible benchmark or collection episodes into a new candidate directory.
    The selection manifest must assign every episode to an explicit split and
-   preserve its benchmark trial identity.
+   preserve its source trial identity.
 2. Validate episode boundaries, finite values, feature dimensions, timestamps,
    Parquet shards, MP4 decoding, frame alignment, metadata, and checksums.
 3. Build the Viewer-safe package with `scripts/release_dataset.py build`.

@@ -19,6 +19,8 @@ from farpoint.contracts import (  # noqa: E402
     SPLITS,
     validate_benchmark_episode_links,
     validate_benchmark_semantics,
+    validate_collection_episode_links,
+    validate_collection_semantics,
     validate_contract,
     validate_episode_semantics,
 )
@@ -144,6 +146,11 @@ def read_tasks(root: Path) -> list[dict[str, Any]]:
     return _read_parquet(parquet)
 
 
+def task_instruction(row: dict[str, Any]) -> str | None:
+    """Read task text from JSONL or the indexed LeRobot v3 Parquet layout."""
+    return row.get("task") or row.get("instruction") or row.get("__index_level_0__")
+
+
 def _read_required_parquet_rows(
     paths: list[Path], root: Path, label: str, result: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -213,7 +220,7 @@ def validate_v2_artifacts(
 ) -> None:
     """Read and cross-check the LeRobot tables and videos used by consumers."""
     task_indexes = [row.get("task_index") for row in tasks]
-    task_names = [row.get("task") or row.get("instruction") for row in tasks]
+    task_names = [task_instruction(row) for row in tasks]
     if any(not isinstance(index, int) or index < 0 for index in task_indexes):
         add_error(result, "LeRobot tasks must have non-negative integer task_index values")
     if len(set(task_indexes)) != len(task_indexes):
@@ -328,7 +335,7 @@ def validate_v2_dataset(
     sidecar: dict[str, Any],
     info: dict[str, Any],
     result: dict[str, Any],
-    benchmark_path: Path | None,
+    evidence_path: Path | None,
 ) -> None:
     for error in validate_contract(sidecar):
         add_error(result, f"dataset contract: {error}")
@@ -422,7 +429,7 @@ def validate_v2_dataset(
     try:
         lerobot_tasks = read_tasks(root)
         task_instructions = {
-            row.get("task") or row.get("instruction")
+            task_instruction(row)
             for row in lerobot_tasks
             if isinstance(row, dict)
         }
@@ -433,21 +440,27 @@ def validate_v2_dataset(
     except (OSError, ValueError, RuntimeError) as error:
         add_error(result, f"cannot read LeRobot tasks: {error}")
 
-    if benchmark_path:
+    if evidence_path:
         try:
-            benchmark = read_json(benchmark_path)
-            for error in validate_contract(benchmark):
-                add_error(result, f"benchmark contract: {error}")
-            for error in validate_benchmark_semantics(benchmark):
-                add_error(result, f"benchmark acceptance: {error}")
-            for error in validate_benchmark_episode_links(benchmark, episodes):
-                add_error(result, f"benchmark link: {error}")
+            evidence = read_json(evidence_path)
+            for error in validate_contract(evidence):
+                add_error(result, f"release evidence contract: {error}")
+            if evidence.get("schema_version") == "farpoint.collection.v1":
+                for error in validate_collection_semantics(evidence):
+                    add_error(result, f"collection acceptance: {error}")
+                for error in validate_collection_episode_links(evidence, episodes):
+                    add_error(result, f"collection link: {error}")
+            else:
+                for error in validate_benchmark_semantics(evidence):
+                    add_error(result, f"benchmark acceptance: {error}")
+                for error in validate_benchmark_episode_links(evidence, episodes):
+                    add_error(result, f"benchmark link: {error}")
         except (OSError, json.JSONDecodeError) as error:
-            add_error(result, f"cannot read benchmark manifest: {error}")
+            add_error(result, f"cannot read release evidence manifest: {error}")
     result["checks"]["episode_contracts"] = bool(episodes) and not result["errors"]
 
 
-def validate_dataset(root: Path, benchmark_path: Path | None = None) -> dict[str, Any]:
+def validate_dataset(root: Path, evidence_path: Path | None = None) -> dict[str, Any]:
     root = Path(root).resolve()
     result: dict[str, Any] = {
         "valid": False,
@@ -482,7 +495,7 @@ def validate_dataset(root: Path, benchmark_path: Path | None = None) -> dict[str
     validate_info(info, result)
     validate_layout(root, result, sidecar_name)
     if sidecar_name == V2_SIDECAR:
-        validate_v2_dataset(root, sidecar, info, result, benchmark_path)
+        validate_v2_dataset(root, sidecar, info, result, evidence_path)
     else:
         validate_v1_sidecar(sidecar, result, sidecar_name)
     result["checks"]["layout"] = not any(
@@ -497,10 +510,14 @@ def validate_dataset(root: Path, benchmark_path: Path | None = None) -> dict[str
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset_root", type=Path)
-    parser.add_argument("--benchmark-manifest", type=Path)
+    evidence = parser.add_mutually_exclusive_group()
+    evidence.add_argument("--benchmark-manifest", type=Path)
+    evidence.add_argument("--collection-manifest", type=Path)
     parser.add_argument("--json-output", type=Path)
     args = parser.parse_args()
-    result = validate_dataset(args.dataset_root, args.benchmark_manifest)
+    result = validate_dataset(
+        args.dataset_root, args.collection_manifest or args.benchmark_manifest
+    )
     encoded = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if args.json_output:
         args.json_output.parent.mkdir(parents=True, exist_ok=True)

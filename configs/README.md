@@ -8,6 +8,7 @@ Recommended configuration layers:
 - `tasks/`: simulation task definitions
 - `datasets/`: dataset release settings
 - `benchmarks/`: benchmark acceptance thresholds
+- `collections/`: resource budgets, source imports, coverage, and stopping rules
 - `machines/`: local examples only; do not commit private hostnames or tokens
 
 Generated experiment plans live under `plans/`. A committed plan is immutable:

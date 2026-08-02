@@ -23,6 +23,7 @@ dev = [
 ]
 data = [
   "av>=12",
+  "lerobot==0.4.4",
   "pillow>=10",
   "pyarrow>=17",
 ]
