@@ -81,6 +81,8 @@ def evidence_accepted(evidence: dict | None) -> bool:
         "farpoint.benchmark.v2",
         "farpoint.collection.v1",
     }:
+        if evidence.get("release_policy") == "coverage_first_all_successful":
+            return (evidence.get("release_acceptance") or {}).get("accepted") is True
         return (evidence.get("acceptance") or {}).get("accepted") is True
     return evidence.get("accepted") is True
 
@@ -218,13 +220,9 @@ def validate_release(release_dir: Path, spec: dict) -> dict:
     evidence_paths = [path for path in (benchmark_path, collection_path) if path.is_file()]
     if v2_dataset and len(evidence_paths) != 1:
         if manifest.get("collection"):
-            preflight_errors.append(
-                "Farpoint v2 release is missing collection/manifest.json"
-            )
+            preflight_errors.append("Farpoint v2 release is missing collection/manifest.json")
         elif manifest.get("benchmark"):
-            preflight_errors.append(
-                "Farpoint v2 release is missing benchmark/manifest.json"
-            )
+            preflight_errors.append("Farpoint v2 release is missing benchmark/manifest.json")
         else:
             preflight_errors.append(
                 "Farpoint v2 release requires exactly one benchmark or collection manifest"

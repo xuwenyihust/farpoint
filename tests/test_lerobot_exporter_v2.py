@@ -56,6 +56,21 @@ def test_sidecar_derives_multiple_tasks_and_splits_from_episodes():
     assert [task["object_shape"] for task in sidecar["tasks"]] == ["cube", "cylinder"]
 
 
+def test_sidecar_records_coverage_first_selection_policy():
+    sidecar = build_dataset_sidecar(
+        "farpoint-test",
+        [episode_metadata_v2()],
+        fps=20,
+        image_width=640,
+        image_height=360,
+        selected_names=["joint_0"],
+        source_contract="collection",
+        selection_policy="coverage_first_all_successful",
+    )
+
+    assert sidecar["selection_policy"] == "coverage_first_all_successful"
+
+
 def test_sidecar_rejects_ambiguous_task_ids_for_one_instruction():
     first = episode_metadata_v2()
     second = deepcopy(first)
@@ -128,14 +143,16 @@ def _write_source_episode(root, record):
     rows = []
     for frame in range(2):
         image_module.new("RGB", (8, 6), color=(frame * 10, 0, 0)).save(root / f"frame-{frame}.png")
-        rows.append({
-            "frame": frame,
-            "timestamp_seconds": frame * 0.05,
-            "rgb_path": f"frame-{frame}.png",
-            "joint_names": joint_names,
-            "joint_positions": [0.0] * 7,
-            "action_joint_positions": [0.1] * 7,
-        })
+        rows.append(
+            {
+                "frame": frame,
+                "timestamp_seconds": frame * 0.05,
+                "rgb_path": f"frame-{frame}.png",
+                "joint_names": joint_names,
+                "joint_positions": [0.0] * 7,
+                "action_joint_positions": [0.1] * 7,
+            }
+        )
     (root / "observations.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
     )
@@ -145,11 +162,16 @@ def test_export_fixture_writes_dynamic_tasks_and_three_splits(tmp_path):
     episodes = [
         episode_metadata_v2(),
         episode_metadata_v2(
-            episode_id="episode-0001", trial_id="trial-0001", split="validation",
-            dataset_episode_index=1, shape="cylinder",
+            episode_id="episode-0001",
+            trial_id="trial-0001",
+            split="validation",
+            dataset_episode_index=1,
+            shape="cylinder",
         ),
         episode_metadata_v2(
-            episode_id="episode-0002", trial_id="trial-0002", split="test",
+            episode_id="episode-0002",
+            trial_id="trial-0002",
+            split="test",
             dataset_episode_index=2,
         ),
     ]
@@ -157,21 +179,26 @@ def test_export_fixture_writes_dynamic_tasks_and_three_splits(tmp_path):
     for episode in episodes:
         source = tmp_path / episode["identity"]["episode_id"]
         _write_source_episode(source, episode)
-        selection.append({
-            "episode_dir": str(source),
-            "trial_id": episode["identity"]["trial_id"],
-            "split": episode["identity"]["split"],
-        })
+        selection.append(
+            {
+                "episode_dir": str(source),
+                "trial_id": episode["identity"]["trial_id"],
+                "split": episode["identity"]["split"],
+            }
+        )
     manifest = tmp_path / "selection.json"
-    manifest.write_text(json.dumps({
-        "schema_version": "farpoint.export-selection.v1",
-        "dataset_id": "farpoint-fixture",
-        "episodes": selection,
-    }), encoding="utf-8")
-
-    output = export_dataset(
-        manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "dataset_id": "farpoint-fixture",
+                "episodes": selection,
+            }
+        ),
+        encoding="utf-8",
     )
+
+    output = export_dataset(manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset)
     sidecar = json.loads((output / "meta/farpoint_v2.json").read_text())
     info = json.loads((output / "meta/info.json").read_text())
     records = [
@@ -180,9 +207,7 @@ def test_export_fixture_writes_dynamic_tasks_and_three_splits(tmp_path):
     ]
     assert sidecar["splits"] == {"train": 1, "validation": 1, "test": 1}
     assert info["splits"] == {"train": "0:1", "validation": "1:2", "test": "2:3"}
-    assert [record["identity"]["split"] for record in records] == [
-        "train", "validation", "test"
-    ]
+    assert [record["identity"]["split"] for record in records] == ["train", "validation", "test"]
     assert FakeLeRobotDataset.last_instance.saved_tasks == [
         "Pick up the cube and place it in the target zone.",
         "Pick up the cylinder and place it in the target zone.",

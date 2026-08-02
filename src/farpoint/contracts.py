@@ -159,10 +159,9 @@ def validate_benchmark_semantics(benchmark: dict[str, Any]) -> list[str]:
         reported_rate, observed_rate, abs_tol=1e-9
     ):
         errors.append("benchmark observed_success_rate does not match its trials")
-    expected_accepted = (
-        observed_successes >= acceptance.get("required_successes", 0)
-        and observed_rate >= acceptance.get("required_success_rate", 0.0)
-    )
+    expected_accepted = observed_successes >= acceptance.get(
+        "required_successes", 0
+    ) and observed_rate >= acceptance.get("required_success_rate", 0.0)
     if acceptance.get("accepted") is not expected_accepted:
         errors.append("benchmark accepted does not match its acceptance thresholds")
     return errors
@@ -202,8 +201,7 @@ def validate_collection_semantics(collection: dict[str, Any]) -> list[str]:
         and len(selected) == acceptance.get("required_selected_episodes")
         and len(selected_per_cell) == acceptance.get("required_cells")
         and bool(selected_per_cell)
-        and set(selected_per_cell.values())
-        == {acceptance.get("required_selected_per_cell")}
+        and set(selected_per_cell.values()) == {acceptance.get("required_selected_per_cell")}
         and observed_splits == acceptance.get("required_splits")
     )
     if acceptance.get("accepted") is not expected_accepted:
@@ -211,6 +209,34 @@ def validate_collection_semantics(collection: dict[str, Any]) -> list[str]:
     for row in selected:
         if not row.get("outcome_success") or not row.get("dataset_valid"):
             errors.append(f"selected collection attempt is not eligible: {row.get('trial_id')}")
+    if collection.get("release_policy") == "coverage_first_all_successful":
+        release = collection.get("release_acceptance") or {}
+        eligible = [
+            row
+            for row in attempts
+            if row.get("outcome_success") is True and row.get("dataset_valid") is True
+        ]
+        successes_per_cell = dict(sorted(Counter(row.get("cell_id") for row in eligible).items()))
+        minimum = release.get("minimum_successes_per_cell", 0)
+        covered = sum(count >= minimum for count in successes_per_cell.values())
+        split_counts = {
+            split: sum(row.get("source_split") == split for row in eligible) for split in SPLITS
+        }
+        if release.get("successes_per_cell") != successes_per_cell:
+            errors.append("coverage release successes_per_cell does not match attempts")
+        if release.get("eligible_episodes") != len(eligible):
+            errors.append("coverage release eligible_episodes does not match attempts")
+        if release.get("observed_covered_cells") != covered:
+            errors.append("coverage release observed_covered_cells does not match attempts")
+        if release.get("split_counts") != split_counts:
+            errors.append("coverage release split_counts does not match attempts")
+        if release.get("required_cells") != 25:
+            errors.append("coverage release must require all 25 cells")
+        if minimum != 2:
+            errors.append("coverage release must require two successes per cell")
+        expected_release_accepted = covered == 25 and minimum == 2
+        if release.get("accepted") is not expected_release_accepted:
+            errors.append("coverage release accepted does not match coverage evidence")
     return errors
 
 
@@ -219,25 +245,32 @@ def validate_collection_episode_links(
 ) -> list[str]:
     """Validate selected dataset episodes against a collection manifest."""
     errors = []
+    coverage_first = collection.get("release_policy") == "coverage_first_all_successful"
     selected = {
         row.get("trial_id"): row
         for row in collection.get("attempts", [])
-        if row.get("selected_for_dataset") is True
+        if (
+            row.get("outcome_success") is True and row.get("dataset_valid") is True
+            if coverage_first
+            else row.get("selected_for_dataset") is True
+        )
     }
     if len(selected) != sum(
-        row.get("selected_for_dataset") is True for row in collection.get("attempts", [])
+        (
+            row.get("outcome_success") is True and row.get("dataset_valid") is True
+            if coverage_first
+            else row.get("selected_for_dataset") is True
+        )
+        for row in collection.get("attempts", [])
     ):
         errors.append("selected collection trial ids must be unique")
-    episode_trial_ids = [
-        (episode.get("identity") or {}).get("trial_id") for episode in episodes
-    ]
+    episode_trial_ids = [(episode.get("identity") or {}).get("trial_id") for episode in episodes]
     if len(set(episode_trial_ids)) != len(episode_trial_ids):
         errors.append("dataset episode trial ids must be unique")
     missing = sorted(set(selected) - set(episode_trial_ids))
     if missing:
         errors.append(
-            "selected collection trials are missing from the dataset: "
-            + ", ".join(missing)
+            "selected collection trials are missing from the dataset: " + ", ".join(missing)
         )
     for episode in episodes:
         identity = episode.get("identity") or {}
@@ -250,7 +283,10 @@ def validate_collection_episode_links(
             errors.append(f"collection episode_id mismatch for trial: {trial_id}")
         if attempt.get("variation_id") != (episode.get("variation") or {}).get("variation_id"):
             errors.append(f"collection variation_id mismatch for trial: {trial_id}")
-        if attempt.get("dataset_split") != identity.get("split"):
+        expected_split = (
+            attempt.get("source_split") if coverage_first else attempt.get("dataset_split")
+        )
+        if expected_split != identity.get("split"):
             errors.append(f"collection split mismatch for trial: {trial_id}")
         if collection.get("task_id") != (episode.get("task") or {}).get("task_id"):
             errors.append(f"collection task_id mismatch for trial: {trial_id}")

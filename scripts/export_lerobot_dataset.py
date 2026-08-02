@@ -38,9 +38,7 @@ def load_selection_manifest(path: Path) -> dict[str, Any]:
         raise ValueError("selection manifest must define dataset_id")
     sources = [name for name in ("benchmark_id", "collection_id") if manifest.get(name)]
     if len(sources) > 1:
-        raise ValueError(
-            "selection manifest cannot define both benchmark_id and collection_id"
-        )
+        raise ValueError("selection manifest cannot define both benchmark_id and collection_id")
     episodes = manifest.get("episodes")
     if not isinstance(episodes, list) or not episodes:
         raise ValueError("selection manifest must contain at least one episode")
@@ -77,6 +75,7 @@ def build_dataset_sidecar(
     image_height: int,
     selected_names: list[str],
     source_contract: str = "benchmark",
+    selection_policy: str | None = None,
 ) -> dict[str, Any]:
     if not records:
         raise ValueError("cannot build a dataset sidecar without episodes")
@@ -89,18 +88,14 @@ def build_dataset_sidecar(
         previous = tasks.setdefault(task["task_id"], task)
         if previous != task:
             raise ValueError(f"task id has conflicting definitions: {task['task_id']}")
-        existing_task_id = task_id_by_instruction.setdefault(
-            task["instruction"], task["task_id"]
-        )
+        existing_task_id = task_id_by_instruction.setdefault(task["instruction"], task["task_id"])
         if existing_task_id != task["task_id"]:
             raise ValueError("different task ids cannot share one LeRobot instruction")
         split_counts[record["identity"]["split"]] += 1
         for key in ("robot", "gripper", "arm_dof", "gripper_dof"):
             if record["embodiment"][key] != first["embodiment"][key]:
                 raise ValueError(f"episodes have different embodiment.{key} values")
-        for key in (
-            "simulator", "physics_engine", "simulator_image", "simulator_image_digest"
-        ):
+        for key in ("simulator", "physics_engine", "simulator_image", "simulator_image_digest"):
             if record["provenance"][key] != first["provenance"][key]:
                 raise ValueError(f"episodes have different {key} values")
         recording = record["recording"]
@@ -148,6 +143,8 @@ def build_dataset_sidecar(
             ),
         },
     }
+    if selection_policy:
+        sidecar["selection_policy"] = selection_policy
     errors = validate_contract(sidecar)
     if errors:
         raise ValueError("invalid farpoint.dataset.v2 sidecar: " + "; ".join(errors))
@@ -277,6 +274,7 @@ def export_dataset(
         image_height=image_height,
         selected_names=selected_names,
         source_contract="collection" if manifest.get("collection_id") else "benchmark",
+        selection_policy=manifest.get("selection_policy"),
     )
     meta_dir = output_dir / "meta"
     (meta_dir / "farpoint_v2.json").write_text(

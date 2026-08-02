@@ -23,6 +23,7 @@
     "format": {"const": "lerobot"},
     "format_version": {"const": "v3"},
     "demonstration_policy": {"const": "successful_only"},
+    "selection_policy": {"const": "coverage_first_all_successful"},
     "splits": {
       "type": "object",
       "additionalProperties": false,
