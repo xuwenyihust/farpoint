@@ -59,6 +59,48 @@ class PerceptionTests(unittest.TestCase):
                 min_pixels=2,
             )
 
+    def test_bounds_center_handles_asymmetric_visible_points(self):
+        rgb = np.zeros((10, 10, 3), dtype=np.uint8)
+        rgb[:8, 1, 0] = 220
+        rgb[:2, 5, 0] = 220
+        depth = np.ones((10, 10), dtype=np.float32)
+
+        median_result = estimate_dominant_color_pose(
+            rgb,
+            depth,
+            np.eye(3),
+            np.eye(4),
+            "red",
+            min_pixels=5,
+        )
+        bounds_result = estimate_dominant_color_pose(
+            rgb,
+            depth,
+            np.eye(3),
+            np.eye(4),
+            "red",
+            min_pixels=5,
+            xy_center_method="bounds",
+        )
+
+        self.assertEqual(median_result["position"][0], 1.0)
+        self.assertEqual(bounds_result["position"][0], 3.0)
+        self.assertEqual(bounds_result["xy_center_method"], "bounds")
+
+    def test_rejects_unknown_xy_center_method(self):
+        rgb = np.zeros((4, 4, 3), dtype=np.uint8)
+        rgb[:, :, 0] = 220
+        with self.assertRaisesRegex(ValueError, "xy_center_method"):
+            estimate_dominant_color_pose(
+                rgb,
+                np.ones((4, 4), dtype=np.float32),
+                np.eye(3),
+                np.eye(4),
+                "red",
+                min_pixels=2,
+                xy_center_method="unknown",
+            )
+
     def test_look_at_calibration_points_forward_at_target(self):
         _, camera_to_world = look_at_calibration(
             [0.0, 0.0, 2.0],

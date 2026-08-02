@@ -82,6 +82,7 @@ def estimate_dominant_color_pose(
     min_channel=80,
     min_dominance=30,
     surface_to_center_m=0.0,
+    xy_center_method="median",
 ):
     image = np.asarray(rgb)
     depth_image = np.asarray(depth, dtype=np.float64)
@@ -123,6 +124,15 @@ def estimate_dominant_color_pose(
         camera_to_world,
     )
     position = np.median(world_points, axis=0)
+    if xy_center_method == "bounds":
+        position[:2] = 0.5 * (
+            np.min(world_points[:, :2], axis=0)
+            + np.max(world_points[:, :2], axis=0)
+        )
+    elif xy_center_method != "median":
+        raise ValueError(
+            "xy_center_method must be either 'median' or 'bounds'"
+        )
     position[2] -= float(surface_to_center_m)
     spread = np.linalg.norm(world_points[:, :2] - position[:2], axis=1)
     return {
@@ -133,6 +143,7 @@ def estimate_dominant_color_pose(
         ],
         "valid_pixels": int(len(rows)),
         "median_depth": round(float(np.median(values)), 6),
+        "xy_center_method": xy_center_method,
         "xy_spread_m": round(float(np.median(spread)), 6),
         "confidence": round(
             min(1.0, len(rows) / max(float(min_pixels) * 8.0, 1.0)),

@@ -1519,6 +1519,9 @@ def main():
                 min_channel=perception_config.get("min_channel", 80),
                 min_dominance=perception_config.get("min_dominance", 30),
                 surface_to_center_m=object_half_height_for_perception,
+                xy_center_method=perception_config.get(
+                    "xy_center_method", "median"
+                ),
             )
             initial_target_estimate = estimate_dominant_color_pose(
                 latest_rgb,
@@ -1529,6 +1532,9 @@ def main():
                 min_pixels=perception_config.get("min_pixels", 20),
                 min_channel=perception_config.get("min_channel", 80),
                 min_dominance=perception_config.get("min_dominance", 30),
+                xy_center_method=perception_config.get(
+                    "xy_center_method", "median"
+                ),
             )
             latest_object_estimate = initial_object_estimate
             latest_target_estimate = initial_target_estimate
@@ -3709,6 +3715,9 @@ def main():
                                 min_channel=perception_config.get("min_channel", 80),
                                 min_dominance=perception_config.get("min_dominance", 30),
                                 surface_to_center_m=object_half_height,
+                                xy_center_method=perception_config.get(
+                                    "xy_center_method", "median"
+                                ),
                             )
                             latest_target_estimate = estimate_dominant_color_pose(
                                 latest_rgb,
@@ -3719,6 +3728,9 @@ def main():
                                 min_pixels=perception_config.get("min_pixels", 20),
                                 min_channel=perception_config.get("min_channel", 80),
                                 min_dominance=perception_config.get("min_dominance", 30),
+                                xy_center_method=perception_config.get(
+                                    "xy_center_method", "median"
+                                ),
                             )
                             if (
                                 grasp_visual_handoff_frame is not None
