@@ -27,10 +27,12 @@ from farpoint.control import (
     apply_place_hover_guard,
     bilateral_grasp_ready,
     bounded_position_target,
+    calibrated_recovery_grasp_target,
     cartesian_tracking_servo_target,
     contact_pair_force_summary,
     filtered_contact_force,
     force_controlled_gripper_target,
+    grasp_proof_evidence,
     grasp_validation_decision,
     gripper_aperture_alignment,
     integral_visual_servo_grasp_target,
@@ -56,6 +58,7 @@ from farpoint.perception import (
     look_at_calibration,
     xy_error,
 )
+from farpoint.physics import enable_enhanced_determinism
 from farpoint.position_plan import apply_position_trial, load_position_plan
 from farpoint.variation import load_variation_config, resolve_variation
 
@@ -1136,6 +1139,7 @@ def main():
         int(pickup_config.get("physics_substeps_per_frame", 1)),
     )
     physics_dt = rendering_dt / physics_substeps_per_frame
+    np.random.seed(episode_seed % (2**32))
     contact_only = pickup_config.get("grasp_mode") == "contact_only"
     perception_enabled = bool(perception_config.get("enabled", False))
     dataset_enabled = bool(dataset_config.get("enabled", False))
@@ -1198,6 +1202,14 @@ def main():
                 )
 
         stage = omni.usd.get_context().get_stage()
+        physics_scene_path = enable_enhanced_determinism(stage)
+        append_phase(
+            phase_path,
+            "physics_determinism_configured",
+            physics_scene_path=physics_scene_path,
+            enhanced_determinism=True,
+            numpy_seed=episode_seed % (2**32),
+        )
 
         if task["scene"].get("ground", {}).get("enabled", True):
             GroundPlane(task["scene"]["ground"]["path"], positions=[0, 0, 0])
@@ -1507,6 +1519,9 @@ def main():
                 min_channel=perception_config.get("min_channel", 80),
                 min_dominance=perception_config.get("min_dominance", 30),
                 surface_to_center_m=object_half_height_for_perception,
+                xy_center_method=perception_config.get(
+                    "xy_center_method", "median"
+                ),
             )
             initial_target_estimate = estimate_dominant_color_pose(
                 latest_rgb,
@@ -1517,6 +1532,9 @@ def main():
                 min_pixels=perception_config.get("min_pixels", 20),
                 min_channel=perception_config.get("min_channel", 80),
                 min_dominance=perception_config.get("min_dominance", 30),
+                xy_center_method=perception_config.get(
+                    "xy_center_method", "median"
+                ),
             )
             latest_object_estimate = initial_object_estimate
             latest_target_estimate = initial_target_estimate
@@ -2129,6 +2147,8 @@ def main():
         grasp_proof_max_object_lift = 0.0
         grasp_proof_contact_streak = 0
         grasp_proof_max_contact_streak = 0
+        grasp_proof_contact_frames = 0
+        grasp_proof_max_contact_frames = 0
         grasp_proof_max_rigidity_error = 0.0
         grasp_proof_successes = 0
         grasp_proof_failures = 0
@@ -2484,6 +2504,7 @@ def main():
                 proof_max_contact_streak=(
                     grasp_proof_max_contact_streak
                 ),
+                proof_contact_frames=grasp_proof_contact_frames,
                 proof_max_rigidity_error_meters=(
                     grasp_proof_max_rigidity_error
                 ),
@@ -3036,9 +3057,13 @@ def main():
                                 else pick_start_position
                             )
                             estimated_pick[2] = grasp_target_height
-                            recovery_grasp_position = subtract_vector(
+                            recovery_grasp_position = calibrated_recovery_grasp_target(
                                 estimated_pick,
                                 object_grasp_offset,
+                                aperture_tool_offset=(
+                                    aperture_tool_offset_world
+                                ),
+                                aperture_bias_xy=grasp_aperture_bias_xy,
                             )
                             recovery_approach_position = [
                                 recovery_grasp_position[0],
@@ -3074,9 +3099,13 @@ def main():
                             else pick_start_position
                         )
                         estimated_pick[2] = grasp_target_height
-                        recovery_grasp_position = subtract_vector(
+                        recovery_grasp_position = calibrated_recovery_grasp_target(
                             estimated_pick,
                             object_grasp_offset,
+                            aperture_tool_offset=(
+                                aperture_tool_offset_world
+                            ),
+                            aperture_bias_xy=grasp_aperture_bias_xy,
                         )
                         recovery_approach_position = [
                             recovery_grasp_position[0],
@@ -3686,6 +3715,9 @@ def main():
                                 min_channel=perception_config.get("min_channel", 80),
                                 min_dominance=perception_config.get("min_dominance", 30),
                                 surface_to_center_m=object_half_height,
+                                xy_center_method=perception_config.get(
+                                    "xy_center_method", "median"
+                                ),
                             )
                             latest_target_estimate = estimate_dominant_color_pose(
                                 latest_rgb,
@@ -3696,6 +3728,9 @@ def main():
                                 min_pixels=perception_config.get("min_pixels", 20),
                                 min_channel=perception_config.get("min_channel", 80),
                                 min_dominance=perception_config.get("min_dominance", 30),
+                                xy_center_method=perception_config.get(
+                                    "xy_center_method", "median"
+                                ),
                             )
                             if (
                                 grasp_visual_handoff_frame is not None
@@ -5027,6 +5062,7 @@ def main():
                             grasp_proof_max_contact_streak = (
                                 grasp_validation_terminal_stable_frames
                             )
+                            grasp_proof_contact_frames = 0
                             grasp_proof_max_rigidity_error = 0.0
                             grasp_proof_contact_rebuild_wait_frame = None
                             append_phase(
@@ -5150,11 +5186,16 @@ def main():
                     )
                     if grasp_proof_contact:
                         grasp_proof_contact_streak += 1
+                        grasp_proof_contact_frames += 1
                     else:
                         grasp_proof_contact_streak = 0
                     grasp_proof_max_contact_streak = max(
                         grasp_proof_max_contact_streak,
                         grasp_proof_contact_streak,
+                    )
+                    grasp_proof_max_contact_frames = max(
+                        grasp_proof_max_contact_frames,
+                        grasp_proof_contact_frames,
                     )
                     if (
                         grasp_proof_state == "lifting"
@@ -5173,31 +5214,44 @@ def main():
                             max_contact_streak=(
                                 grasp_proof_max_contact_streak
                             ),
+                            contact_frames=grasp_proof_contact_frames,
                         )
                     elif grasp_proof_state == "holding":
                         grasp_proof_hold_elapsed = (
                             frame - grasp_proof_start_frame
                         )
-                        proof_lift_passed = (
-                            grasp_proof_max_object_lift
-                            >= grasp_proof_min_object_lift
+                        proof_evidence = grasp_proof_evidence(
+                            object_lift=grasp_proof_max_object_lift,
+                            minimum_object_lift=(
+                                grasp_proof_min_object_lift
+                            ),
+                            bilateral_contact_frames=(
+                                grasp_proof_contact_frames
+                            ),
+                            required_contact_frames=(
+                                grasp_proof_required_contact_frames
+                            ),
+                            support_present=transport_support["present"],
+                            maximum_rigidity_error=(
+                                grasp_proof_max_rigidity_error
+                            ),
+                            maximum_allowed_rigidity_error=(
+                                grasp_proof_max_allowed_rigidity_error
+                            ),
                         )
-                        proof_contact_history_passed = (
-                            grasp_proof_max_contact_streak
-                            >= grasp_proof_required_contact_frames
-                        )
+                        proof_lift_passed = proof_evidence["lift"]
+                        proof_contact_history_passed = proof_evidence[
+                            "contact_history"
+                        ]
                         proof_terminal_contact_passed = (
                             grasp_proof_contact_streak
                             >= grasp_proof_terminal_contact_frames
                         )
                         proof_contact_passed = (
                             proof_contact_history_passed
-                            and transport_support["present"]
+                            and proof_evidence["support"]
                         )
-                        proof_rigidity_passed = (
-                            grasp_proof_max_rigidity_error
-                            <= grasp_proof_max_allowed_rigidity_error
-                        )
+                        proof_rigidity_passed = proof_evidence["rigidity"]
                         if (
                             grasp_proof_hold_elapsed
                             >= grasp_proof_hold_frames
@@ -5216,6 +5270,7 @@ def main():
                                 terminal_contact_streak=(
                                     grasp_proof_contact_streak
                                 ),
+                                contact_frames=grasp_proof_contact_frames,
                                 hold_frames=grasp_proof_hold_elapsed,
                                 max_rigidity_error_meters=(
                                     grasp_proof_max_rigidity_error
@@ -5250,6 +5305,7 @@ def main():
                                 max_contact_streak=(
                                     grasp_proof_max_contact_streak
                                 ),
+                                contact_frames=grasp_proof_contact_frames,
                                 terminal_contact_streak=(
                                     grasp_proof_contact_streak
                                 ),
@@ -5880,6 +5936,9 @@ def main():
             "physics_substeps_per_control_frame": (
                 physics_substeps_per_frame
             ),
+            "physics_enhanced_determinism": True,
+            "physics_scene_path": physics_scene_path,
+            "numpy_seed": episode_seed % (2**32),
             "recorded_frames": read_recorded_frames(trajectory_path),
             "preview_frames_requested": sorted(preview_frames),
             "preview_images_written": len(preview_images),
@@ -6363,6 +6422,9 @@ def main():
             ),
             "grasp_proof_max_contact_streak": (
                 grasp_proof_max_contact_streak
+            ),
+            "grasp_proof_max_contact_frames": (
+                grasp_proof_max_contact_frames
             ),
             "grasp_proof_max_rigidity_error_meters": (
                 round(grasp_proof_max_rigidity_error, 6)

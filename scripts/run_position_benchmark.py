@@ -228,6 +228,12 @@ def main() -> int:
         default=Path.home() / ".cache" / "farpoint" / "isaac-sim" / "benchmark-runs",
     )
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--pilot-trial-id",
+        action="append",
+        default=[],
+        help="run an explicit frozen-plan trial in pilot mode; repeat as needed",
+    )
     parser.add_argument("--cooldown-seconds", type=int, default=10)
     parser.add_argument("--retry-cooldown-seconds", type=int, default=180)
     parser.add_argument("--run-timeout-seconds", type=int, default=900)
@@ -242,12 +248,14 @@ def main() -> int:
         parser.error("timeouts and max infrastructure attempts must be positive")
     if min(args.cooldown_seconds, args.retry_cooldown_seconds) < 0:
         parser.error("cooldown values cannot be negative")
+    if args.mode == "formal" and args.pilot_trial_id:
+        parser.error("--pilot-trial-id is not allowed in formal mode")
 
     checked_git_revision(args.git_commit)
     prepare_container_output_directories()
     plan = load_position_plan(args.plan)
     validate_formal_plan(plan)
-    trials = selected_trials(plan, args.mode)
+    trials = selected_trials(plan, args.mode, args.pilot_trial_id)
     digest = image_digest(args.image)
     short_sha = args.git_commit[:7]
     prefix = "cube_position_formal" if args.mode == "formal" else "cube_position_contract_pilot"
@@ -272,6 +280,7 @@ def main() -> int:
             git_commit=args.git_commit,
             image_digest=digest,
             plan=plan,
+            pilot_trial_ids=args.pilot_trial_id,
         )
         state["execution_status"] = "RUNNING"
         state.pop("failure_reason", None)
@@ -284,6 +293,7 @@ def main() -> int:
             image=args.image,
             image_digest=digest,
             plan=plan,
+            pilot_trial_ids=args.pilot_trial_id,
         )
     write_json(state_path, state)
     relative_plan = args.plan.resolve().relative_to(PROJECT_ROOT.resolve())

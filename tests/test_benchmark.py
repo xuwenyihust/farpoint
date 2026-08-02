@@ -63,6 +63,29 @@ class BenchmarkTests(unittest.TestCase):
         self.assertIsNone(result["failure_reason"])
         self.assertEqual(result["failed_checks"], [])
 
+    def test_perception_failure_has_a_contract_category(self):
+        result = classify_failure({"rgbd_perception": False})
+
+        self.assertEqual(result["failure_category"], "perception")
+        self.assertEqual(
+            result["failure_reason"],
+            "rgbd_pose_estimation_exceeded_tolerance",
+        )
+
+    def test_transport_contact_loss_is_not_generic_evaluation(self):
+        result = classify_failure({"no_transport_contact_loss": False})
+
+        self.assertEqual(result["failure_category"], "transport")
+        self.assertEqual(
+            result["failure_reason"],
+            "object_was_not_held_stably_during_transport",
+        )
+
+    def test_failed_grasp_proof_lift_is_pickup(self):
+        result = classify_failure({"grasp_proof_lift": False})
+
+        self.assertEqual(result["failure_category"], "pickup")
+
 
 if __name__ == "__main__":
     unittest.main()

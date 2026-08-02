@@ -6,10 +6,12 @@ from farpoint.control import (
     apply_place_hover_guard,
     bilateral_grasp_ready,
     bounded_position_target,
+    calibrated_recovery_grasp_target,
     cartesian_tracking_servo_target,
     contact_pair_force_summary,
     filtered_contact_force,
     force_controlled_gripper_target,
+    grasp_proof_evidence,
     grasp_validation_decision,
     gripper_aperture_alignment,
     integral_visual_servo_grasp_target,
@@ -28,6 +30,62 @@ from farpoint.control import (
     undirected_axis_angle_error_degrees,
     visual_servo_grasp_target,
 )
+
+
+def test_grasp_proof_uses_cumulative_contact_evidence():
+    evidence = grasp_proof_evidence(
+        object_lift=0.018,
+        minimum_object_lift=0.012,
+        bilateral_contact_frames=12,
+        required_contact_frames=12,
+        support_present=True,
+        maximum_rigidity_error=0.0002,
+        maximum_allowed_rigidity_error=0.015,
+    )
+
+    assert evidence == {
+        "lift": True,
+        "contact_history": True,
+        "support": True,
+        "rigidity": True,
+        "passed": True,
+    }
+
+
+def test_grasp_proof_still_rejects_missing_contact_or_support():
+    evidence = grasp_proof_evidence(
+        object_lift=0.018,
+        minimum_object_lift=0.012,
+        bilateral_contact_frames=11,
+        required_contact_frames=12,
+        support_present=False,
+        maximum_rigidity_error=0.0002,
+        maximum_allowed_rigidity_error=0.015,
+    )
+
+    assert not evidence["contact_history"]
+    assert not evidence["support"]
+    assert not evidence["passed"]
+
+
+def test_recovery_grasp_target_reuses_aperture_calibration_and_bias():
+    target = calibrated_recovery_grasp_target(
+        [0.969, 0.196, 0.4175],
+        [0.0, -0.015, -0.135],
+        aperture_tool_offset=[-0.00025, -0.00056, -0.11997],
+        aperture_bias_xy=[-0.006, -0.015],
+    )
+
+    assert target == pytest.approx([0.96325, 0.18156, 0.53747])
+
+
+def test_recovery_grasp_target_falls_back_to_configured_offset():
+    target = calibrated_recovery_grasp_target(
+        [0.98, 0.25, 0.4175],
+        [0.0, -0.015, -0.135],
+    )
+
+    assert target == pytest.approx([0.98, 0.265, 0.5525])
 
 
 def test_bounded_position_target_limits_drive_error_in_both_directions():

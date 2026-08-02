@@ -77,8 +77,8 @@ pickup:
   grasp_axis_max_delta_degrees_per_frame: 0.01
   grasp_descent_max_xy_error: 0.012
   grasp_descent_max_axis_yaw_error_degrees: 5.0
-  # Calibrated RGB-D projection bias from the camera frame to the gripper aperture.
-  grasp_aperture_bias_xy: [-0.006, -0.015]
+  # The bounds-based RGB-D center estimate requires no residual XY command offset.
+  grasp_aperture_bias_xy: [0.0, 0.0]
   grasp_tracking_stable_frames: 20
   freeze_visual_target_after_xy_gate: true
   grasp_visual_lock_source: "initial_rgbd"
@@ -200,6 +200,7 @@ camera:
   rt_subframes: 8
 perception:
   enabled: true
+  xy_center_method: "bounds"
   object_channel: "red"
   target_channel: "green"
   min_channel: 70
