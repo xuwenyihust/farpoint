@@ -58,6 +58,7 @@ from farpoint.perception import (
     look_at_calibration,
     xy_error,
 )
+from farpoint.physics import enable_enhanced_determinism
 from farpoint.position_plan import apply_position_trial, load_position_plan
 from farpoint.variation import load_variation_config, resolve_variation
 
@@ -1138,6 +1139,7 @@ def main():
         int(pickup_config.get("physics_substeps_per_frame", 1)),
     )
     physics_dt = rendering_dt / physics_substeps_per_frame
+    np.random.seed(episode_seed % (2**32))
     contact_only = pickup_config.get("grasp_mode") == "contact_only"
     perception_enabled = bool(perception_config.get("enabled", False))
     dataset_enabled = bool(dataset_config.get("enabled", False))
@@ -1200,6 +1202,14 @@ def main():
                 )
 
         stage = omni.usd.get_context().get_stage()
+        physics_scene_path = enable_enhanced_determinism(stage)
+        append_phase(
+            phase_path,
+            "physics_determinism_configured",
+            physics_scene_path=physics_scene_path,
+            enhanced_determinism=True,
+            numpy_seed=episode_seed % (2**32),
+        )
 
         if task["scene"].get("ground", {}).get("enabled", True):
             GroundPlane(task["scene"]["ground"]["path"], positions=[0, 0, 0])
@@ -5914,6 +5924,9 @@ def main():
             "physics_substeps_per_control_frame": (
                 physics_substeps_per_frame
             ),
+            "physics_enhanced_determinism": True,
+            "physics_scene_path": physics_scene_path,
+            "numpy_seed": episode_seed % (2**32),
             "recorded_frames": read_recorded_frames(trajectory_path),
             "preview_frames_requested": sorted(preview_frames),
             "preview_images_written": len(preview_images),
