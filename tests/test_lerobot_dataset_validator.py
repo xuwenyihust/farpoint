@@ -245,6 +245,24 @@ def test_v2_dataset_validates_tasks_splits_variations_and_benchmark(tmp_path):
     assert result["compatibility_mode"] == "v2"
 
 
+def test_v2_dataset_accepts_indexed_lerobot_v3_task_table(tmp_path):
+    benchmark = make_valid_v2_dataset(tmp_path)
+    pytest = __import__("pytest")
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    instruction = episode_metadata_v2()["task"]["instruction"]
+    pq.write_table(
+        pa.Table.from_pylist(
+            [{"task_index": 0, "__index_level_0__": instruction}]
+        ),
+        tmp_path / "meta" / "tasks.parquet",
+    )
+
+    result = validate_dataset(tmp_path, benchmark)
+
+    assert result["valid"] is True, result["errors"]
+
+
 def test_v2_dataset_validates_collection_evidence(tmp_path):
     benchmark_path = make_valid_v2_dataset(tmp_path)
     benchmark = json.loads(benchmark_path.read_text())

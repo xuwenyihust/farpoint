@@ -146,6 +146,11 @@ def read_tasks(root: Path) -> list[dict[str, Any]]:
     return _read_parquet(parquet)
 
 
+def task_instruction(row: dict[str, Any]) -> str | None:
+    """Read task text from JSONL or the indexed LeRobot v3 Parquet layout."""
+    return row.get("task") or row.get("instruction") or row.get("__index_level_0__")
+
+
 def _read_required_parquet_rows(
     paths: list[Path], root: Path, label: str, result: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -215,7 +220,7 @@ def validate_v2_artifacts(
 ) -> None:
     """Read and cross-check the LeRobot tables and videos used by consumers."""
     task_indexes = [row.get("task_index") for row in tasks]
-    task_names = [row.get("task") or row.get("instruction") for row in tasks]
+    task_names = [task_instruction(row) for row in tasks]
     if any(not isinstance(index, int) or index < 0 for index in task_indexes):
         add_error(result, "LeRobot tasks must have non-negative integer task_index values")
     if len(set(task_indexes)) != len(task_indexes):
@@ -424,7 +429,7 @@ def validate_v2_dataset(
     try:
         lerobot_tasks = read_tasks(root)
         task_instructions = {
-            row.get("task") or row.get("instruction")
+            task_instruction(row)
             for row in lerobot_tasks
             if isinstance(row, dict)
         }
