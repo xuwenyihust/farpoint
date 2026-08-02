@@ -85,6 +85,7 @@ def verify_source_artifacts(
             git_commit=policy["source"]["git_commit"],
             simulator_image_digest=policy["simulator_image_digest"],
             dataset_episode_index=index,
+            episode_root=source_episode_root,
         )
         for key in (
             "trial_id",

@@ -1,4 +1,6 @@
 import copy
+import json
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -24,6 +26,11 @@ from farpoint.position_plan import load_position_plan
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import run_position_benchmark  # noqa: E402
+
+
 POLICY_PATH = (
     ROOT / "configs/collections/farpoint_v1_3_cube_position_balanced.json"
 )
@@ -231,6 +238,56 @@ def test_resume_requires_the_same_collection_commit_and_policy():
             git_commit="0" * 40,
             policy_sha256="b" * 64,
         )
+
+
+def test_episode_audit_uses_the_explicit_source_episode_root(tmp_path, monkeypatch):
+    policy, plan = policy_and_plan()
+    trial = plan["trials"][0]
+    source_root = tmp_path / "source-episodes"
+    episode = source_root / "episode"
+    episode.mkdir(parents=True)
+    (episode / "metadata.json").write_text("{}", encoding="utf-8")
+    (episode / "metrics.json").write_text(
+        json.dumps({"dataset_valid": True}), encoding="utf-8"
+    )
+    observed = {}
+
+    def fake_pilot_audit(_episode, _trial, *, plan_sha256, episode_root):
+        observed["episode_root"] = episode_root
+        return {"checks": {}, "errors": [], "episode_id": "episode"}
+
+    monkeypatch.setattr(
+        run_position_benchmark, "audit_pilot_episode", fake_pilot_audit
+    )
+    monkeypatch.setattr(
+        run_position_benchmark,
+        "normalize_episode_metadata_v2",
+        lambda *_args, **_kwargs: {
+            "provenance": {
+                "git_commit": policy["source"]["git_commit"],
+                "config_sha256": policy["config_sha256"],
+                "simulator_image_digest": policy["simulator_image_digest"],
+            },
+            "variation": {
+                "variation_id": trial["variation_id"],
+                "cell_id": trial["cell_id"],
+                "slot": trial["slot"],
+            },
+        },
+    )
+
+    result = run_position_benchmark.audit_episode(
+        episode,
+        trial,
+        plan=plan,
+        git_commit=policy["source"]["git_commit"],
+        simulator_image_digest=policy["simulator_image_digest"],
+        dataset_episode_index=0,
+        episode_root=source_root,
+    )
+
+    assert result["success"] is True
+    assert observed["episode_root"] == source_root
 
 
 def test_split_assignment_is_stable_by_cell_and_success_rank():

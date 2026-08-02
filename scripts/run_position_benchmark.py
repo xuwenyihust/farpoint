@@ -118,12 +118,13 @@ def audit_episode(
     git_commit: str,
     simulator_image_digest: str,
     dataset_episode_index: int,
+    episode_root: Path = EPISODES_ROOT,
 ) -> dict:
     audit = audit_pilot_episode(
         episode,
         trial,
         plan_sha256=plan["plan_sha256"],
-        episode_root=EPISODES_ROOT,
+        episode_root=episode_root,
     )
     errors = list(audit.get("errors", []))
     checks = dict(audit.get("checks", {}))
