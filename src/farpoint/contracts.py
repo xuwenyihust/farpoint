@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections import Counter
 from importlib.resources import files
 from typing import Any
 
@@ -14,6 +15,7 @@ SCHEMA_FILES = {
     "farpoint.episode.v2": "farpoint_episode_v2.schema.json",
     "farpoint.variation.v2": "farpoint_variation_v2.schema.json",
     "farpoint.benchmark.v2": "farpoint_benchmark_v2.schema.json",
+    "farpoint.collection.v1": "farpoint_collection_v1.schema.json",
 }
 SPLITS = ("train", "validation", "test")
 SHAPE_TERMS = {
@@ -97,6 +99,8 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
         errors.append("variation.resolved.object_dimensions_m does not match the scene object")
     if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
         errors.append("variation axes cannot be both varied and frozen")
+    if variation.get("split") is not None and variation.get("split") != identity.get("split"):
+        errors.append("variation.split does not match identity.split")
 
     shape = str(task.get("object_shape") or "").lower()
     instruction_words = set(re.findall(r"[a-z0-9]+", str(task.get("instruction") or "").lower()))
@@ -161,4 +165,96 @@ def validate_benchmark_semantics(benchmark: dict[str, Any]) -> list[str]:
     )
     if acceptance.get("accepted") is not expected_accepted:
         errors.append("benchmark accepted does not match its acceptance thresholds")
+    return errors
+
+
+def validate_collection_semantics(collection: dict[str, Any]) -> list[str]:
+    """Check balanced selection, yield, coverage, and collection acceptance."""
+    errors = []
+    attempts = collection.get("attempts") or []
+    acceptance = collection.get("acceptance") or {}
+    successes = sum(row.get("outcome_success") is True for row in attempts)
+    observed_yield = successes / len(attempts) if attempts else 0.0
+    selected = [row for row in attempts if row.get("selected_for_dataset") is True]
+    selected_per_cell = Counter(row.get("cell_id") for row in selected)
+    splits = Counter(row.get("dataset_split") for row in selected)
+    if acceptance.get("observed_task_attempts") != len(attempts):
+        errors.append("collection observed_task_attempts does not match attempts")
+    if acceptance.get("observed_task_successes") != successes:
+        errors.append("collection observed_task_successes does not match attempts")
+    reported_yield = acceptance.get("observed_task_yield")
+    if not isinstance(reported_yield, (int, float)) or not math.isclose(
+        reported_yield, observed_yield, abs_tol=1e-9
+    ):
+        errors.append("collection observed_task_yield does not match attempts")
+    if acceptance.get("observed_selected_episodes") != len(selected):
+        errors.append("collection observed_selected_episodes does not match attempts")
+    if acceptance.get("observed_covered_cells") != len(selected_per_cell):
+        errors.append("collection observed_covered_cells does not match attempts")
+    if acceptance.get("selected_per_cell") != dict(sorted(selected_per_cell.items())):
+        errors.append("collection selected_per_cell does not match attempts")
+    observed_splits = {split: splits[split] for split in SPLITS}
+    if acceptance.get("observed_splits") != observed_splits:
+        errors.append("collection observed_splits does not match attempts")
+    expected_accepted = (
+        len(attempts) <= acceptance.get("maximum_task_attempts", 0)
+        and observed_yield >= acceptance.get("required_task_yield", 1.0)
+        and len(selected) == acceptance.get("required_selected_episodes")
+        and len(selected_per_cell) == acceptance.get("required_cells")
+        and bool(selected_per_cell)
+        and set(selected_per_cell.values())
+        == {acceptance.get("required_selected_per_cell")}
+        and observed_splits == acceptance.get("required_splits")
+    )
+    if acceptance.get("accepted") is not expected_accepted:
+        errors.append("collection accepted does not match collection evidence")
+    for row in selected:
+        if not row.get("outcome_success") or not row.get("dataset_valid"):
+            errors.append(f"selected collection attempt is not eligible: {row.get('trial_id')}")
+    return errors
+
+
+def validate_collection_episode_links(
+    collection: dict[str, Any], episodes: list[dict[str, Any]]
+) -> list[str]:
+    """Validate selected dataset episodes against a collection manifest."""
+    errors = []
+    selected = {
+        row.get("trial_id"): row
+        for row in collection.get("attempts", [])
+        if row.get("selected_for_dataset") is True
+    }
+    if len(selected) != sum(
+        row.get("selected_for_dataset") is True for row in collection.get("attempts", [])
+    ):
+        errors.append("selected collection trial ids must be unique")
+    episode_trial_ids = [
+        (episode.get("identity") or {}).get("trial_id") for episode in episodes
+    ]
+    if len(set(episode_trial_ids)) != len(episode_trial_ids):
+        errors.append("dataset episode trial ids must be unique")
+    missing = sorted(set(selected) - set(episode_trial_ids))
+    if missing:
+        errors.append(
+            "selected collection trials are missing from the dataset: "
+            + ", ".join(missing)
+        )
+    for episode in episodes:
+        identity = episode.get("identity") or {}
+        trial_id = identity.get("trial_id")
+        attempt = selected.get(trial_id)
+        if attempt is None:
+            errors.append(f"episode trial_id is missing from collection: {trial_id}")
+            continue
+        if attempt.get("episode_id") != identity.get("episode_id"):
+            errors.append(f"collection episode_id mismatch for trial: {trial_id}")
+        if attempt.get("variation_id") != (episode.get("variation") or {}).get("variation_id"):
+            errors.append(f"collection variation_id mismatch for trial: {trial_id}")
+        if attempt.get("dataset_split") != identity.get("split"):
+            errors.append(f"collection split mismatch for trial: {trial_id}")
+        if collection.get("task_id") != (episode.get("task") or {}).get("task_id"):
+            errors.append(f"collection task_id mismatch for trial: {trial_id}")
+        outcome = episode.get("outcome") or {}
+        if outcome.get("success") is not True or outcome.get("dataset_valid") is not True:
+            errors.append(f"collection selected episode is not successful: {trial_id}")
     return errors

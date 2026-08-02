@@ -74,22 +74,31 @@ def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def benchmark_accepted(benchmark: dict | None) -> bool:
-    if not isinstance(benchmark, dict):
+def evidence_accepted(evidence: dict | None) -> bool:
+    if not isinstance(evidence, dict):
         return False
-    if benchmark.get("schema_version") == "farpoint.benchmark.v2":
-        return (benchmark.get("acceptance") or {}).get("accepted") is True
-    return benchmark.get("accepted") is True
+    if evidence.get("schema_version") in {
+        "farpoint.benchmark.v2",
+        "farpoint.collection.v1",
+    }:
+        return (evidence.get("acceptance") or {}).get("accepted") is True
+    return evidence.get("accepted") is True
 
 
 def build_release(args: argparse.Namespace, spec: dict) -> dict:
     if args.output_dir.exists():
         raise FileExistsError(f"output directory already exists: {args.output_dir}")
     args.output_dir.mkdir(parents=True)
-    benchmark_dir = args.output_dir / "benchmark"
     canonical_dir = args.output_dir / "canonical"
     public_dir = args.output_dir / "public"
-    benchmark_validation_path = None
+    evidence_validation_path = None
+    collection_manifest = getattr(args, "collection_manifest", None)
+    benchmark_manifest = getattr(args, "benchmark_manifest", None)
+    if collection_manifest and benchmark_manifest:
+        raise ValueError("provide only one collection or benchmark manifest")
+    supplied_evidence = collection_manifest or benchmark_manifest
+    evidence_kind = "collection" if collection_manifest else "benchmark"
+    evidence_dir = args.output_dir / evidence_kind
 
     if args.source_dataset:
         canonical_source = args.source_dataset.resolve()
@@ -99,11 +108,13 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
                 "source dataset failed validation: " + "; ".join(source_validation["errors"])
             )
         is_v2 = source_validation.get("schema_version") == "farpoint.dataset.v2"
-        if is_v2 and not args.benchmark_manifest:
-            raise ValueError("Farpoint v2 releases require --benchmark-manifest")
+        if is_v2 and not supplied_evidence:
+            raise ValueError(
+                "Farpoint v2 releases require --collection-manifest or --benchmark-manifest"
+            )
         benchmark_id = args.benchmark_id or f"farpoint_{spec['tag'].replace('.', '_')}_release"
-        if args.benchmark_manifest:
-            manifest = json.loads(args.benchmark_manifest.read_text(encoding="utf-8"))
+        if supplied_evidence:
+            manifest = json.loads(supplied_evidence.read_text(encoding="utf-8"))
         else:
             source_metadata = canonical_source / "meta" / "episode_metadata.jsonl"
             records = (
@@ -132,17 +143,17 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
                     for record in records
                 ],
             }
-        benchmark_validation_path = benchmark_dir / "manifest.json"
-        write_json(benchmark_validation_path, manifest)
+        evidence_validation_path = evidence_dir / "manifest.json"
+        write_json(evidence_validation_path, manifest)
         if is_v2:
-            source_validation = validate_dataset(canonical_source, benchmark_validation_path)
+            source_validation = validate_dataset(canonical_source, evidence_validation_path)
             if not source_validation["valid"]:
                 raise ValueError(
-                    "source dataset failed benchmark validation: "
+                    "source dataset failed release evidence validation: "
                     + "; ".join(source_validation["errors"])
                 )
         shutil.copytree(canonical_source, canonical_dir)
-        benchmark = {"benchmark_id": manifest.get("benchmark_id", benchmark_id), **manifest}
+        evidence = manifest
     else:
         from export_lerobot_v1_mini import export_mini
 
@@ -157,8 +168,9 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
             args.task_type,
             args.min_success_rate,
         )
-        write_json(benchmark_dir / "manifest.json", manifest)
-        benchmark = {"benchmark_id": benchmark_id, **manifest}
+        write_json(evidence_dir / "manifest.json", manifest)
+        evidence_validation_path = evidence_dir / "manifest.json"
+        evidence = {"benchmark_id": benchmark_id, **manifest}
         selected = [
             path
             for path in episode_dirs
@@ -169,8 +181,8 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
         export_mini(selected, canonical_dir, spec["dataset_id"])
 
     canonical_validation = (
-        validate_dataset(canonical_dir, benchmark_validation_path)
-        if benchmark_validation_path
+        validate_dataset(canonical_dir, evidence_validation_path)
+        if evidence_validation_path
         else validate_dataset(canonical_dir)
     )
     if not canonical_validation["valid"]:
@@ -186,7 +198,7 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
         "hf_repo_id": spec["hf_repo_id"],
         "code_revision": git_revision(),
         "release_spec_sha256": file_sha256(Path(spec["path"])),
-        "benchmark": benchmark,
+        evidence_kind: evidence,
         "canonical_validation": canonical_validation,
         "viewer_package": package_result,
         "viewer_audit": viewer_audit,
@@ -200,13 +212,27 @@ def validate_release(release_dir: Path, spec: dict) -> dict:
     release_dir = release_dir.resolve()
     manifest = json.loads((release_dir / "release.json").read_text(encoding="utf-8"))
     benchmark_path = release_dir / "benchmark" / "manifest.json"
+    collection_path = release_dir / "collection" / "manifest.json"
     v2_dataset = (release_dir / "canonical" / "meta" / "farpoint_v2.json").is_file()
     preflight_errors = []
-    if v2_dataset and not benchmark_path.is_file():
-        preflight_errors.append("Farpoint v2 release is missing benchmark/manifest.json")
+    evidence_paths = [path for path in (benchmark_path, collection_path) if path.is_file()]
+    if v2_dataset and len(evidence_paths) != 1:
+        if manifest.get("collection"):
+            preflight_errors.append(
+                "Farpoint v2 release is missing collection/manifest.json"
+            )
+        elif manifest.get("benchmark"):
+            preflight_errors.append(
+                "Farpoint v2 release is missing benchmark/manifest.json"
+            )
+        else:
+            preflight_errors.append(
+                "Farpoint v2 release requires exactly one benchmark or collection manifest"
+            )
+    evidence_path = evidence_paths[0] if len(evidence_paths) == 1 else None
     canonical = (
-        validate_dataset(release_dir / "canonical", benchmark_path)
-        if v2_dataset and benchmark_path.is_file()
+        validate_dataset(release_dir / "canonical", evidence_path)
+        if v2_dataset and evidence_path
         else validate_dataset(release_dir / "canonical")
     )
     public = audit_viewer_package(release_dir / "public")
@@ -219,9 +245,10 @@ def validate_release(release_dir: Path, spec: dict) -> dict:
         errors.append("release manifest hf_repo_id does not match release.toml")
     if manifest.get("release_spec_sha256") != file_sha256(Path(spec["path"])):
         errors.append("release.toml changed after the release was built")
-    benchmark = manifest.get("benchmark")
-    if not benchmark_accepted(benchmark):
-        errors.append("release benchmark has not passed acceptance")
+    evidence = manifest.get("collection") or manifest.get("benchmark")
+    if not evidence_accepted(evidence):
+        evidence_name = "collection" if manifest.get("collection") else "benchmark"
+        errors.append(f"release {evidence_name} has not passed acceptance")
     errors.extend(canonical.get("errors", []))
     errors.extend(public.get("errors", []))
     return {
@@ -289,7 +316,9 @@ def main() -> int:
     build.add_argument("--episode-id", dest="episode_ids", action="append")
     build.add_argument("--episode-ids-file", type=Path)
     build.add_argument("--benchmark-id")
-    build.add_argument("--benchmark-manifest", type=Path)
+    evidence = build.add_mutually_exclusive_group()
+    evidence.add_argument("--benchmark-manifest", type=Path)
+    evidence.add_argument("--collection-manifest", type=Path)
     build.add_argument("--task-name", default="isaac_perception_contact_scene")
     build.add_argument("--task-type", default="variation_expansion_v1")
     build.add_argument("--min-success-rate", type=float, default=0.90)

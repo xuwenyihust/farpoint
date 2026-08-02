@@ -245,6 +245,83 @@ def test_v2_dataset_validates_tasks_splits_variations_and_benchmark(tmp_path):
     assert result["compatibility_mode"] == "v2"
 
 
+def test_v2_dataset_validates_collection_evidence(tmp_path):
+    benchmark_path = make_valid_v2_dataset(tmp_path)
+    benchmark = json.loads(benchmark_path.read_text())
+    sidecar_path = tmp_path / "meta" / "farpoint_v2.json"
+    sidecar = json.loads(sidecar_path.read_text())
+    sidecar["contracts"].pop("benchmark")
+    sidecar["contracts"]["collection"] = "farpoint.collection.v1"
+    write_json(sidecar_path, sidecar)
+    attempts = []
+    splits = {"train": 0, "validation": 0, "test": 0}
+    selected_per_cell = {}
+    for index, trial in enumerate(benchmark["trials"]):
+        cell_id = f"r00_c{index:02d}"
+        splits[trial["split"]] += 1
+        selected_per_cell[cell_id] = 1
+        attempts.append(
+            {
+                "trial_id": trial["trial_id"],
+                "episode_id": trial["episode_id"],
+                "variation_id": trial["variation_id"],
+                "cell_id": cell_id,
+                "slot": 0,
+                "seed": index,
+                "object_position_xy_m": [0.8 + index * 0.01, 0.2],
+                "source_split": trial["split"],
+                "dataset_split": trial["split"],
+                "selection_rank": 1,
+                "origin": "new",
+                "source_run_id": "collection",
+                "source_git_commit": GIT_COMMIT,
+                "outcome_success": True,
+                "dataset_valid": True,
+                "selected_for_dataset": True,
+                "failure_category": None,
+                "failure_reason": None,
+            }
+        )
+    collection = {
+        "schema_version": "farpoint.collection.v1",
+        "collection_id": "collection",
+        "task_id": benchmark["task_id"],
+        "git_commit": GIT_COMMIT,
+        "policy_id": "policy",
+        "policy_sha256": SHA,
+        "position_plan_sha256": SHA,
+        "config_sha256": SHA,
+        "simulator_image_digest": f"sha256:{SHA}",
+        "simulator_payload_sha256": SHA,
+        "execution_status": "FINISHED",
+        "quality_status": "PASS",
+        "failure_reason": None,
+        "attempts": attempts,
+        "acceptance": {
+            "accepted": True,
+            "required_task_yield": 0.75,
+            "observed_task_yield": 1.0,
+            "maximum_task_attempts": 4,
+            "observed_task_attempts": 3,
+            "observed_task_successes": 3,
+            "required_selected_episodes": 3,
+            "observed_selected_episodes": 3,
+            "required_cells": 3,
+            "observed_covered_cells": 3,
+            "required_selected_per_cell": 1,
+            "selected_per_cell": selected_per_cell,
+            "required_splits": splits,
+            "observed_splits": splits,
+        },
+    }
+    collection_path = tmp_path / "collection.json"
+    write_json(collection_path, collection)
+
+    result = validate_dataset(tmp_path, collection_path)
+
+    assert result["valid"] is True, result["errors"]
+
+
 def test_v2_dataset_rejects_split_count_drift(tmp_path):
     make_valid_v2_dataset(tmp_path)
     sidecar = dataset_sidecar_v2([episode_metadata_v2()])

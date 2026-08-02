@@ -13,6 +13,7 @@ Release versions and contract versions are independent:
 - Episode contract: `farpoint.episode.v2`
 - Variation contract: `farpoint.variation.v2`
 - Benchmark contract: `farpoint.benchmark.v2`
+- Collection contract: `farpoint.collection.v1`
 
 The machine-readable schemas are packaged in
 [`src/farpoint/schemas/`](../../src/farpoint/schemas/).
@@ -95,13 +96,15 @@ collapse onto the same LeRobot instruction and task index.
 ## Splits
 
 Selections explicitly assign every episode to `train`, `validation`, or
-`test`. The exporter orders episodes by split and writes contiguous LeRobot
+`test`. A collection may assign a release split independently of the source
+trial split; both remain explicit in collection evidence. The exporter orders
+episodes by split and writes contiguous LeRobot
 split ranges. The validator compares:
 
 - Dataset sidecar split counts
 - Episode metadata split identities
 - `meta/info.json` split ranges
-- Optional benchmark trial split assignments
+- Optional benchmark trial or collection selection assignments
 
 No seed-derived or filename-derived split is accepted implicitly.
 
@@ -110,12 +113,14 @@ episode boundaries, timestamps, terminal flags, finite state/action vectors,
 and task indexes; decodes the front-camera MP4 files; and compares decoded
 frame counts with the tabular trajectory.
 
-## Provenance and Benchmark Links
+## Provenance and Release Evidence Links
 
 V2 requires the exact Git commit, task config SHA256, Isaac Sim image digest,
-robot asset identity/path, and simulator seeds. An optional benchmark manifest
-can be supplied to the validator; every selected episode must then match a
-benchmark trial by trial ID, episode ID, variation ID, and split.
+robot asset identity/path, and simulator seeds. Exactly one benchmark or
+collection manifest can be supplied to the validator. Every selected episode
+must match its evidence by trial ID, episode ID, variation ID, and dataset
+split. Collection evidence also retains failed and unselected successful
+attempts so task yield cannot omit unfavorable outcomes.
 
 ## Export and Validation
 
@@ -125,6 +130,7 @@ The v2 exporter consumes an explicit selection manifest:
 {
   "schema_version": "farpoint.export-selection.v1",
   "dataset_id": "farpoint-ur10e-robotiq-2f85",
+  "collection_id": "farpoint_v1_3_balanced_collection_YYYYMMDD_<sha>",
   "episodes": [
     {
       "episode_dir": "outputs/episodes/episode_0001",
@@ -141,7 +147,7 @@ Run the exporter and validator with:
 ```bash
 python scripts/export_lerobot_dataset.py selection.json outputs/datasets/candidate
 python scripts/validate_lerobot_dataset.py outputs/datasets/candidate \
-  --benchmark-manifest outputs/benchmarks/formal/manifest.json
+  --collection-manifest outputs/benchmarks/collection/manifest.json
 ```
 
 Release selections use repository-relative episode paths and must never contain

@@ -420,15 +420,26 @@ class EpisodeRegistry:
             except (OSError, ValueError):
                 runtime = {}
         acceptance = manifest.get("acceptance") or {}
+        collection = manifest.get("schema_version") in {
+            "farpoint.collection.v1",
+            "farpoint.collection-run.v1",
+        }
         completed = int(
             manifest.get("completed_trials")
             or runtime.get("completed_trials")
+            or manifest.get("task_attempts")
+            or runtime.get("task_attempts")
+            or acceptance.get("observed_task_attempts")
             or len(manifest.get("trials", []))
+            or len(manifest.get("attempts", []))
         )
         planned = int(
             manifest.get("planned_trials")
             or runtime.get("planned_trials")
+            or acceptance.get("maximum_task_attempts")
+            or (runtime.get("acceptance") or {}).get("maximum_task_attempts")
             or len(manifest.get("trials", []))
+            or len(manifest.get("attempts", []))
         )
         accepted = manifest.get("accepted")
         if accepted is None:
@@ -445,12 +456,18 @@ class EpisodeRegistry:
             status = "RUNNING"
         else:
             status = "INCOMPLETE"
-        benchmark_id = str(manifest.get("benchmark_id") or manifest_path.parent.name)
+        benchmark_id = str(
+            manifest.get("collection_id")
+            or manifest.get("benchmark_id")
+            or manifest_path.parent.name
+        )
         report = self.layout.reports / "benchmarks" / benchmark_id / "index.html"
         return {
             "benchmark_id": benchmark_id,
             "task_name": manifest.get("task_name") or manifest.get("task_id"),
-            "task_type": manifest.get("task_type") or runtime.get("task_type"),
+            "task_type": manifest.get("task_type")
+            or runtime.get("task_type")
+            or ("cube_position_collection" if collection else None),
             "status": status,
             "created_at": manifest.get("created_at") or runtime.get("created_at"),
             "finished_at": manifest.get("finished_at") or runtime.get("finished_at"),
@@ -459,14 +476,25 @@ class EpisodeRegistry:
             "passed_trials": int(
                 manifest.get("passed_trials")
                 or runtime.get("passed_trials")
+                or manifest.get("task_successes")
+                or runtime.get("task_successes")
+                or acceptance.get("observed_task_successes")
                 or acceptance.get("observed_successes")
                 or 0
             ),
             "success_rate": (
-                manifest.get("success_rate")
+                manifest.get("task_yield")
+                if manifest.get("task_yield") is not None
+                else manifest.get("success_rate")
                 if manifest.get("success_rate") is not None
                 else runtime.get(
-                    "success_rate", acceptance.get("observed_success_rate")
+                    "task_yield",
+                    runtime.get(
+                        "success_rate",
+                        acceptance.get(
+                            "observed_task_yield", acceptance.get("observed_success_rate")
+                        ),
+                    ),
                 )
             ),
             "accepted": self._boolean(accepted),

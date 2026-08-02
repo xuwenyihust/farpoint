@@ -220,6 +220,72 @@ class BenchmarkReportTests(unittest.TestCase):
         self.assertIn("0.860, 0.190", rendered)
         self.assertIn("Position X Span", rendered)
 
+    def test_collection_report_renders_collection_metrics_and_cell_grid(self):
+        attempts = [
+            {
+                "trial_id": "trial-0",
+                "episode_id": "episode-0",
+                "variation_id": "position_r00_c00_s00",
+                "cell_id": "r00_c00",
+                "slot": 0,
+                "source_split": "train",
+                "dataset_split": "train",
+                "selection_rank": 1,
+                "origin": "imported",
+                "source_run_id": "source",
+                "source_git_commit": "a" * 40,
+                "outcome_success": True,
+                "dataset_valid": True,
+                "selected_for_dataset": True,
+                "failure_category": None,
+                "failure_reason": None,
+            }
+        ]
+        manifest = {
+            "schema_version": "farpoint.collection-run.v1",
+            "collection_id": "collection-report",
+            "task_id": "task",
+            "execution_status": "RUNNING",
+            "attempts": attempts,
+            "acceptance": {
+                "accepted": False,
+                "required_task_yield": 0.75,
+                "observed_task_yield": 1.0,
+                "maximum_task_attempts": 73,
+                "observed_task_attempts": 1,
+                "observed_task_successes": 1,
+                "required_selected_episodes": 50,
+                "observed_selected_episodes": 1,
+                "required_cells": 25,
+                "observed_covered_cells": 1,
+                "required_selected_per_cell": 2,
+                "selected_per_cell": {"r00_c00": 1},
+                "required_splits": {"train": 34, "validation": 8, "test": 8},
+                "observed_splits": {"train": 1, "validation": 0, "test": 0},
+            },
+        }
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            old_episodes = build_benchmark_report.EPISODES_ROOT
+            old_reports = build_benchmark_report.REPORTS_ROOT
+            build_benchmark_report.EPISODES_ROOT = root / "episodes"
+            build_benchmark_report.REPORTS_ROOT = root / "reports"
+            try:
+                path = root / "benchmarks" / "collection-report" / "run-state.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps(manifest))
+                rendered = build_report(path).read_text()
+            finally:
+                build_benchmark_report.EPISODES_ROOT = old_episodes
+                build_benchmark_report.REPORTS_ROOT = old_reports
+
+        self.assertIn("Collection Status", rendered)
+        self.assertIn("Selected Episodes", rendered)
+        self.assertIn("Grid Cell Coverage", rendered)
+        self.assertIn("r04_c04", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

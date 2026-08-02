@@ -1,0 +1,47 @@
+{
+  "schema_version": "farpoint.collection-policy.v1",
+  "policy_id": "farpoint_v1_3_cube_position_balanced",
+  "task_id": "isaac_perception_contact_scene",
+  "position_plan": "configs/plans/farpoint_v1_3_cube_position_expanded_candidate.json",
+  "position_plan_sha256": "f13bb891d6044145a0e2c5b65982f91810298f0a8387328cc933fb51bd0da8db",
+  "config_sha256": "597ddb66cfb45d86f0c9dfab5340eb5dd099924bec51bf54a5fcf5ef5a9e7412",
+  "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0",
+  "simulator_image_digest": "sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d",
+  "simulator_payload": {
+    "sha256": "d05f5eaf0f62d614a6d1fa7d511c6dbf96b462078bf65ee123ce136be5e985ac",
+    "paths": [
+      "configs/plans/farpoint_v1_3_cube_position_expanded_candidate.json",
+      "configs/variations/farpoint_v1_3_cube_position_expanded.json",
+      "examples/isaac_perception_contact_scene/scene.py",
+      "examples/isaac_perception_contact_scene/task.yaml",
+      "examples/isaac_ur10e_robotiq_scene/scene.py",
+      "scripts/run_remote_isaac_example.sh",
+      "src/farpoint/variation.py"
+    ]
+  },
+  "source": {
+    "collection_rule": "first_two_successful_primary_slots_per_cell",
+    "run_id": "cube_position_formal_20260802_89dfb7e",
+    "git_commit": "89dfb7efa914461b43b72547b692541f409d4244",
+    "execution_status": "ABORTED",
+    "completed_attempts": 27,
+    "successful_attempts": 23,
+    "selected_episodes": 18,
+    "covered_cells": 9
+  },
+  "acceptance": {
+    "grid_cells": 25,
+    "selected_episodes": 50,
+    "selected_per_cell": 2,
+    "minimum_task_yield": 0.75,
+    "maximum_task_attempts": 73,
+    "maximum_new_task_attempts": 46,
+    "maximum_candidates_per_cell": 3,
+    "expected_task_successes": 55,
+    "splits": {
+      "train": 34,
+      "validation": 8,
+      "test": 8
+    }
+  }
+}

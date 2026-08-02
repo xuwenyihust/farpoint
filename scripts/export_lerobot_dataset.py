@@ -36,6 +36,11 @@ def load_selection_manifest(path: Path) -> dict[str, Any]:
         raise ValueError(f"selection manifest must use {SELECTION_SCHEMA_VERSION}")
     if not manifest.get("dataset_id"):
         raise ValueError("selection manifest must define dataset_id")
+    sources = [name for name in ("benchmark_id", "collection_id") if manifest.get(name)]
+    if len(sources) > 1:
+        raise ValueError(
+            "selection manifest cannot define both benchmark_id and collection_id"
+        )
     episodes = manifest.get("episodes")
     if not isinstance(episodes, list) or not episodes:
         raise ValueError("selection manifest must contain at least one episode")
@@ -71,6 +76,7 @@ def build_dataset_sidecar(
     image_width: int,
     image_height: int,
     selected_names: list[str],
+    source_contract: str = "benchmark",
 ) -> dict[str, Any]:
     if not records:
         raise ValueError("cannot build a dataset sidecar without episodes")
@@ -135,7 +141,11 @@ def build_dataset_sidecar(
         "contracts": {
             "episode": "farpoint.episode.v2",
             "variation": "farpoint.variation.v2",
-            "benchmark": "farpoint.benchmark.v2",
+            source_contract: (
+                "farpoint.collection.v1"
+                if source_contract == "collection"
+                else "farpoint.benchmark.v2"
+            ),
         },
     }
     errors = validate_contract(sidecar)
@@ -266,6 +276,7 @@ def export_dataset(
         image_width=image_width,
         image_height=image_height,
         selected_names=selected_names,
+        source_contract="collection" if manifest.get("collection_id") else "benchmark",
     )
     meta_dir = output_dir / "meta"
     (meta_dir / "farpoint_v2.json").write_text(

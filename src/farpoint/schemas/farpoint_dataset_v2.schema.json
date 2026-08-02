@@ -76,12 +76,17 @@
     "contracts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["episode", "variation", "benchmark"],
+      "required": ["episode", "variation"],
       "properties": {
         "episode": {"const": "farpoint.episode.v2"},
         "variation": {"const": "farpoint.variation.v2"},
-        "benchmark": {"const": "farpoint.benchmark.v2"}
-      }
+        "benchmark": {"const": "farpoint.benchmark.v2"},
+        "collection": {"const": "farpoint.collection.v1"}
+      },
+      "oneOf": [
+        {"required": ["benchmark"], "not": {"required": ["collection"]}},
+        {"required": ["collection"], "not": {"required": ["benchmark"]}}
+      ]
     }
   },
   "$defs": {

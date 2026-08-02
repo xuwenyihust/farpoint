@@ -184,6 +184,7 @@
         "frozen_axes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
         "cell_id": {"type": "string", "minLength": 1},
         "slot": {"type": "integer", "minimum": 0},
+        "split": {"enum": ["train", "validation", "test"]},
         "requested": {"$ref": "#/$defs/variationValues"},
         "resolved": {"$ref": "#/$defs/variationValues"}
       }
