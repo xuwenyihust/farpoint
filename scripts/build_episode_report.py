@@ -7,6 +7,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 
 BENCHMARK_ALIASES = {
@@ -756,7 +757,11 @@ def build_report(episode_dir, output_dir, resource_summary_path=None):
     report_path = output_dir / "index.html"
 
     preview_images = sorted((episode_dir / "preview").glob("*.png"))
-    preview_rel = [relpath(path, output_dir) for path in preview_images]
+    encoded_episode = quote(episode_dir.name, safe="")
+    preview_rel = [
+        f"/files/episodes/{encoded_episode}/preview/{quote(path.name, safe='')}"
+        for path in preview_images
+    ]
     image_for_hero = preview_rel[min(len(preview_rel) // 2, len(preview_rel) - 1)] if preview_rel else ""
     preview_summary_rel = preview_rel[::max(1, len(preview_rel) // 6)][:6]
     frame_metadata = build_frame_metadata(

@@ -7,6 +7,7 @@ import os
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
+from urllib.parse import quote
 
 from build_episode_index import load_run_row
 from build_episode_report import format_memory_mib, format_number
@@ -257,7 +258,12 @@ def load_trial(trial, report_dir):
             if episode_id
             else None
         ),
-        "preview_href": relative_path(preview, report_dir).as_posix() if preview else None,
+        "preview_href": (
+            f"/files/episodes/{quote(episode_id, safe='')}/preview/"
+            f"{quote(preview.name, safe='')}"
+            if preview and episode_id
+            else None
+        ),
     }
 
 
