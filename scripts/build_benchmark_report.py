@@ -301,6 +301,12 @@ def reproducibility_summary(trials):
 
 def summarize(manifest, trials, reproducibility_trials=None):
     manifest = normalize_manifest(manifest)
+    is_collection = manifest.get("report_kind") == "collection"
+    quality_trials = (
+        [trial for trial in trials if trial.get("selected_for_dataset")]
+        if is_collection
+        else trials
+    )
     reproducibility_trials = reproducibility_trials or []
     passed = sum(1 for trial in trials if trial["success"])
     completed = len(trials)
@@ -333,7 +339,7 @@ def summarize(manifest, trials, reproducibility_trials=None):
     )
     acceptance = manifest["acceptance"]
     threshold_checks = []
-    for trial in trials:
+    for trial in quality_trials:
         if not trial["success"]:
             continue
         threshold_checks.append(
@@ -363,11 +369,13 @@ def summarize(manifest, trials, reproducibility_trials=None):
         if reproducibility["evaluated"]
         else None,
     }
-    if manifest.get("report_kind") == "collection":
+    if is_collection:
         nested = manifest.get("acceptance") or {}
         selected_per_cell = nested.get("selected_per_cell") or {}
         acceptance_checks["planned_trials_completed"] = (
-            manifest.get("execution_status") == "FINISHED"
+            None
+            if manifest.get("execution_status") == "PILOT_COMPLETE"
+            else manifest.get("execution_status") == "FINISHED"
         )
         acceptance_checks["selected_episode_target"] = (
             nested.get("observed_selected_episodes")
@@ -387,38 +395,38 @@ def summarize(manifest, trials, reproducibility_trials=None):
             <= nested.get("maximum_task_attempts", completed)
         )
     if acceptance.get("max_perception_xy_error") is not None:
-        acceptance_checks["perception_accuracy"] = bool(trials) and all(
+        acceptance_checks["perception_accuracy"] = bool(quality_trials) and all(
             trial.get("initial_object_perception_xy_error") is not None
             and float(trial["initial_object_perception_xy_error"])
             <= float(acceptance["max_perception_xy_error"])
-            for trial in trials
+            for trial in quality_trials
             if trial["success"]
         )
     if acceptance.get("min_bilateral_contact_frames") is not None:
-        acceptance_checks["bilateral_contact"] = bool(trials) and all(
+        acceptance_checks["bilateral_contact"] = bool(quality_trials) and all(
             int(trial.get("bilateral_contact_frames") or 0)
             >= int(acceptance["min_bilateral_contact_frames"])
-            for trial in trials
+            for trial in quality_trials
             if trial["success"]
         )
     if acceptance.get("min_transport_contact_frames") is not None:
-        acceptance_checks["transport_contact"] = bool(trials) and all(
+        acceptance_checks["transport_contact"] = bool(quality_trials) and all(
             int(trial.get("transport_contact_frames") or 0)
             >= int(acceptance["min_transport_contact_frames"])
-            for trial in trials
+            for trial in quality_trials
             if trial["success"]
         )
     if acceptance.get("require_contact_only"):
-        acceptance_checks["contact_only"] = bool(trials) and all(
+        acceptance_checks["contact_only"] = bool(quality_trials) and all(
             trial.get("grasp_constraint") == "contact_only"
             and not bool(trial.get("temporary_grasp_joint_created"))
-            for trial in trials
+            for trial in quality_trials
         )
     if acceptance.get("require_dataset"):
-        acceptance_checks["dataset_valid"] = bool(trials) and all(
+        acceptance_checks["dataset_valid"] = bool(quality_trials) and all(
             bool(trial.get("dataset_valid"))
             and int(trial.get("dataset_observation_count") or 0) > 0
-            for trial in trials
+            for trial in quality_trials
             if trial["success"]
         )
     enforce_all_episode_checks = (

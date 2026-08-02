@@ -245,7 +245,7 @@ class BenchmarkReportTests(unittest.TestCase):
             "schema_version": "farpoint.collection-run.v1",
             "collection_id": "collection-report",
             "task_id": "task",
-            "execution_status": "RUNNING",
+            "execution_status": "PILOT_COMPLETE",
             "attempts": attempts,
             "acceptance": {
                 "accepted": False,
@@ -282,6 +282,8 @@ class BenchmarkReportTests(unittest.TestCase):
                 build_benchmark_report.REPORTS_ROOT = old_reports
 
         self.assertIn("Collection Status", rendered)
+        self.assertIn("PILOT COMPLETE", rendered)
+        self.assertIn("All planned trials completed</td><td class=\"pending\">NOT RUN", rendered)
         self.assertIn("Selected Episodes", rendered)
         self.assertIn("Grid Cell Coverage", rendered)
         self.assertIn("r04_c04", rendered)
