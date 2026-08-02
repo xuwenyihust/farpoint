@@ -38,7 +38,10 @@ def simulator_payload_sha256(project_root: Path, paths: list[str]) -> str:
 
 def load_collection_policy(path: Path) -> dict[str, Any]:
     policy = json.loads(path.read_text(encoding="utf-8"))
-    if policy.get("schema_version") != "farpoint.collection-policy.v1":
+    if policy.get("schema_version") not in {
+        "farpoint.collection-policy.v1",
+        "farpoint.collection-policy.v2",
+    }:
         raise ValueError("unsupported collection policy schema")
     return policy
 
@@ -62,13 +65,21 @@ def validate_collection_policy(
         "selected_per_cell": 2,
         "minimum_task_yield": 0.75,
         "maximum_task_attempts": 73,
-        "maximum_new_task_attempts": 46,
-        "maximum_candidates_per_cell": 3,
+        "maximum_new_task_attempts": (
+            28 if policy["schema_version"] == "farpoint.collection-policy.v2" else 46
+        ),
+        "maximum_candidates_per_cell": (
+            6 if policy["schema_version"] == "farpoint.collection-policy.v2" else 3
+        ),
         "expected_task_successes": 55,
         "splits": {"train": 34, "validation": 8, "test": 8},
     }
     if acceptance != expected:
         raise ValueError("collection acceptance policy does not match v1.3")
+    if policy["schema_version"] == "farpoint.collection-policy.v2":
+        recovery = policy.get("recovery") or {}
+        if recovery != {"maximum_task_failure_retries_per_trial": 1}:
+            raise ValueError("recovery collection policy must allow exactly one task retry")
 
 
 def cell_index(cell_id: str) -> int:
@@ -98,6 +109,7 @@ def _attempt_from_trial(
     source_git_commit: str,
 ) -> dict[str, Any]:
     return {
+        "attempt_id": trial.get("attempt_id", trial["trial_id"]),
         "trial_id": trial["trial_id"],
         "episode_id": trial["episode_id"],
         "variation_id": trial["variation_id"],
@@ -114,6 +126,14 @@ def _attempt_from_trial(
         "selected_for_dataset": False,
         "failure_category": trial.get("failure_category"),
         "failure_reason": trial.get("failure_reason"),
+        **(
+            {
+                "recovery_retry": True,
+                "retry_index": int(trial["retry_index"]),
+            }
+            if trial.get("recovery_retry")
+            else {}
+        ),
     }
 
 
@@ -127,11 +147,7 @@ def _apply_balanced_selection(attempts: list[dict[str, Any]]) -> None:
         by_cell.setdefault(attempt["cell_id"], []).append(attempt)
     for cell_id, rows in by_cell.items():
         eligible = sorted(
-            (
-                row
-                for row in rows
-                if row["outcome_success"] and row["dataset_valid"]
-            ),
+            (row for row in rows if row["outcome_success"] and row["dataset_valid"]),
             key=lambda row: (row["slot"], row["trial_id"]),
         )[:2]
         for rank, row in enumerate(eligible, start=1):
@@ -144,25 +160,48 @@ def import_source_attempts(
     source_state: dict[str, Any], policy: dict[str, Any], plan: dict[str, Any]
 ) -> list[dict[str, Any]]:
     source = policy["source"]
-    expected = {
-        "benchmark_id": source["run_id"],
-        "git_commit": source["git_commit"],
-        "execution_status": source["execution_status"],
-        "completed_trials": source["completed_attempts"],
-        "passed_trials": source["successful_attempts"],
-        "position_plan_sha256": policy["position_plan_sha256"],
-        "config_sha256": policy["config_sha256"],
-        "image_digest": policy["simulator_image_digest"],
-    }
+    source_type = source.get("type", "benchmark")
+    if source_type == "collection":
+        source_errors = validate_contract(source_state) + validate_collection_semantics(
+            source_state
+        )
+        if source_errors:
+            raise ValueError("source collection manifest is invalid: " + "; ".join(source_errors))
+        expected = {
+            "collection_id": source["run_id"],
+            "git_commit": source["git_commit"],
+            "execution_status": source["execution_status"],
+            "quality_status": source["quality_status"],
+            "failure_reason": source["failure_reason"],
+            "policy_sha256": source["policy_sha256"],
+            "position_plan_sha256": policy["position_plan_sha256"],
+            "config_sha256": policy["config_sha256"],
+            "simulator_image_digest": policy["simulator_image_digest"],
+            "simulator_payload_sha256": policy["simulator_payload"]["sha256"],
+        }
+    else:
+        expected = {
+            "benchmark_id": source["run_id"],
+            "git_commit": source["git_commit"],
+            "execution_status": source["execution_status"],
+            "completed_trials": source["completed_attempts"],
+            "passed_trials": source["successful_attempts"],
+            "position_plan_sha256": policy["position_plan_sha256"],
+            "config_sha256": policy["config_sha256"],
+            "image_digest": policy["simulator_image_digest"],
+        }
     mismatches = [key for key, value in expected.items() if source_state.get(key) != value]
     if mismatches:
         raise ValueError("source run identity mismatch: " + ", ".join(mismatches))
-    source_trials = source_state.get("trials") or []
+    source_trials = (
+        source_state.get("attempts") if source_type == "collection" else source_state.get("trials")
+    )
+    source_trials = source_trials or []
     if len(source_trials) != source["completed_attempts"]:
         raise ValueError("source run trial count mismatch")
-    source_trial_ids = [trial.get("trial_id") for trial in source_trials]
-    if len(set(source_trial_ids)) != len(source_trial_ids):
-        raise ValueError("source run trial ids must be unique")
+    source_attempt_ids = [trial.get("attempt_id", trial.get("trial_id")) for trial in source_trials]
+    if len(set(source_attempt_ids)) != len(source_attempt_ids):
+        raise ValueError("source run attempt ids must be unique")
     by_id = {trial["trial_id"]: trial for trial in plan["trials"]}
     attempts = []
     for recorded in source_trials:
@@ -179,22 +218,41 @@ def import_source_attempts(
             "split",
             "object_position_xy_m",
         ):
-            if recorded.get(key) != planned.get(key):
-                raise ValueError(f"source trial {key} mismatch: {recorded['trial_id']}")
-        if recorded.get("success") and (
-            not recorded.get("dataset_valid")
-            or not recorded.get("accepted")
-            or not all((recorded.get("checks") or {}).values())
-        ):
-            raise ValueError(f"source successful trial failed strict gates: {recorded['trial_id']}")
-        attempts.append(
-            _attempt_from_trial(
-                recorded,
-                origin="imported",
-                source_run_id=source["run_id"],
-                source_git_commit=source["git_commit"],
+            recorded_value = (
+                recorded.get("source_split")
+                if source_type == "collection" and key == "split"
+                else recorded.get(key)
             )
-        )
+            if recorded_value != planned.get(key):
+                raise ValueError(f"source trial {key} mismatch: {recorded['trial_id']}")
+        if source_type == "collection":
+            success = bool(recorded.get("outcome_success"))
+            if success and not recorded.get("dataset_valid"):
+                raise ValueError(
+                    f"source successful trial failed strict gates: {recorded['trial_id']}"
+                )
+            attempt = deepcopy(recorded)
+            attempt["attempt_id"] = recorded.get("attempt_id", recorded["trial_id"])
+            attempt["origin"] = "imported"
+            attempt["imported_from_collection_id"] = source["run_id"]
+            attempts.append(attempt)
+        else:
+            if recorded.get("success") and (
+                not recorded.get("dataset_valid")
+                or not recorded.get("accepted")
+                or not all((recorded.get("checks") or {}).values())
+            ):
+                raise ValueError(
+                    f"source successful trial failed strict gates: {recorded['trial_id']}"
+                )
+            attempts.append(
+                _attempt_from_trial(
+                    recorded,
+                    origin="imported",
+                    source_run_id=source["run_id"],
+                    source_git_commit=source["git_commit"],
+                )
+            )
     if sum(row["outcome_success"] for row in attempts) != source["successful_attempts"]:
         raise ValueError("source run successful attempt count mismatch")
     _apply_balanced_selection(attempts)
@@ -230,6 +288,7 @@ def new_collection_state(
         "release_status": "CANDIDATE",
         "created_at": utc_now(),
         "attempts": deepcopy(imported_attempts),
+        "imported_task_attempts": len(imported_attempts),
         "infrastructure_attempts": [],
     }
     update_collection_progress(state, policy)
@@ -257,8 +316,9 @@ def update_collection_progress(state: dict[str, Any], policy: dict[str, Any]) ->
 def append_new_attempt(
     state: dict[str, Any], trial: dict[str, Any], audited: dict[str, Any], policy: dict[str, Any]
 ) -> None:
-    if any(row["trial_id"] == trial["trial_id"] for row in state["attempts"]):
-        raise ValueError(f"collection trial is already recorded: {trial['trial_id']}")
+    attempt_id = trial.get("attempt_id", trial["trial_id"])
+    if any(row.get("attempt_id", row["trial_id"]) == attempt_id for row in state["attempts"]):
+        raise ValueError(f"collection attempt is already recorded: {attempt_id}")
     merged = {**trial, **audited}
     state["attempts"].append(
         _attempt_from_trial(
@@ -274,18 +334,43 @@ def append_new_attempt(
 def scheduled_trials(
     state: dict[str, Any], plan: dict[str, Any], policy: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    attempted = {row["trial_id"] for row in state["attempts"]}
-    selected = Counter(
-        row["cell_id"] for row in state["attempts"] if row["selected_for_dataset"]
-    )
+    attempts_by_trial: dict[str, list[dict[str, Any]]] = {}
+    for attempt in state["attempts"]:
+        attempts_by_trial.setdefault(attempt["trial_id"], []).append(attempt)
+    selected = Counter(row["cell_id"] for row in state["attempts"] if row["selected_for_dataset"])
     quota = policy["acceptance"]["selected_per_cell"]
+    max_retries = (policy.get("recovery") or {}).get("maximum_task_failure_retries_per_trial", 0)
+    candidates = []
+    for trial in plan["trials"]:
+        if selected[trial["cell_id"]] >= quota:
+            continue
+        prior = attempts_by_trial.get(trial["trial_id"], [])
+        if not prior:
+            candidates.append(deepcopy(trial))
+            continue
+        if any(row["outcome_success"] for row in prior):
+            continue
+        retries_used = max(0, len(prior) - 1)
+        if retries_used < max_retries:
+            retry = deepcopy(trial)
+            retry_index = retries_used + 1
+            retry.update(
+                {
+                    "attempt_id": f"{trial['trial_id']}__retry{retry_index:02d}",
+                    "recovery_retry": True,
+                    "retry_index": retry_index,
+                }
+            )
+            candidates.append(retry)
     return sorted(
-        (
-            trial
-            for trial in plan["trials"]
-            if trial["trial_id"] not in attempted and selected[trial["cell_id"]] < quota
+        candidates,
+        key=lambda trial: (
+            selected[trial["cell_id"]],
+            trial["slot"],
+            trial["row"],
+            trial["column"],
+            trial.get("retry_index", 0),
         ),
-        key=lambda trial: (trial["slot"], trial["row"], trial["column"]),
     )
 
 
@@ -322,15 +407,19 @@ def impossible_reason(
     state: dict[str, Any], plan: dict[str, Any], policy: dict[str, Any]
 ) -> str | None:
     required = policy["acceptance"]
-    if state["task_attempts"] >= required["maximum_task_attempts"] and not acceptance_snapshot(state, policy)["accepted"]:
+    if (
+        state["task_attempts"] >= required["maximum_task_attempts"]
+        and not acceptance_snapshot(state, policy)["accepted"]
+    ):
         return "maximum_task_attempts_reached"
-    selected = Counter(
-        row["cell_id"] for row in state["attempts"] if row["selected_for_dataset"]
-    )
-    attempted = {row["trial_id"] for row in state["attempts"]}
-    remaining = Counter(
-        trial["cell_id"] for trial in plan["trials"] if trial["trial_id"] not in attempted
-    )
+    imported = int(state.get("imported_task_attempts", 0))
+    if (
+        state["task_attempts"] - imported >= required["maximum_new_task_attempts"]
+        and not acceptance_snapshot(state, policy)["accepted"]
+    ):
+        return "maximum_new_task_attempts_reached"
+    selected = Counter(row["cell_id"] for row in state["attempts"] if row["selected_for_dataset"])
+    remaining = Counter(trial["cell_id"] for trial in scheduled_trials(state, plan, policy))
     for cell_id in sorted({trial["cell_id"] for trial in plan["trials"]}):
         if selected[cell_id] + remaining[cell_id] < required["selected_per_cell"]:
             return f"cell_candidate_quota_exhausted:{cell_id}"
@@ -435,6 +524,41 @@ def validate_resume_state(
     mismatches = [key for key, value in expected.items() if state.get(key) != value]
     if mismatches:
         raise ValueError("collection resume identity mismatch: " + ", ".join(mismatches))
+
+
+def validate_recovery_pilot_evidence(pilot_state: dict[str, Any], policy: dict[str, Any]) -> None:
+    expected = policy.get("recovery_pilot")
+    if expected is None:
+        return
+    identity = {
+        "benchmark_id": expected["pilot_id"],
+        "git_commit": expected["git_commit"],
+        "position_plan_sha256": policy["position_plan_sha256"],
+        "config_sha256": policy["config_sha256"],
+        "image_digest": policy["simulator_image_digest"],
+        "execution_status": "FINISHED",
+        "completed_trials": expected["completed_trials"],
+        "passed_trials": expected["passed_trials"],
+    }
+    mismatches = [key for key, value in identity.items() if pilot_state.get(key) != value]
+    if mismatches:
+        raise ValueError("recovery pilot identity mismatch: " + ", ".join(mismatches))
+    trials = pilot_state.get("trials") or []
+    if [row.get("trial_id") for row in trials] != expected["trial_ids"]:
+        raise ValueError("recovery pilot trial ids mismatch")
+    plan_seeds = expected["seeds"]
+    if {row.get("trial_id"): row.get("seed") for row in trials} != plan_seeds:
+        raise ValueError("recovery pilot seeds mismatch")
+    successes = [row for row in trials if row.get("success") is True]
+    if len(successes) < expected["minimum_successes"]:
+        raise ValueError("recovery pilot did not meet the stability threshold")
+    if any(
+        not row.get("dataset_valid")
+        or not row.get("accepted")
+        or not all((row.get("checks") or {}).values())
+        for row in successes
+    ):
+        raise ValueError("recovery pilot success failed strict quality gates")
 
 
 def minimum_required_successes(attempts: int, rate: float) -> int:

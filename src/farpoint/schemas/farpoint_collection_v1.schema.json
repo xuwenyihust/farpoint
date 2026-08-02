@@ -37,6 +37,7 @@
           "outcome_success", "dataset_valid", "selected_for_dataset"
         ],
         "properties": {
+          "attempt_id": {"type": "string", "minLength": 1},
           "trial_id": {"type": "string", "minLength": 1},
           "episode_id": {"type": "string", "minLength": 1},
           "variation_id": {"type": "string", "minLength": 1},
@@ -51,6 +52,9 @@
           "dataset_split": {"enum": ["train", "validation", "test"]},
           "selection_rank": {"type": "integer", "minimum": 1, "maximum": 2},
           "origin": {"enum": ["imported", "new"]},
+          "imported_from_collection_id": {"type": "string", "minLength": 1},
+          "recovery_retry": {"type": "boolean"},
+          "retry_index": {"type": "integer", "minimum": 1},
           "source_run_id": {"type": "string", "minLength": 1},
           "source_git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
           "outcome_success": {"type": "boolean"},

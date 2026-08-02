@@ -21,6 +21,7 @@ from farpoint.position_collection import (
     new_collection_state,
     scheduled_trials,
     validate_collection_policy,
+    validate_recovery_pilot_evidence,
     validate_resume_state,
 )
 from farpoint.position_plan import load_position_plan
@@ -32,9 +33,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import run_position_benchmark  # noqa: E402
 
 
-POLICY_PATH = (
-    ROOT / "configs/collections/farpoint_v1_3_cube_position_balanced.json"
-)
+POLICY_PATH = ROOT / "configs/collections/farpoint_v1_3_cube_position_balanced.json"
+RECOVERY_POLICY_PATH = ROOT / "configs/collections/farpoint_v1_3_cube_position_recovery.json"
 PLAN_PATH = ROOT / "configs/plans/farpoint_v1_3_cube_position_expanded_candidate.json"
 GIT_COMMIT = "f" * 40
 
@@ -95,6 +95,37 @@ def imported_state():
     return policy, plan, imported, state
 
 
+def failed_collection_manifest():
+    policy, plan, _, state = imported_state()
+    remaining_cells = sorted(
+        {trial["cell_id"] for trial in plan["trials"]} - set(state["selected_per_cell"])
+    )
+    for cell in remaining_cells:
+        trial = next(row for row in plan["trials"] if row["cell_id"] == cell and row["slot"] == 0)
+        append_new_attempt(
+            state,
+            trial,
+            audited(trial, success=cell not in {"r02_c00", "r02_c03"}),
+            policy,
+        )
+    for cell, success in (("r02_c00", False), ("r02_c01", True)):
+        trial = next(row for row in plan["trials"] if row["cell_id"] == cell and row["slot"] == 1)
+        append_new_attempt(state, trial, audited(trial, success=success), policy)
+    finish_collection(state, policy, failure_reason="cell_candidate_quota_exhausted:r02_c00")
+    return policy, plan, build_collection_manifest(state, policy)
+
+
+def recovery_policy_and_source():
+    policy = load_collection_policy(RECOVERY_POLICY_PATH)
+    source_policy, plan, source = failed_collection_manifest()
+    policy = copy.deepcopy(policy)
+    policy["source"]["policy_sha256"] = source["policy_sha256"]
+    policy["source"]["git_commit"] = source["git_commit"]
+    policy["source"]["run_id"] = source["collection_id"]
+    validate_collection_policy(policy, plan, ROOT)
+    return policy, plan, source_policy, source
+
+
 def audited(trial, success=True):
     return {
         "episode_id": "episode-" + trial["trial_id"],
@@ -141,8 +172,133 @@ def test_source_import_refuses_identity_or_gate_drift():
 
     changed = source_state()
     changed["trials"][1]["trial_id"] = changed["trials"][0]["trial_id"]
-    with pytest.raises(ValueError, match="trial ids must be unique"):
+    with pytest.raises(ValueError, match="attempt ids must be unique"):
         import_source_attempts(changed, policy, plan)
+
+
+def test_recovery_policy_strictly_imports_failed_collection_evidence():
+    policy, plan, _, source = recovery_policy_and_source()
+    attempts = import_source_attempts(source, policy, plan)
+    selected = [row for row in attempts if row["selected_for_dataset"]]
+
+    assert len(attempts) == 45
+    assert sum(row["outcome_success"] for row in attempts) == 38
+    assert len(selected) == 33
+    assert len({row["cell_id"] for row in selected}) == 23
+    assert all(row["origin"] == "imported" for row in attempts)
+    assert all(row["imported_from_collection_id"] == source["collection_id"] for row in attempts)
+
+
+def test_recovery_schedule_allows_one_same_seed_retry_per_failed_trial():
+    policy, plan, _, source = recovery_policy_and_source()
+    imported = import_source_attempts(source, policy, plan)
+    state = new_collection_state(
+        collection_id="recovery",
+        git_commit=GIT_COMMIT,
+        policy=policy,
+        policy_sha256="b" * 64,
+        imported_attempts=imported,
+    )
+
+    slot0 = next(
+        row
+        for row in scheduled_trials(state, plan, policy)
+        if row.get("attempt_id") == "primary_r02_c00_s00__retry01"
+    )
+    append_new_attempt(state, slot0, audited(slot0, success=False), policy)
+    slot1 = next(
+        row
+        for row in scheduled_trials(state, plan, policy)
+        if row.get("attempt_id") == "primary_r02_c00_s01__retry01"
+    )
+    append_new_attempt(state, slot1, audited(slot1), policy)
+    slot2 = next(
+        row
+        for row in scheduled_trials(state, plan, policy)
+        if row["trial_id"] == "primary_r02_c00_s02"
+    )
+    append_new_attempt(state, slot2, audited(slot2), policy)
+
+    assert state["selected_per_cell"]["r02_c00"] == 2
+    assert state["selected_episodes"] == 35
+    assert not any(
+        row["trial_id"]
+        in {
+            "primary_r02_c00_s00",
+            "primary_r02_c00_s01",
+            "primary_r02_c00_s02",
+        }
+        for row in scheduled_trials(state, plan, policy)
+    )
+
+
+def test_recovery_collection_can_reach_balanced_acceptance_without_hiding_failures():
+    policy, plan, _, source = recovery_policy_and_source()
+    imported = import_source_attempts(source, policy, plan)
+    state = new_collection_state(
+        collection_id="recovery",
+        git_commit=GIT_COMMIT,
+        policy=policy,
+        policy_sha256="b" * 64,
+        imported_attempts=imported,
+    )
+
+    while not acceptance_snapshot(state, policy)["accepted"]:
+        candidates = scheduled_trials(state, plan, policy)
+        assert candidates
+        trial = candidates[0]
+        append_new_attempt(state, trial, audited(trial), policy)
+
+    finish_collection(state, policy)
+    manifest = build_collection_manifest(state, policy)
+    selected = [row for row in manifest["attempts"] if row["selected_for_dataset"]]
+
+    assert len(manifest["attempts"]) == 62
+    assert manifest["acceptance"]["observed_task_successes"] == 55
+    assert manifest["acceptance"]["observed_selected_episodes"] == 50
+    assert manifest["acceptance"]["observed_splits"] == {
+        "train": 34,
+        "validation": 8,
+        "test": 8,
+    }
+    assert len({row["trial_id"] for row in selected}) == 50
+    assert validate_contract(manifest) == []
+    assert validate_collection_semantics(manifest) == []
+
+
+def test_recovery_pilot_evidence_requires_exact_two_of_three_strict_passes():
+    policy = load_collection_policy(RECOVERY_POLICY_PATH)
+    expected = policy["recovery_pilot"]
+    trials = []
+    for index, trial_id in enumerate(expected["trial_ids"]):
+        success = index > 0
+        trials.append(
+            {
+                "trial_id": trial_id,
+                "seed": expected["seeds"][trial_id],
+                "success": success,
+                "dataset_valid": True,
+                "accepted": success,
+                "checks": {"task": success, "dataset": True},
+            }
+        )
+    evidence = {
+        "benchmark_id": expected["pilot_id"],
+        "git_commit": expected["git_commit"],
+        "position_plan_sha256": policy["position_plan_sha256"],
+        "config_sha256": policy["config_sha256"],
+        "image_digest": policy["simulator_image_digest"],
+        "execution_status": "FINISHED",
+        "completed_trials": 3,
+        "passed_trials": 2,
+        "trials": trials,
+    }
+
+    validate_recovery_pilot_evidence(evidence, policy)
+    changed = copy.deepcopy(evidence)
+    changed["trials"][2]["checks"]["dataset"] = False
+    with pytest.raises(ValueError, match="failed strict quality gates"):
+        validate_recovery_pilot_evidence(changed, policy)
 
 
 def test_schedule_is_coverage_first_and_skips_saturated_imported_cells():
@@ -162,8 +318,7 @@ def test_schedule_is_coverage_first_and_skips_saturated_imported_cells():
 def test_balanced_collection_accepts_exactly_fifty_with_34_8_8_splits():
     policy, plan, _, state = imported_state()
     remaining_cells = sorted(
-        {trial["cell_id"] for trial in plan["trials"]}
-        - set(state["selected_per_cell"])
+        {trial["cell_id"] for trial in plan["trials"]} - set(state["selected_per_cell"])
     )
     by_cell = {
         cell: sorted(
@@ -200,7 +355,9 @@ def test_failures_remain_in_yield_and_task_failure_advances_candidate():
     assert state["task_attempts"] == 28
     assert state["task_successes"] == 23
     assert state["task_yield"] == 23 / 28
-    assert trial["trial_id"] not in {row["trial_id"] for row in scheduled_trials(state, plan, policy)}
+    assert trial["trial_id"] not in {
+        row["trial_id"] for row in scheduled_trials(state, plan, policy)
+    }
 
 
 def test_cell_quota_exhaustion_is_detected_before_wasting_last_candidate():
@@ -259,18 +416,14 @@ def test_episode_audit_uses_the_explicit_source_episode_root(tmp_path, monkeypat
     episode = source_root / "episode"
     episode.mkdir(parents=True)
     (episode / "metadata.json").write_text("{}", encoding="utf-8")
-    (episode / "metrics.json").write_text(
-        json.dumps({"dataset_valid": True}), encoding="utf-8"
-    )
+    (episode / "metrics.json").write_text(json.dumps({"dataset_valid": True}), encoding="utf-8")
     observed = {}
 
     def fake_pilot_audit(_episode, _trial, *, plan_sha256, episode_root):
         observed["episode_root"] = episode_root
         return {"checks": {}, "errors": [], "episode_id": "episode"}
 
-    monkeypatch.setattr(
-        run_position_benchmark, "audit_pilot_episode", fake_pilot_audit
-    )
+    monkeypatch.setattr(run_position_benchmark, "audit_pilot_episode", fake_pilot_audit)
     monkeypatch.setattr(
         run_position_benchmark,
         "normalize_episode_metadata_v2",
@@ -335,6 +488,5 @@ def test_collection_semantics_detect_tampered_acceptance():
     }
     manifest["acceptance"]["observed_task_attempts"] = 1
     assert any(
-        "observed_task_attempts" in error
-        for error in validate_collection_semantics(manifest)
+        "observed_task_attempts" in error for error in validate_collection_semantics(manifest)
     )

@@ -36,6 +36,7 @@ from farpoint.position_collection import (  # noqa: E402
     scheduled_trials,
     update_collection_progress,
     validate_collection_policy,
+    validate_recovery_pilot_evidence,
     validate_resume_state,
 )
 from farpoint.position_plan import load_position_plan  # noqa: E402
@@ -54,10 +55,7 @@ from farpoint.position_pilot import find_episode  # noqa: E402
 
 
 DEFAULT_POLICY = (
-    PROJECT_ROOT
-    / "configs"
-    / "collections"
-    / "farpoint_v1_3_cube_position_balanced.json"
+    PROJECT_ROOT / "configs" / "collections" / "farpoint_v1_3_cube_position_balanced.json"
 )
 BENCHMARKS_ROOT = PROJECT_ROOT / "outputs" / "benchmarks"
 EPISODES_ROOT = PROJECT_ROOT / "outputs" / "episodes"
@@ -75,7 +73,11 @@ def verify_source_artifacts(
     policy: dict,
 ) -> None:
     by_id = {trial["trial_id"]: trial for trial in plan["trials"]}
-    for index, recorded in enumerate(source_state["trials"]):
+    source_type = policy["source"].get("type", "benchmark")
+    records = (
+        source_state.get("attempts") if source_type == "collection" else source_state.get("trials")
+    ) or []
+    for index, recorded in enumerate(records):
         episode = source_episode_root / recorded["episode_id"]
         if not episode.is_dir():
             raise ValueError(f"source episode directory is missing: {recorded['episode_id']}")
@@ -83,22 +85,39 @@ def verify_source_artifacts(
             episode,
             by_id[recorded["trial_id"]],
             plan=plan,
-            git_commit=policy["source"]["git_commit"],
+            git_commit=(
+                recorded["source_git_commit"]
+                if source_type == "collection"
+                else policy["source"]["git_commit"]
+            ),
             simulator_image_digest=policy["simulator_image_digest"],
             dataset_episode_index=index,
             episode_root=source_episode_root,
         )
-        for key in (
-            "trial_id",
-            "episode_id",
-            "success",
-            "dataset_valid",
-            "accepted",
-        ):
-            if audited.get(key) != recorded.get(key):
+        expected = {
+            "trial_id": recorded["trial_id"],
+            "episode_id": recorded["episode_id"],
+            "success": recorded.get("outcome_success")
+            if source_type == "collection"
+            else recorded.get("success"),
+            "dataset_valid": recorded.get("dataset_valid"),
+        }
+        for key, value in expected.items():
+            if audited.get(key) != value:
                 raise ValueError(
                     f"source artifact audit mismatch for {recorded['trial_id']}: {key}"
                 )
+
+
+def recorded_attempt_episode(state: dict, trial: dict) -> Path | None:
+    attempt_id = trial.get("attempt_id", trial["trial_id"])
+    for attempt in reversed(state.get("infrastructure_attempts", [])):
+        if attempt.get("attempt_id") != attempt_id:
+            continue
+        episode_id = attempt.get("episode_id")
+        if episode_id and (EPISODES_ROOT / episode_id).is_dir():
+            return EPISODES_ROOT / episode_id
+    return None
 
 
 def link_imported_episodes(
@@ -125,9 +144,7 @@ def import_selection_manifest(
         if attempt["selected_for_dataset"]:
             episodes.append(
                 {
-                    "episode_dir": str(
-                        (source_episode_root / attempt["episode_id"]).resolve()
-                    ),
+                    "episode_dir": str((source_episode_root / attempt["episode_id"]).resolve()),
                     "trial_id": attempt["trial_id"],
                     "variation_id": attempt["variation_id"],
                     "split": attempt["dataset_split"],
@@ -148,8 +165,15 @@ def refresh_collection_report(state_path: Path, episode: Path | None = None) -> 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
-    parser.add_argument("--source-run-state", type=Path, required=True)
+    parser.add_argument(
+        "--source-manifest",
+        "--source-run-state",
+        dest="source_manifest",
+        type=Path,
+        required=True,
+    )
     parser.add_argument("--source-episode-root", type=Path, required=True)
+    parser.add_argument("--recovery-pilot-state", type=Path)
     parser.add_argument("--collection-id")
     parser.add_argument("--git-commit", required=True)
     parser.add_argument("--resume", action="store_true")
@@ -165,11 +189,14 @@ def main() -> int:
     parser.add_argument("--startup-timeout-seconds", type=int, default=300)
     parser.add_argument("--max-infrastructure-attempts", type=int, default=3)
     args = parser.parse_args()
-    if min(
-        args.run_timeout_seconds,
-        args.startup_timeout_seconds,
-        args.max_infrastructure_attempts,
-    ) < 1:
+    if (
+        min(
+            args.run_timeout_seconds,
+            args.startup_timeout_seconds,
+            args.max_infrastructure_attempts,
+        )
+        < 1
+    ):
         parser.error("timeouts and infrastructure attempts must be positive")
     if min(args.cooldown_seconds, args.retry_cooldown_seconds) < 0:
         parser.error("cooldown values cannot be negative")
@@ -183,14 +210,24 @@ def main() -> int:
     digest = image_digest(policy["simulator_image"])
     if digest != policy["simulator_image_digest"]:
         raise ValueError("local simulator image digest does not match collection policy")
-    source_state = read_json(args.source_run_state)
+    source_state = read_json(args.source_manifest)
     imported = import_source_attempts(source_state, policy, plan)
     verify_source_artifacts(source_state, args.source_episode_root, plan, policy)
+    if policy.get("recovery_pilot"):
+        if args.recovery_pilot_state is None:
+            parser.error("recovery policy requires --recovery-pilot-state")
+        validate_recovery_pilot_evidence(read_json(args.recovery_pilot_state), policy)
+    elif args.recovery_pilot_state is not None:
+        parser.error("--recovery-pilot-state requires a recovery policy")
 
     short_sha = args.git_commit[:7]
+    collection_prefix = (
+        "farpoint_v1_3_balanced_recovery_collection"
+        if policy.get("recovery")
+        else "farpoint_v1_3_balanced_collection"
+    )
     collection_id = args.collection_id or (
-        "farpoint_v1_3_balanced_collection_"
-        f"{datetime.now(timezone.utc).strftime('%Y%m%d')}_{short_sha}"
+        f"{collection_prefix}_{datetime.now(timezone.utc).strftime('%Y%m%d')}_{short_sha}"
     )
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", collection_id):
         parser.error("collection ID contains unsupported characters")
@@ -242,32 +279,41 @@ def main() -> int:
         return 0
 
     relative_plan = plan_path.resolve().relative_to(PROJECT_ROOT.resolve())
-    candidates = scheduled_trials(state, plan, policy)
-    for ordinal, trial in enumerate(candidates, start=1):
+    ordinal = 0
+    while True:
         if acceptance_snapshot(state, policy)["accepted"]:
             break
-        current = scheduled_trials(state, plan, policy)
-        if trial["trial_id"] not in {row["trial_id"] for row in current}:
-            continue
         reason = impossible_reason(state, plan, policy)
         if reason:
             finish_collection(state, policy, failure_reason=reason)
             break
-        episode = find_episode(EPISODES_ROOT, collection_id, trial["trial_id"])
+        candidates = scheduled_trials(state, plan, policy)
+        if not candidates:
+            break
+        trial = candidates[0]
+        ordinal += 1
+        previous_episode = find_episode(EPISODES_ROOT, collection_id, trial["trial_id"])
+        episode = recorded_attempt_episode(state, trial)
+        if episode is None and not trial.get("recovery_retry"):
+            episode = previous_episode
         if episode:
-            print(f"ADOPT {trial['trial_id']}: {episode.name}", flush=True)
+            print(
+                f"ADOPT {trial.get('attempt_id', trial['trial_id'])}: {episode.name}",
+                flush=True,
+            )
         else:
             for attempt_number in range(1, args.max_infrastructure_attempts + 1):
                 if state["task_attempts"] or attempt_number > 1:
                     delay = (
-                        args.retry_cooldown_seconds
-                        if attempt_number > 1
-                        else args.cooldown_seconds
+                        args.retry_cooldown_seconds if attempt_number > 1 else args.cooldown_seconds
                     )
                     if delay:
                         time.sleep(delay)
                 runtime = runtime_directory(
-                    args.runtime_root, collection_id, trial["trial_id"], attempt_number
+                    args.runtime_root,
+                    collection_id,
+                    trial.get("attempt_id", trial["trial_id"]),
+                    attempt_number,
                 )
                 infrastructure = append_infrastructure_attempt(
                     state,
@@ -275,9 +321,10 @@ def main() -> int:
                     attempt_number=attempt_number,
                     run_id=runtime.name,
                 )
+                infrastructure["attempt_id"] = trial.get("attempt_id", trial["trial_id"])
                 write_json(state_path, state)
                 print(
-                    f"RUN {ordinal}/{len(candidates)} {trial['trial_id']} "
+                    f"RUN {ordinal} {trial.get('attempt_id', trial['trial_id'])} "
                     f"seed={trial['seed']} attempt={attempt_number}",
                     flush=True,
                 )
@@ -301,26 +348,29 @@ def main() -> int:
                 ]
                 env = os.environ.copy()
                 env["FARPOINT_RUN_TIMEOUT_SECONDS"] = str(args.run_timeout_seconds)
-                env["FARPOINT_STARTUP_TIMEOUT_SECONDS"] = str(
-                    args.startup_timeout_seconds
-                )
+                env["FARPOINT_STARTUP_TIMEOUT_SECONDS"] = str(args.startup_timeout_seconds)
                 result = subprocess.run(command, cwd=PROJECT_ROOT, env=env, check=False)
-                episode = find_episode(EPISODES_ROOT, collection_id, trial["trial_id"])
+                latest = find_episode(EPISODES_ROOT, collection_id, trial["trial_id"])
+                episode = (
+                    latest
+                    if latest and (previous_episode is None or latest.name != previous_episode.name)
+                    else None
+                )
                 infrastructure.update(
                     {
                         "finished_at": utc_now(),
                         "return_code": result.returncode,
                         "episode_id": episode.name if episode else None,
-                        "status": "EPISODE_RECORDED"
-                        if episode
-                        else "INFRASTRUCTURE_FAILURE",
+                        "status": "EPISODE_RECORDED" if episode else "INFRASTRUCTURE_FAILURE",
                     }
                 )
                 write_json(state_path, state)
                 if not infrastructure_retry_allowed(episode.name if episode else None):
                     break
                 print(
-                    f"INFRASTRUCTURE_RETRY {trial['trial_id']} attempt={attempt_number}",
+                    "INFRASTRUCTURE_RETRY "
+                    f"{trial.get('attempt_id', trial['trial_id'])} "
+                    f"attempt={attempt_number}",
                     flush=True,
                 )
         if episode is None:
@@ -345,7 +395,7 @@ def main() -> int:
         refresh_collection_report(state_path, episode)
         print(
             f"TRIAL_{'PASS' if audited['success'] else 'FAIL'} "
-            f"{trial['trial_id']} {episode.name}",
+            f"{trial.get('attempt_id', trial['trial_id'])} {episode.name}",
             flush=True,
         )
     if state["execution_status"] == "RUNNING":
