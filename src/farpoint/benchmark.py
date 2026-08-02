@@ -46,12 +46,17 @@ FAILURE_RULES = (
     (
         "pickup",
         "object_was_not_lifted_high_enough",
-        {"lift_height"},
+        {"lift_height", "grasp_proof_lift"},
     ),
     (
         "transport",
         "object_was_not_held_stably_during_transport",
-        {"object_attached_frames", "grasp_rigidity", "transport_contact"},
+        {
+            "object_attached_frames",
+            "grasp_rigidity",
+            "transport_contact",
+            "no_transport_contact_loss",
+        },
     ),
     (
         "release",

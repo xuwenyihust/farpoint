@@ -85,7 +85,7 @@
         "success": {"type": "boolean"},
         "dataset_valid": {"type": "boolean"},
         "failure_category": {
-          "enum": [null, "infrastructure", "motion_planning", "grasp", "pickup", "transport", "release", "placement", "settling", "evaluation"]
+          "enum": [null, "infrastructure", "perception", "motion_planning", "grasp", "pickup", "transport", "release", "placement", "settling", "evaluation"]
         },
         "failure_reason": {"type": ["string", "null"]},
         "quality": {"$ref": "#/$defs/quality"}

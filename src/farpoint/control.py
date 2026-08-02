@@ -200,6 +200,34 @@ def track_observed_pick_target(
     }
 
 
+def calibrated_recovery_grasp_target(
+    object_position_estimate,
+    object_grasp_offset,
+    *,
+    aperture_tool_offset=None,
+    aperture_bias_xy=(0.0, 0.0),
+):
+    if len(object_position_estimate) != 3 or len(object_grasp_offset) != 3:
+        raise ValueError("recovery positions must have three coordinates")
+    if len(aperture_bias_xy) != 2:
+        raise ValueError("aperture_bias_xy must contain two values")
+    if aperture_tool_offset is not None and len(aperture_tool_offset) != 3:
+        raise ValueError("aperture_tool_offset must have three coordinates")
+
+    object_target = [float(value) for value in object_position_estimate]
+    object_target[0] += float(aperture_bias_xy[0])
+    object_target[1] += float(aperture_bias_xy[1])
+    tool_offset = (
+        aperture_tool_offset
+        if aperture_tool_offset is not None
+        else object_grasp_offset
+    )
+    return [
+        object_target[axis] - float(tool_offset[axis])
+        for axis in range(3)
+    ]
+
+
 def rmpflow_world_target(cartesian_world_target):
     if len(cartesian_world_target) != 3:
         raise ValueError("RMPflow target must have three world coordinates")

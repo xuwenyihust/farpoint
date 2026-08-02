@@ -27,6 +27,7 @@ from farpoint.control import (
     apply_place_hover_guard,
     bilateral_grasp_ready,
     bounded_position_target,
+    calibrated_recovery_grasp_target,
     cartesian_tracking_servo_target,
     contact_pair_force_summary,
     filtered_contact_force,
@@ -3036,9 +3037,13 @@ def main():
                                 else pick_start_position
                             )
                             estimated_pick[2] = grasp_target_height
-                            recovery_grasp_position = subtract_vector(
+                            recovery_grasp_position = calibrated_recovery_grasp_target(
                                 estimated_pick,
                                 object_grasp_offset,
+                                aperture_tool_offset=(
+                                    aperture_tool_offset_world
+                                ),
+                                aperture_bias_xy=grasp_aperture_bias_xy,
                             )
                             recovery_approach_position = [
                                 recovery_grasp_position[0],
@@ -3074,9 +3079,13 @@ def main():
                             else pick_start_position
                         )
                         estimated_pick[2] = grasp_target_height
-                        recovery_grasp_position = subtract_vector(
+                        recovery_grasp_position = calibrated_recovery_grasp_target(
                             estimated_pick,
                             object_grasp_offset,
+                            aperture_tool_offset=(
+                                aperture_tool_offset_world
+                            ),
+                            aperture_bias_xy=grasp_aperture_bias_xy,
                         )
                         recovery_approach_position = [
                             recovery_grasp_position[0],

@@ -91,6 +91,22 @@ def test_simulator_v2_metadata_is_validated_before_persistence():
         raise AssertionError("invalid simulator recording metadata should fail")
 
 
+def test_v2_contract_accepts_perception_failure_category():
+    raw = episode_metadata_v2()
+    raw["outcome"]["success"] = False
+    raw["outcome"]["failure_category"] = "perception"
+    raw["outcome"]["failure_reason"] = (
+        "rgbd_pose_estimation_exceeded_tolerance"
+    )
+    raw["episode_id"] = raw["identity"]["episode_id"]
+    raw["trial_id"] = raw["identity"]["trial_id"]
+    raw["split"] = raw["identity"]["split"]
+
+    validated = validate_simulator_metadata_v2(raw)
+
+    assert validated["outcome"]["failure_category"] == "perception"
+
+
 def test_measured_pose_updates_only_resolved_variation():
     raw = episode_metadata_v2()["variation"]
     requested = deepcopy(raw["requested"])
