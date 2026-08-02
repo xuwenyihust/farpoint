@@ -12,6 +12,7 @@ from farpoint.position_collection import (
     append_new_attempt,
     build_collection_manifest,
     build_collection_selection,
+    complete_import_pilot,
     dataset_split,
     finish_collection,
     import_source_attempts,
@@ -238,6 +239,17 @@ def test_resume_requires_the_same_collection_commit_and_policy():
             git_commit="0" * 40,
             policy_sha256="b" * 64,
         )
+
+
+def test_import_pilot_finishes_without_claiming_collection_acceptance():
+    policy, _, _, state = imported_state()
+
+    complete_import_pilot(state, policy)
+
+    assert state["execution_status"] == "PILOT_COMPLETE"
+    assert state["quality_status"] == "PASS"
+    assert state["accepted"] is False
+    assert state["acceptance"]["accepted"] is False
 
 
 def test_episode_audit_uses_the_explicit_source_episode_root(tmp_path, monkeypatch):

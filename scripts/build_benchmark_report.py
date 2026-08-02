@@ -686,6 +686,13 @@ def build_report(manifest_path):
     coverage = summary["workspace_coverage"]
     is_collection = summary["report_kind"] == "collection"
     report_label = "Collection" if is_collection else "Benchmark"
+    pilot_complete = summary["execution_status"] == "PILOT_COMPLETE"
+    status_label = (
+        "PASS"
+        if summary["accepted"]
+        else ("PILOT COMPLETE" if pilot_complete else "IN PROGRESS / FAIL")
+    )
+    status_class = "pass" if summary["accepted"] else ("pending" if pilot_complete else "fail")
     coverage_metrics = ""
     if coverage["x_span_m"] is not None:
         coverage_metrics = (
@@ -792,7 +799,7 @@ def build_report(manifest_path):
   </header>
   <main>
     <section class="metrics">
-      <div class="metric"><span>{report_label} Status</span><strong class="{"pass" if summary["accepted"] else "fail"}">{"PASS" if summary["accepted"] else "IN PROGRESS / FAIL"}</strong></div>
+      <div class="metric"><span>{report_label} Status</span><strong class="{status_class}">{status_label}</strong></div>
       <div class="metric"><span>{"Task Yield" if is_collection else "Success Rate"}</span><strong>{summary["success_rate"]:.1%}</strong></div>
       <div class="metric"><span>{"Task Attempts" if is_collection else "Trials"}</span><strong>{summary["completed_trials"]} / {summary["planned_trials"]}</strong></div>
       {collection_metrics}

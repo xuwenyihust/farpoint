@@ -26,6 +26,7 @@ from farpoint.position_collection import (  # noqa: E402
     append_new_attempt,
     build_collection_manifest,
     build_collection_selection,
+    complete_import_pilot,
     file_sha256,
     finish_collection,
     import_source_attempts,
@@ -227,10 +228,13 @@ def main() -> int:
     write_json(state_path, state)
     refresh_collection_report(state_path)
     if args.import_only:
+        complete_import_pilot(state, policy)
+        write_json(state_path, state)
         write_json(
             collection_dir / "import-selection.json",
             import_selection_manifest(collection_id, imported, args.source_episode_root),
         )
+        refresh_collection_report(state_path)
         print(
             f"COLLECTION_IMPORT_OK attempts={state['task_attempts']} "
             f"successes={state['task_successes']} selected={state['selected_episodes']}"

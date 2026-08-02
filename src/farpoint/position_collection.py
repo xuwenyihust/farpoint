@@ -358,6 +358,15 @@ def abort_collection(state: dict[str, Any], policy: dict[str, Any], reason: str)
     state["finished_at"] = utc_now()
 
 
+def complete_import_pilot(state: dict[str, Any], policy: dict[str, Any]) -> None:
+    """Record a successful offline import audit without claiming collection acceptance."""
+    update_collection_progress(state, policy)
+    state["execution_status"] = "PILOT_COMPLETE"
+    state["quality_status"] = "PASS"
+    state["accepted"] = False
+    state["finished_at"] = utc_now()
+
+
 def build_collection_manifest(state: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
     if state.get("execution_status") != "FINISHED":
         raise ValueError("collection must finish before its manifest is created")

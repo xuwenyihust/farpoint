@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TERMINAL_STATUSES = {"PASS", "FAIL"}
 BENCHMARK_ALIASES = {
     "robotsim_v1_release_candidate": "farpoint_v1_release_candidate",
@@ -145,6 +145,7 @@ CREATE INDEX IF NOT EXISTS episodes_filter_idx
 ON episodes(status, task_name, benchmark_id, seed, started_at);
 CREATE TABLE IF NOT EXISTS benchmarks (
     benchmark_id TEXT PRIMARY KEY,
+    record_type TEXT NOT NULL DEFAULT 'BENCHMARK',
     task_name TEXT,
     task_type TEXT,
     status TEXT NOT NULL,
@@ -199,6 +200,13 @@ class EpisodeRegistry:
     @staticmethod
     def _initialize(connection):
         connection.executescript(SCHEMA)
+        benchmark_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(benchmarks)")
+        }
+        if "record_type" not in benchmark_columns:
+            connection.execute(
+                "ALTER TABLE benchmarks ADD COLUMN record_type TEXT NOT NULL DEFAULT 'BENCHMARK'"
+            )
         connection.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
             (str(SCHEMA_VERSION),),
@@ -446,6 +454,8 @@ class EpisodeRegistry:
             accepted = acceptance.get("accepted")
         if accepted is True:
             status = "PASS"
+        elif manifest.get("execution_status") == "PILOT_COMPLETE":
+            status = "PILOT"
         elif manifest.get("execution_status") == "ABORTED":
             status = "FAIL"
         elif manifest.get("execution_status") == "RUNNING":
@@ -464,6 +474,7 @@ class EpisodeRegistry:
         report = self.layout.reports / "benchmarks" / benchmark_id / "index.html"
         return {
             "benchmark_id": benchmark_id,
+            "record_type": "COLLECTION" if collection else "BENCHMARK",
             "task_name": manifest.get("task_name") or manifest.get("task_id"),
             "task_type": manifest.get("task_type")
             or runtime.get("task_type")
