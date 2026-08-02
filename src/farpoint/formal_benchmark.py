@@ -44,14 +44,28 @@ def validate_formal_plan(plan: dict[str, Any]) -> None:
             raise ValueError("formal benchmark may use primary trials only")
 
 
-def selected_trials(plan: dict[str, Any], mode: str) -> list[dict[str, Any]]:
+def selected_trials(
+    plan: dict[str, Any],
+    mode: str,
+    pilot_trial_ids: list[str] | tuple[str, ...] | None = None,
+) -> list[dict[str, Any]]:
     validate_formal_plan(plan)
     if mode == "formal":
+        if pilot_trial_ids:
+            raise ValueError("formal mode cannot filter trials")
         return list(plan["trials"])
     if mode != "pilot":
         raise ValueError("mode must be pilot or formal")
     by_id = {trial["trial_id"]: trial for trial in plan["trials"]}
-    return [by_id[trial_id] for trial_id in CONTRACT_PILOT_TRIAL_IDS]
+    requested_ids = tuple(pilot_trial_ids or CONTRACT_PILOT_TRIAL_IDS)
+    if not requested_ids:
+        raise ValueError("pilot trial selection cannot be empty")
+    if len(set(requested_ids)) != len(requested_ids):
+        raise ValueError("pilot trial selection contains duplicate IDs")
+    unknown = [trial_id for trial_id in requested_ids if trial_id not in by_id]
+    if unknown:
+        raise ValueError("unknown pilot trial IDs: " + ", ".join(unknown))
+    return [by_id[trial_id] for trial_id in requested_ids]
 
 
 def new_run_state(
@@ -62,8 +76,9 @@ def new_run_state(
     image: str,
     image_digest: str,
     plan: dict[str, Any],
+    pilot_trial_ids: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    trials = selected_trials(plan, mode)
+    trials = selected_trials(plan, mode, pilot_trial_ids)
     required_rate = FORMAL_REQUIRED_SUCCESS_RATE if mode == "formal" else 1.0
     required_successes = (
         FORMAL_REQUIRED_SUCCESSES if mode == "formal" else len(trials)
@@ -86,6 +101,7 @@ def new_run_state(
         "image_digest": image_digest,
         "created_at": utc_now(),
         "planned_trials": len(trials),
+        "planned_trial_ids": [trial["trial_id"] for trial in trials],
         "completed_trials": 0,
         "passed_trials": 0,
         "success_rate": 0.0,
@@ -115,6 +131,7 @@ def validate_resume_state(
     git_commit: str,
     image_digest: str,
     plan: dict[str, Any],
+    pilot_trial_ids: list[str] | tuple[str, ...] | None = None,
 ) -> None:
     expected = {
         "mode": mode,
@@ -126,6 +143,15 @@ def validate_resume_state(
     mismatches = [key for key, value in expected.items() if state.get(key) != value]
     if mismatches:
         raise ValueError("resume state identity mismatch: " + ", ".join(mismatches))
+    expected_ids = [
+        trial["trial_id"]
+        for trial in selected_trials(plan, mode, pilot_trial_ids)
+    ]
+    actual_ids = state.get("planned_trial_ids")
+    if actual_ids is not None and actual_ids != expected_ids:
+        raise ValueError("resume state planned trial IDs do not match")
+    if state.get("planned_trials") != len(expected_ids):
+        raise ValueError("resume state planned trial count does not match")
 
 
 def update_run_progress(state: dict[str, Any]) -> None:

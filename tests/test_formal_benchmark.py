@@ -75,6 +75,21 @@ def test_frozen_formal_plan_identity_and_distribution_are_exact():
     )
 
 
+def test_pilot_can_select_explicit_frozen_trials_but_formal_cannot_filter():
+    plan = frozen_plan()
+    trial_ids = ["primary_r00_c01_s00", "primary_r03_c00_s01"]
+
+    selected = selected_trials(plan, "pilot", trial_ids)
+
+    assert [trial["trial_id"] for trial in selected] == trial_ids
+    with pytest.raises(ValueError, match="formal mode cannot filter"):
+        selected_trials(plan, "formal", trial_ids)
+    with pytest.raises(ValueError, match="duplicate"):
+        selected_trials(plan, "pilot", [trial_ids[0], trial_ids[0]])
+    with pytest.raises(ValueError, match="unknown"):
+        selected_trials(plan, "pilot", ["missing"])
+
+
 def test_formal_manifest_requires_all_trials_and_exact_acceptance_math():
     plan, passing = completed_state(successes=68)
     manifest = build_formal_manifest(passing, plan)
@@ -129,6 +144,38 @@ def test_resume_and_retry_rules_prevent_duplicate_or_seed_drift():
         append_completed_trial(state, completed)
     assert infrastructure_retry_allowed(None) is True
     assert infrastructure_retry_allowed("episode-task-failure") is False
+
+
+def test_resume_requires_the_same_explicit_pilot_selection():
+    plan = frozen_plan()
+    selected = ["primary_r00_c01_s00", "primary_r03_c00_s01"]
+    state = new_run_state(
+        benchmark_id="focused-pilot",
+        mode="pilot",
+        git_commit=GIT_COMMIT,
+        image="image",
+        image_digest=IMAGE_DIGEST,
+        plan=plan,
+        pilot_trial_ids=selected,
+    )
+
+    validate_resume_state(
+        state,
+        mode="pilot",
+        git_commit=GIT_COMMIT,
+        image_digest=IMAGE_DIGEST,
+        plan=plan,
+        pilot_trial_ids=selected,
+    )
+    with pytest.raises(ValueError, match="planned trial IDs"):
+        validate_resume_state(
+            state,
+            mode="pilot",
+            git_commit=GIT_COMMIT,
+            image_digest=IMAGE_DIGEST,
+            plan=plan,
+            pilot_trial_ids=list(reversed(selected)),
+        )
 
 
 def test_release_selection_is_successful_only_relative_and_keeps_identity():
