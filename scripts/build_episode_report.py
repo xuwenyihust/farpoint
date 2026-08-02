@@ -934,6 +934,7 @@ def build_report(episode_dir, output_dir, resource_summary_path=None):
     }}
 {REPORT_NAV_CSS}
     * {{ box-sizing: border-box; }}
+    html, body {{ max-width: 100%; overflow-x: hidden; }}
     body {{
       margin: 0;
       background: var(--bg);
@@ -978,7 +979,7 @@ def build_report(episode_dir, output_dir, resource_summary_path=None):
     .metric strong {{ display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 20px; line-height: 1.2; }}
     .metric-long strong {{ font-size: 15px; }}
     .grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }}
-    .panel {{ padding: 16px; overflow: hidden; }}
+    .panel {{ min-width: 0; padding: 16px; overflow: hidden; }}
     .panel.wide {{ grid-column: 1 / -1; }}
     canvas {{ width: 100%; height: 260px; display: block; }}
     dl {{ display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 14px; margin: 0; }}
@@ -1100,6 +1101,9 @@ def build_report(episode_dir, output_dir, resource_summary_path=None):
       --timeline-width: 960px;
       display: grid;
       gap: 10px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       margin-bottom: 18px;
       overflow-x: auto;
       padding-bottom: 4px;
@@ -1290,6 +1294,8 @@ def build_report(episode_dir, output_dir, resource_summary_path=None):
       .grid {{ grid-template-columns: 1fr; }}
       .frame-player {{ grid-template-columns: 1fr; }}
       dl {{ grid-template-columns: 1fr; }}
+      .timeline-toolbar {{ align-items: flex-start; flex-direction: column; }}
+      .timeline-zoom {{ grid-template-columns: auto minmax(120px, 1fr) auto; min-width: 0; width: 100%; }}
     }}
   </style>
 </head>
