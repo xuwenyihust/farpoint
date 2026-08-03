@@ -65,9 +65,10 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
     assert "cylinder" in configured["language_instruction"]
     assert configured["scene"]["pick_object"]["cylinder_radius_scale"] == 0.5
     assert configured["pickup"] == {
-        "static_friction": 4.0,
-        "dynamic_friction": 3.5,
+        "static_friction": 2.5,
+        "dynamic_friction": 2.0,
         "finger_contact_max_effort": 20.0,
+        "grasp_height_offset_meters": -0.005,
         "grasp_aperture_bias_xy": [0.0, 0.0],
         "grasp_tracking_max_xy_error": 0.006,
         "grasp_descent_max_xy_error": 0.006,
