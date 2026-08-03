@@ -16,6 +16,25 @@ from build_benchmark_report import (
 
 
 class BenchmarkReportTests(unittest.TestCase):
+    def test_report_links_do_not_follow_snapshot_symlinks(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            reports = root / "reports"
+            external = root / "external" / "episode-report"
+            external.mkdir(parents=True)
+            local_report = reports / "episode-imported"
+            local_report.parent.mkdir(parents=True)
+            local_report.symlink_to(external, target_is_directory=True)
+
+            href = build_benchmark_report.relative_path(
+                local_report / "index.html",
+                reports / "benchmarks" / "collection-id",
+            )
+
+        self.assertEqual(href.as_posix(), "../../episode-imported/index.html")
+
     def test_summary_enforces_batch_acceptance(self):
         manifest = {
             "benchmark_id": "test",

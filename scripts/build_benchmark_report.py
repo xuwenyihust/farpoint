@@ -175,7 +175,7 @@ def percentile(values, percentile_value):
 
 
 def relative_path(path, start):
-    return Path(os.path.relpath(Path(path).resolve(), Path(start).resolve()))
+    return Path(os.path.relpath(Path(path).absolute(), Path(start).absolute()))
 
 
 def load_trial(trial, report_dir):
