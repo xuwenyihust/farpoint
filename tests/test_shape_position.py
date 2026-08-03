@@ -57,12 +57,18 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
             "pick_object": {"position": [0, 0, 0], "scale": [1, 1, 1]},
             "target_zone": {"position": [0, 0, 0]},
         },
+        "pickup": {"static_friction": 1.8, "dynamic_friction": 1.5, "finger_contact_max_effort": 8.0},
         "randomization": {"enabled": True},
     }
     configured, resolved = apply_shape_position_trial(task, plan(), "cylinder_r00_c00_s00")
     assert configured["name"] == "isaac_perception_contact_cylinder_scene"
     assert "cylinder" in configured["language_instruction"]
     assert configured["scene"]["pick_object"]["cylinder_radius_scale"] == 0.5
+    assert configured["pickup"] == {
+        "static_friction": 2.5,
+        "dynamic_friction": 2.0,
+        "finger_contact_max_effort": 20.0,
+    }
     assert configured["scene"]["pick_object"]["position"] == resolved["variation"]["resolved"]["object_position_m"]
     assert task["randomization"]["enabled"] is True
 

@@ -230,5 +230,7 @@ def apply_shape_position_trial(task: dict[str, Any], manifest: dict[str, Any], t
     configured["scene"]["pick_object"]["scale"] = list(manifest["frozen_factors"]["object_dimensions_m"])
     configured["scene"]["pick_object"]["cylinder_radius_scale"] = 0.5
     configured["scene"]["target_zone"]["position"] = list(manifest["frozen_factors"]["target_position_m"])
+    for key, value in (manifest["frozen_factors"].get("pickup_overrides") or {}).items():
+        configured["pickup"][key] = copy.deepcopy(value)
     configured["randomization"]["enabled"] = False
     return configured, resolved
