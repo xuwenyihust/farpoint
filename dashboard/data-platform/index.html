@@ -478,7 +478,10 @@
     function renderBenchmarks() {
       $("benchmarkCount").textContent = `${state.benchmarks.length} registered`;
       $("benchmarkRows").innerHTML = state.benchmarks.map(row => {
-        const label = row.report_url ? `<a class="episode-link" href="${esc(row.report_url)}">${esc(row.benchmark_id)}</a>` : esc(row.benchmark_id);
+        const displayName = row.display_name || row.benchmark_id;
+        const label = row.report_url
+          ? `<a class="episode-link" href="${esc(row.report_url)}" title="${esc(row.benchmark_id)}">${esc(displayName)}</a>`
+          : `<span title="${esc(row.benchmark_id)}">${esc(displayName)}</span>`;
         return `<tr><td>${label}</td><td><span class="kind">${esc(row.record_type || "BENCHMARK")}</span></td><td><span class="status ${row.status}">${row.status}</span></td>
           <td>${esc(row.task_name || "-")}</td><td>${row.completed_trials} / ${row.planned_trials}</td>
           <td>${row.passed_trials}</td><td>${row.success_rate == null ? "-" : (row.success_rate * 100).toFixed(1) + "%"}</td><td>${date(row.created_at)}</td></tr>`;

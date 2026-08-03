@@ -276,12 +276,16 @@ class BenchmarkReportTests(unittest.TestCase):
                 path = root / "benchmarks" / "collection-report" / "run-state.json"
                 path.parent.mkdir(parents=True)
                 path.write_text(json.dumps(manifest))
-                rendered = build_report(path).read_text()
+                rendered = build_report(
+                    path, display_name="UR10e Cube Position Balanced Collection"
+                ).read_text()
             finally:
                 build_benchmark_report.EPISODES_ROOT = old_episodes
                 build_benchmark_report.REPORTS_ROOT = old_reports
 
         self.assertIn("Collection Status", rendered)
+        self.assertIn("UR10e Cube Position Balanced Collection", rendered)
+        self.assertIn("Collection ID: <code>collection-report</code>", rendered)
         self.assertIn("PILOT COMPLETE", rendered)
         self.assertIn("All planned trials completed</td><td class=\"pending\">NOT RUN", rendered)
         self.assertIn("Selected Episodes", rendered)

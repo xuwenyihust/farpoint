@@ -68,14 +68,23 @@ def build_reports(registry):
     for row in registry.list_benchmarks():
         manifest = Path(row["manifest_path"])
         output = registry.layout.reports / "benchmarks" / row["benchmark_id"] / "index.html"
-        if output.exists() and output.stat().st_mtime >= manifest.stat().st_mtime:
+        newest_input = max(
+            manifest.stat().st_mtime,
+            registry.layout.display_names.stat().st_mtime
+            if registry.layout.display_names.exists()
+            else 0,
+        )
+        if output.exists() and output.stat().st_mtime >= newest_input:
             continue
+        command = [
+            sys.executable,
+            str(PROJECT_ROOT / "scripts" / "build_benchmark_report.py"),
+            str(manifest),
+        ]
+        if row.get("display_name"):
+            command.extend(["--display-name", row["display_name"]])
         completed = subprocess.run(
-            [
-                sys.executable,
-                str(PROJECT_ROOT / "scripts" / "build_benchmark_report.py"),
-                str(manifest),
-            ],
+            command,
             cwd=PROJECT_ROOT,
             check=False,
         )

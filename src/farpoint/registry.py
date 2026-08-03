@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from farpoint.display_names import load_display_names
+
 
 SCHEMA_VERSION = 2
 TERMINAL_STATUSES = {"PASS", "FAIL"}
@@ -94,6 +96,10 @@ class DataLayout:
     @property
     def audit_log(self):
         return self.state / "audit.jsonl"
+
+    @property
+    def display_names(self):
+        return self.state / "display-names.json"
 
     def ensure(self):
         for path in (
@@ -610,7 +616,14 @@ class EpisodeRegistry:
             rows = connection.execute(
                 "SELECT * FROM benchmarks ORDER BY created_at DESC"
             ).fetchall()
-        return [dict(row) for row in rows]
+        display_names = load_display_names(self.layout.display_names)
+        return [
+            {
+                **dict(row),
+                "display_name": display_names.get(row["benchmark_id"]),
+            }
+            for row in rows
+        ]
 
     def storage_summary(self):
         with self.connect() as connection:

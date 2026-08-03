@@ -51,6 +51,7 @@ def wait_for_server(port: int, process: subprocess.Popen) -> None:
 def dashboard(tmp_path):
     episode_id = "episode_qa_0001"
     benchmark_id = "dashboard_qa_benchmark"
+    display_name = "Dashboard QA Collection"
     episode = tmp_path / "episodes" / episode_id
     write_json(
         episode / "metadata.json",
@@ -104,6 +105,13 @@ def dashboard(tmp_path):
     benchmark_report.write_text(
         "<!doctype html><title>Benchmark QA report</title>", encoding="utf-8"
     )
+    write_json(
+        tmp_path / ".data-platform" / "display-names.json",
+        {
+            "schema_version": "farpoint.display-names.v1",
+            "records": {benchmark_id: display_name},
+        },
+    )
     future = time.time() + 60
     os.utime(episode_report, (future, future))
     os.utime(benchmark_report, (future, future))
@@ -130,7 +138,12 @@ def dashboard(tmp_path):
     )
     try:
         wait_for_server(port, process)
-        yield {"url": url, "episode_id": episode_id, "benchmark_id": benchmark_id}
+        yield {
+            "url": url,
+            "episode_id": episode_id,
+            "benchmark_id": benchmark_id,
+            "display_name": display_name,
+        }
     finally:
         process.terminate()
         try:
@@ -163,7 +176,7 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         page.get_by_role("button", name="Close playback").click()
 
         page.get_by_role("button", name="Benchmarks").click()
-        benchmark = page.get_by_role("link", name=dashboard["benchmark_id"])
+        benchmark = page.get_by_role("link", name=dashboard["display_name"])
         benchmark.wait_for()
         assert benchmark.get_attribute("href") == (
             f"/reports/benchmarks/{dashboard['benchmark_id']}/index.html"
