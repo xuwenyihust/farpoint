@@ -4,6 +4,16 @@ license: cc-by-4.0
 library_name: lerobot
 task_categories:
 - robotics
+configs:
+- config_name: default
+  default: true
+  data_files:
+  - split: train
+    path: "data/**/*.parquet"
+- config_name: episode_metadata
+  data_files:
+  - split: train
+    path: "meta/episode_metadata.parquet"
 tags:
 - LeRobotDataset-v3
 - format:parquet
@@ -43,6 +53,12 @@ accepted cube-position collection:
 The release includes every successful, dataset-valid collection episode. It
 does not hide failed attempts in the collection evidence, but failed attempts
 are not demonstrations and are not included in the LeRobot dataset.
+
+The default Dataset Viewer configuration displays frame-level training data.
+Select the `episode_metadata` configuration to inspect one structured metadata
+row per episode. Public split counts follow the LeRobot episode ranges recorded
+in `meta/info.json`; the frame Viewer uses one physical `train` table because
+LeRobot stores all episode ranges in the same Parquet shard.
 
 ## Versioning
 
