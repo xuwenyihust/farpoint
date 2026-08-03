@@ -31,8 +31,8 @@
     "physics_profile_id": "physx_contact_pickup_v1",
     "recording_profile_id": "farpoint_multimodal_v1",
     "pickup_overrides": {
-      "static_friction": 2.5,
-      "dynamic_friction": 2.0,
+      "static_friction": 4.0,
+      "dynamic_friction": 3.5,
       "finger_contact_max_effort": 20.0,
       "grasp_aperture_bias_xy": [0.0, 0.0],
       "grasp_tracking_max_xy_error": 0.006,
