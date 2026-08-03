@@ -6,7 +6,7 @@ from __future__ import annotations
 def hold_pregrasp_hover(
     target,
     *,
-    physical_frame: int,
+    motion_frame: int,
     release_frame: int,
     hover_height: float,
 ):
@@ -14,6 +14,6 @@ def hold_pregrasp_hover(
     if len(target) != 3:
         raise ValueError("target must contain three coordinates")
     result = [float(value) for value in target]
-    if int(physical_frame) < int(release_frame):
+    if int(motion_frame) < int(release_frame):
         result[2] = max(result[2], float(hover_height))
     return result

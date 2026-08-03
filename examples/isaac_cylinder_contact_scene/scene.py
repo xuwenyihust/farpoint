@@ -31,9 +31,9 @@ shared_scene = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(shared_scene)
 
 shared_cartesian_target = shared_scene.cartesian_pick_and_place_target
-physical_frame = 0
 pregrasp_hover_height = None
 PREGRASP_HOVER_CLEARANCE_METERS = 0.46
+PREGRASP_RELEASE_DELAY_FRAMES = 140
 
 
 def cylinder_cartesian_pick_and_place_target(
@@ -46,7 +46,7 @@ def cylinder_cartesian_pick_and_place_target(
     grasp_retry_frames,
     **kwargs,
 ):
-    global physical_frame, pregrasp_hover_height
+    global pregrasp_hover_height
 
     target = shared_cartesian_target(
         frame,
@@ -65,11 +65,10 @@ def cylinder_cartesian_pick_and_place_target(
         )
     target = hold_pregrasp_hover(
         target,
-        physical_frame=physical_frame,
-        release_frame=int(attach_frame) + int(grasp_retry_frames) + 140,
+        motion_frame=frame,
+        release_frame=int(attach_frame) + PREGRASP_RELEASE_DELAY_FRAMES,
         hover_height=pregrasp_hover_height,
     )
-    physical_frame += 1
     return target
 
 
