@@ -33,7 +33,7 @@ spec.loader.exec_module(shared_scene)
 shared_cartesian_target = shared_scene.cartesian_pick_and_place_target
 physical_frame = 0
 pregrasp_hover_height = None
-PREGRASP_HOVER_CLEARANCE_METERS = 0.34
+PREGRASP_HOVER_CLEARANCE_METERS = 0.46
 
 
 def cylinder_cartesian_pick_and_place_target(
