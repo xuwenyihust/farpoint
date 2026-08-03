@@ -84,6 +84,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "unilateral_recenter_max_correction": 0.003,
         "unilateral_recenter_persistence_frames": 12,
         "bilateral_contact_min_finger_position_radians": -0.001,
+        "grasp_validation_min_support_frames": 12,
         "unilateral_force_limit_newtons": 5.0,
         "unilateral_force_backoff_radians": 0.002,
         "bilateral_force_limit_newtons": 10.0,
