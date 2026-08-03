@@ -45,7 +45,7 @@ def test_cylinder_trial_uses_shape_prefixed_identity_and_metadata():
     resolved = resolve_shape_position_trial(plan(), "cylinder_r02_c02_s00")
     assert resolved["variation"]["variation_id"] == "cylinder_position_r02_c02_s00"
     assert resolved["variation"]["resolved"]["object_shape"] == "cylinder"
-    assert resolved["variation"]["resolved"]["object_dimensions_m"] == [0.07, 0.07, 0.08]
+    assert resolved["variation"]["resolved"]["object_dimensions_m"] == [0.07, 0.07, 0.12]
     assert resolved["split"] == "test"
 
 
@@ -68,7 +68,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "static_friction": 2.5,
         "dynamic_friction": 2.0,
         "finger_contact_max_effort": 20.0,
-        "grasp_height_offset_meters": 0.01,
+        "grasp_height_offset_meters": -0.01,
         "grasp_aperture_bias_xy": [-0.0015, 0.001],
         "grasp_tracking_max_xy_error": 0.006,
         "grasp_descent_max_xy_error": 0.006,
