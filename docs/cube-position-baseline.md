@@ -5,8 +5,9 @@ position of one cube. It keeps the UR10e, Robotiq 2F-85, target, object shape,
 yaw, appearance, camera, lighting, controller, physics, and recording policy
 fixed.
 
-This is an experiment plan, not a published dataset release. `release.toml`
-remains at the current public release until the release workflow is complete.
+This is an experiment plan, not a published dataset release. The applicable
+specification under `configs/datasets/` remains at the current public dataset
+version until the release workflow is complete.
 
 ## Trial Design
 

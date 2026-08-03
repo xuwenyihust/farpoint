@@ -3,12 +3,13 @@
 ## Status
 
 Dataset Contract v2 is the metadata and validation foundation for future
-Farpoint releases. It does not change the currently published release in
-`release.toml`, and it does not imply that a v1.3 dataset has been generated.
+Farpoint releases. It does not change any published dataset or imply that a
+v1.3 dataset has been generated.
 
 Release versions and contract versions are independent:
 
-- Release identity: `release.toml`, currently `1.2.0`
+- Dataset release identity: the applicable file under `configs/datasets/`
+- Farpoint code version: independent of dataset and contract versions
 - Dataset contract: `farpoint.dataset.v2`
 - Episode contract: `farpoint.episode.v2`
 - Variation contract: `farpoint.variation.v2`

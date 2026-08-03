@@ -38,7 +38,7 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def publish_huggingface(package: Path, repo_id: str, version: str, commit_message: str) -> dict:
+def publish_huggingface(package: Path, repo_id: str, dataset_tag: str, commit_message: str) -> dict:
     from huggingface_hub import HfApi
 
     api = HfApi()
@@ -52,10 +52,10 @@ def publish_huggingface(package: Path, repo_id: str, version: str, commit_messag
     api.create_tag(
         repo_id=repo_id,
         repo_type="dataset",
-        tag=version,
-        tag_message=f"Farpoint dataset release {version}",
+        tag=dataset_tag,
+        tag_message=f"Farpoint dataset release {dataset_tag}",
     )
-    return {"commit": getattr(commit, "oid", str(commit)), "tag": version}
+    return {"commit": getattr(commit, "oid", str(commit)), "tag": dataset_tag}
 
 
 def git_revision() -> str:
@@ -114,7 +114,9 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
             raise ValueError(
                 "Farpoint v2 releases require --collection-manifest or --benchmark-manifest"
             )
-        benchmark_id = args.benchmark_id or f"farpoint_{spec['tag'].replace('.', '_')}_release"
+        benchmark_id = args.benchmark_id or (
+            f"{spec['dataset_id']}_{spec['dataset_tag'].replace('.', '_')}_release"
+        )
         if supplied_evidence:
             manifest = json.loads(supplied_evidence.read_text(encoding="utf-8"))
         else:
@@ -161,7 +163,9 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
 
         episode_ids = parse_episode_ids(args)
         episode_dirs = [args.episode_root / episode_id for episode_id in episode_ids]
-        benchmark_id = args.benchmark_id or f"farpoint_{spec['tag'].replace('.', '_')}_release"
+        benchmark_id = args.benchmark_id or (
+            f"{spec['dataset_id']}_{spec['dataset_tag'].replace('.', '_')}_release"
+        )
         manifest = build_manifest(
             args.episode_root,
             benchmark_id,
@@ -194,8 +198,9 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
     package_result = prepare_viewer_package(canonical_dir, public_dir)
     viewer_audit = audit_viewer_package(public_dir)
     release = {
-        "schema_version": "farpoint.release-manifest.v1",
-        "release_version": spec["tag"],
+        "schema_version": "farpoint.dataset-release-manifest.v1",
+        "dataset_version": spec["dataset_version"],
+        "dataset_tag": spec["dataset_tag"],
         "dataset_id": spec["dataset_id"],
         "hf_repo_id": spec["hf_repo_id"],
         "code_revision": git_revision(),
@@ -235,14 +240,16 @@ def validate_release(release_dir: Path, spec: dict) -> dict:
     )
     public = audit_viewer_package(release_dir / "public")
     errors = preflight_errors
-    if manifest.get("release_version") != spec["tag"]:
-        errors.append("release manifest version does not match release.toml")
+    if manifest.get("dataset_version") != spec["dataset_version"]:
+        errors.append("release manifest dataset_version does not match the dataset release spec")
+    if manifest.get("dataset_tag") != spec["dataset_tag"]:
+        errors.append("release manifest dataset_tag does not match the dataset release spec")
     if manifest.get("dataset_id") != spec["dataset_id"]:
-        errors.append("release manifest dataset_id does not match release.toml")
+        errors.append("release manifest dataset_id does not match the dataset release spec")
     if manifest.get("hf_repo_id") != spec["hf_repo_id"]:
-        errors.append("release manifest hf_repo_id does not match release.toml")
+        errors.append("release manifest hf_repo_id does not match the dataset release spec")
     if manifest.get("release_spec_sha256") != file_sha256(Path(spec["path"])):
-        errors.append("release.toml changed after the release was built")
+        errors.append("dataset release spec changed after the release was built")
     evidence = manifest.get("collection") or manifest.get("benchmark")
     if not evidence_accepted(evidence):
         evidence_name = "collection" if manifest.get("collection") else "benchmark"
@@ -251,7 +258,8 @@ def validate_release(release_dir: Path, spec: dict) -> dict:
     errors.extend(public.get("errors", []))
     return {
         "valid": not errors and canonical["valid"] and public["valid"],
-        "release_version": spec["tag"],
+        "dataset_version": spec["dataset_version"],
+        "dataset_tag": spec["dataset_tag"],
         "errors": errors,
         "canonical": canonical,
         "viewer_package": public,
@@ -266,9 +274,10 @@ def stage_release(release_dir: Path, spec: dict) -> dict:
     if manifest.get("code_revision") == "unknown":
         raise ValueError("release code revision is unknown")
     staged = {
-        "schema_version": "farpoint.release-stage.v1",
+        "schema_version": "farpoint.dataset-release-stage.v1",
         "status": "READY",
-        "release_version": spec["tag"],
+        "dataset_version": spec["dataset_version"],
+        "dataset_tag": spec["dataset_tag"],
         "code_revision": manifest["code_revision"],
         "release_spec_sha256": manifest["release_spec_sha256"],
         "validation": validation,
@@ -278,10 +287,10 @@ def stage_release(release_dir: Path, spec: dict) -> dict:
 
 
 def publish_staged_release(release_dir: Path, spec: dict, confirmation: str) -> dict:
-    if confirmation != spec["tag"]:
-        raise ValueError(f"confirmation must exactly match {spec['tag']}")
+    if confirmation != spec["dataset_tag"]:
+        raise ValueError(f"confirmation must exactly match {spec['dataset_tag']}")
     stage = json.loads((release_dir / "stage.json").read_text(encoding="utf-8"))
-    if stage.get("status") != "READY" or stage.get("release_version") != spec["tag"]:
+    if stage.get("status") != "READY" or stage.get("dataset_tag") != spec["dataset_tag"]:
         raise ValueError("release has not passed the staging gate")
     validation = validate_release(release_dir, spec)
     if not validation["valid"]:
@@ -295,8 +304,8 @@ def publish_staged_release(release_dir: Path, spec: dict, confirmation: str) -> 
     published = publish_huggingface(
         release_dir / "public",
         spec["hf_repo_id"],
-        spec["tag"],
-        f"Release Farpoint {spec['tag']}",
+        spec["dataset_tag"],
+        f"Release {spec['dataset_id']} {spec['dataset_tag']}",
     )
     manifest["published"] = published
     write_json(manifest_path, manifest)
