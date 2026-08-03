@@ -69,6 +69,20 @@ def normalize_manifest(manifest):
     normalized["task_name"] = normalized.get("task_name") or normalized.get(
         "task_id", "unknown_task"
     )
+    if normalized.get("schema_version") == "farpoint.shape-position-pilot.v1":
+        attempts = normalized.get("attempts", [])
+        normalized["report_kind"] = "benchmark"
+        normalized["trials"] = attempts
+        normalized["planned_trials"] = 15
+        normalized["completed_trials"] = len(attempts)
+        normalized["passed_trials"] = sum(
+            row.get("success") is True and row.get("dataset_valid") is True
+            for row in attempts
+        )
+        normalized["success_rate"] = (
+            normalized["passed_trials"] / len(attempts) if attempts else 0.0
+        )
+        normalized["accepted"] = bool(normalized.get("accepted"))
     if normalized.get("schema_version") in {
         "farpoint.collection.v1",
         "farpoint.collection.v2",

@@ -354,6 +354,22 @@ class BenchmarkReportTests(unittest.TestCase):
         self.assertIn("UR10e Cylinder Position Collection", rendered)
         self.assertIn("0 / 1", rendered)
 
+    def test_shape_position_pilot_normalizes_attempt_progress(self):
+        manifest = {
+            "schema_version": "farpoint.shape-position-pilot.v1",
+            "benchmark_id": "cylinder-pilot",
+            "display_name": "UR10e Cylinder Position Readiness Pilot",
+            "task_id": "cylinder_task",
+            "execution_status": "RUNNING",
+            "accepted": False,
+            "attempts": [],
+        }
+        normalized = build_benchmark_report.normalize_manifest(manifest)
+        self.assertEqual(normalized["planned_trials"], 15)
+        self.assertEqual(normalized["completed_trials"], 0)
+        self.assertEqual(normalized["passed_trials"], 0)
+        self.assertEqual(normalized["trials"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

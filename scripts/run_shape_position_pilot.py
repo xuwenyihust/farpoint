@@ -93,6 +93,11 @@ def main() -> int:
         "config_sha256": plan["config_sha256"],
         "simulator_image_digest": digest,
         "execution_status": "RUNNING",
+        "planned_trials": 15,
+        "completed_trials": 0,
+        "passed_trials": 0,
+        "success_rate": 0.0,
+        "accepted": False,
         "started_at": utc_now(),
         "attempts": [],
         "infrastructure_attempts": [],
@@ -171,6 +176,9 @@ def main() -> int:
         )
         state["attempts"].append({**trial, **audited})
         state["acceptance"] = pilot_acceptance(state["attempts"])
+        state["completed_trials"] = len(state["attempts"])
+        state["passed_trials"] = state["acceptance"]["successful_episodes"]
+        state["success_rate"] = state["passed_trials"] / state["completed_trials"]
         write_json(state_path, state)
         refresh_reports(state_path, episode)
 
