@@ -71,6 +71,8 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "grasp_aperture_bias_xy": [0.0, -0.005],
         "grasp_tracking_max_xy_error": 0.006,
         "grasp_descent_max_xy_error": 0.006,
+        "unilateral_force_limit_newtons": 25.0,
+        "unilateral_force_backoff_radians": 0.0001,
     }
     assert configured["scene"]["pick_object"]["position"] == resolved["variation"]["resolved"]["object_position_m"]
     assert task["randomization"]["enabled"] is True
