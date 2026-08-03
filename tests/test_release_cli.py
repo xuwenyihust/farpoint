@@ -64,7 +64,7 @@ def test_stage_rejects_unknown_code_revision(tmp_path, successful_audits):
 def test_publish_requires_exact_version_confirmation(tmp_path):
     spec = release_dataset.load_release_spec()
     with pytest.raises(ValueError, match="confirmation must exactly match"):
-        release_dataset.publish_staged_release(tmp_path, spec, "v0.0.0")
+        release_dataset.publish_staged_release(tmp_path, spec, "not-the-dataset-tag")
 
 
 def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeypatch):
