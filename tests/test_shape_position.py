@@ -72,6 +72,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "grasp_aperture_bias_xy": [0.0, 0.0],
         "grasp_tracking_max_xy_error": 0.006,
         "grasp_descent_max_xy_error": 0.006,
+        "grasp_tracking_max_finger_z_skew": 0.025,
         "unilateral_recenter_enabled": True,
         "unilateral_recenter_step": 0.0001,
         "unilateral_recenter_max_correction": 0.003,
