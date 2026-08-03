@@ -104,6 +104,39 @@ def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeyp
         release_dataset.publish_staged_release(tmp_path, spec, spec["dataset_tag"])
 
 
+def test_upload_rc_requires_matching_dataset_version(tmp_path):
+    spec = release_dataset.load_release_spec()
+    with pytest.raises(ValueError, match="RC revision must match"):
+        release_dataset.upload_release_candidate(tmp_path, spec, "v9.9.9-rc1")
+
+
+def test_upload_rc_uses_isolated_revision(tmp_path, successful_audits, monkeypatch):
+    spec = release_dataset.load_release_spec()
+    manifest = release_fixture(tmp_path, spec)
+    release_dataset.write_json(
+        tmp_path / "stage.json",
+        {
+            "status": "READY",
+            "dataset_tag": spec["dataset_tag"],
+            "code_revision": manifest["code_revision"],
+            "release_spec_sha256": manifest["release_spec_sha256"],
+        },
+    )
+    calls = []
+
+    def upload(package, repo_id, revision):
+        calls.append((package, repo_id, revision))
+        return {"commit": "hub-commit", "revision": revision}
+
+    monkeypatch.setattr(release_dataset, "upload_huggingface_rc", upload)
+    revision = f"{spec['dataset_tag']}-rc1"
+    result = release_dataset.upload_release_candidate(tmp_path, spec, revision)
+
+    assert result["revision"] == revision
+    assert calls == [(tmp_path / "public", spec["hf_repo_id"], revision)]
+    assert json.loads((tmp_path / "rc.json").read_text())["commit"] == "hub-commit"
+
+
 def test_v2_release_requires_collection_or_benchmark_manifest(tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()

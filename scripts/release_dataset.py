@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,9 @@ from create_benchmark_from_episodes import build_manifest  # noqa: E402
 from farpoint.release import audit_viewer_package, prepare_viewer_package  # noqa: E402
 from farpoint.release_spec import DEFAULT_RELEASE_SPEC, load_release_spec  # noqa: E402
 from validate_lerobot_dataset import validate_dataset  # noqa: E402
+
+
+RC_REVISION = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+-rc[1-9][0-9]*$")
 
 
 def parse_episode_ids(args: argparse.Namespace) -> list[str]:
@@ -65,6 +69,33 @@ def publish_huggingface(package: Path, repo_id: str, dataset_tag: str, commit_me
         tag_message=f"Farpoint dataset release {dataset_tag}",
     )
     return {"commit": getattr(commit, "oid", str(commit)), "tag": dataset_tag}
+
+
+def upload_huggingface_rc(package: Path, repo_id: str, revision: str) -> dict:
+    """Upload a release candidate to an isolated Hub branch."""
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    api.create_branch(
+        repo_id=repo_id,
+        repo_type="dataset",
+        branch=revision,
+        revision="main",
+        exist_ok=False,
+    )
+    try:
+        commit = api.upload_folder(
+            repo_id=repo_id,
+            repo_type="dataset",
+            revision=revision,
+            folder_path=str(package),
+            commit_message=f"Stage dataset release candidate {revision}",
+            delete_patterns=["*"],
+        )
+    except Exception:
+        api.delete_branch(repo_id=repo_id, repo_type="dataset", branch=revision)
+        raise
+    return {"commit": getattr(commit, "oid", str(commit)), "revision": revision}
 
 
 def git_revision() -> str:
@@ -327,6 +358,33 @@ def publish_staged_release(release_dir: Path, spec: dict, confirmation: str) -> 
     return published
 
 
+def upload_release_candidate(release_dir: Path, spec: dict, revision: str) -> dict:
+    expected_prefix = f"{spec['dataset_tag']}-rc"
+    if not RC_REVISION.fullmatch(revision) or not revision.startswith(expected_prefix):
+        raise ValueError(f"RC revision must match {expected_prefix}<positive integer>")
+    stage = json.loads((release_dir / "stage.json").read_text(encoding="utf-8"))
+    if stage.get("status") != "READY" or stage.get("dataset_tag") != spec["dataset_tag"]:
+        raise ValueError("release has not passed the staging gate")
+    validation = validate_release(release_dir, spec)
+    if not validation["valid"]:
+        raise ValueError("staged release is no longer valid: " + "; ".join(validation["errors"]))
+    uploaded = upload_huggingface_rc(
+        release_dir / "public",
+        spec["hf_repo_id"],
+        revision,
+    )
+    result = {
+        "schema_version": "farpoint.dataset-release-rc.v1",
+        "dataset_version": spec["dataset_version"],
+        "dataset_tag": spec["dataset_tag"],
+        "code_revision": stage["code_revision"],
+        "release_spec_sha256": stage["release_spec_sha256"],
+        **uploaded,
+    }
+    write_json(release_dir / "rc.json", result)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release-spec", type=Path, default=DEFAULT_RELEASE_SPEC)
@@ -350,6 +408,9 @@ def main() -> int:
     publish = commands.add_parser("publish")
     publish.add_argument("release_dir", type=Path)
     publish.add_argument("--confirm-version", required=True)
+    upload_rc = commands.add_parser("upload-rc")
+    upload_rc.add_argument("release_dir", type=Path)
+    upload_rc.add_argument("--revision", required=True)
     args = parser.parse_args()
     spec = load_release_spec(args.release_spec)
     if args.command == "build":
@@ -363,8 +424,11 @@ def main() -> int:
     elif args.command == "stage":
         result = stage_release(args.release_dir, spec)
         exit_code = 0
-    else:
+    elif args.command == "publish":
         result = publish_staged_release(args.release_dir, spec, args.confirm_version)
+        exit_code = 0
+    else:
+        result = upload_release_candidate(args.release_dir, spec, args.revision)
         exit_code = 0
     print(json.dumps(result, indent=2, sort_keys=True))
     return exit_code
