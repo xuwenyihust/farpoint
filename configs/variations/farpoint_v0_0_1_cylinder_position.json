@@ -15,9 +15,9 @@
   },
   "frozen_factors": {
     "object_shape": "cylinder",
-    "object_dimensions_m": [0.055, 0.055, 0.055],
+    "object_dimensions_m": [0.055, 0.055, 0.08],
     "object_radius_m": 0.0275,
-    "object_height_m": 0.055,
+    "object_height_m": 0.08,
     "object_initial_z_m": 0.5,
     "object_yaw_degrees": 0.0,
     "object_mass_kg": 0.08,

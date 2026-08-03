@@ -45,7 +45,7 @@ def test_cylinder_trial_uses_shape_prefixed_identity_and_metadata():
     resolved = resolve_shape_position_trial(plan(), "cylinder_r02_c02_s00")
     assert resolved["variation"]["variation_id"] == "cylinder_position_r02_c02_s00"
     assert resolved["variation"]["resolved"]["object_shape"] == "cylinder"
-    assert resolved["variation"]["resolved"]["object_dimensions_m"] == [0.055] * 3
+    assert resolved["variation"]["resolved"]["object_dimensions_m"] == [0.055, 0.055, 0.08]
     assert resolved["split"] == "test"
 
 
