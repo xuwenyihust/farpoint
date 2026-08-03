@@ -9,14 +9,21 @@ from farpoint.shape_collection import (
     build_shape_collection_selection,
     finish_shape_collection,
     impossible_reason,
+    load_shape_collection_policy,
     new_shape_collection_state,
     scheduled_shape_trials,
+    validate_shape_collection_policy,
 )
-from farpoint.shape_position import generate_shape_position_plan, load_shape_position_config
+from farpoint.shape_position import (
+    generate_shape_position_plan,
+    load_shape_position_config,
+    load_shape_position_plan,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs/variations/farpoint_v0_0_1_cylinder_position.json"
+POLICY = ROOT / "configs/collections/farpoint_v0_0_1_cylinder_position.json"
 GIT_SHA = "a" * 40
 
 
@@ -54,6 +61,12 @@ def audited(trial, success=True):
         "failure_category": None if success else "pickup",
         "failure_reason": None if success else "task_failure",
     }
+
+
+def test_repository_cylinder_policy_matches_the_frozen_plan_and_payload():
+    policy = load_shape_collection_policy(POLICY)
+    plan = load_shape_position_plan(ROOT / policy["position_plan"])
+    validate_shape_collection_policy(policy, plan, ROOT)
 
 
 def test_schedule_is_slot_round_coverage_first():

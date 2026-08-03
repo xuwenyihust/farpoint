@@ -6,7 +6,7 @@
   "object_shape": "cylinder",
   "position_plan": "configs/plans/farpoint_v0_0_1_cylinder_position.json",
   "position_plan_sha256": "46e2befa7979d62a80d816409d2a0f0f5c17e70dc23cbcc30676d63eee25dc54",
-  "config_sha256": "87108a3f3f8594377f395e1c1e078b31d8a17aaaef3f8ce918b29b5a38c5a648",
+  "config_sha256": "2dbf790765a9e1f9c789e74c7505c82e15a51719bcd072d1a476ccd47fb3557a",
   "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0",
   "simulator_image_digest": "sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d",
   "simulator_payload": {
