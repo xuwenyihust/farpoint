@@ -33,6 +33,7 @@ spec.loader.exec_module(shared_scene)
 shared_cartesian_target = shared_scene.cartesian_pick_and_place_target
 physical_frame = 0
 pregrasp_hover_height = None
+PREGRASP_HOVER_CLEARANCE_METERS = 0.34
 
 
 def cylinder_cartesian_pick_and_place_target(
@@ -58,7 +59,10 @@ def cylinder_cartesian_pick_and_place_target(
         **kwargs,
     )
     if pregrasp_hover_height is None:
-        pregrasp_hover_height = float(pick_grasp_position[2]) + 0.22
+        pregrasp_hover_height = (
+            float(pick_grasp_position[2])
+            + PREGRASP_HOVER_CLEARANCE_METERS
+        )
     target = hold_pregrasp_hover(
         target,
         physical_frame=physical_frame,
