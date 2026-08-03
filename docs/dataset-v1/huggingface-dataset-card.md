@@ -4,72 +4,99 @@ license: cc-by-4.0
 library_name: lerobot
 task_categories:
 - robotics
+configs:
+- config_name: default
+  default: true
+  data_files:
+  - split: train
+    path: "data/**/*.parquet"
+- config_name: episode_metadata
+  data_files:
+  - split: train
+    path: "meta/episode_metadata.parquet"
 tags:
 - LeRobotDataset-v3
 - format:parquet
-- modality:tabular
+- modality:video
 - robotics
 - robot-learning
 - isaac-sim
-- lerobot
 - manipulation
 ---
 
 # Farpoint UR10e Robotiq 2F-85
 
-Farpoint UR10e Robotiq 2F-85 is a LeRobot-compatible dataset of physics-based
-robot manipulation episodes generated with the Farpoint simulation pipeline.
+Farpoint UR10e Robotiq 2F-85 is an experimental LeRobot v3 dataset of
+physics-based cube pick-and-place episodes generated with Isaac Sim and the
+Farpoint simulation pipeline.
 
 - Dataset: [farpoint-ur10e-robotiq-2f85](https://huggingface.co/datasets/wenyixu101/farpoint-ur10e-robotiq-2f85)
-- Source repository: [xuwenyihust/farpoint](https://github.com/xuwenyihust/farpoint)
+- Source: [xuwenyihust/farpoint](https://github.com/xuwenyihust/farpoint)
+- Dataset version: `v0.0.0`
+- Status: experimental baseline
 
-## License
+## Dataset summary
 
-The original Farpoint dataset content is released under the **Creative
-Commons Attribution 4.0 International (CC BY 4.0)** license:
+The release contains all 55 successful, dataset-valid episodes from an
+accepted cube-position collection:
 
-https://creativecommons.org/licenses/by/4.0/
+- Robot: Universal Robots UR10e
+- Gripper: Robotiq 2F-85
+- Task: contact-only cube pick, transport, and placement
+- Workspace: 0.26 m by 0.20 m, divided into a 5 by 5 position grid
+- Coverage: all 25 cells, with at least two successful episodes per cell
+- Collection outcome: 55 successful episodes from 66 task attempts (83.3%)
+- Public splits: 44 train, 6 validation, and 5 test episodes
+- Observation: front-camera RGB video and robot joint state
+- Action: commanded robot joint position
 
-You must provide appropriate credit, link to the license, and indicate if
-changes were made.
+The release includes every successful, dataset-valid collection episode. It
+does not hide failed attempts in the collection evidence, but failed attempts
+are not demonstrations and are not included in the LeRobot dataset.
 
-This license applies only to content that Farpoint has the right to license.
-Isaac Sim, NVIDIA Omniverse, NVIDIA-provided robot assets, textures, and
-other third-party components are not relicensed by Farpoint. Their use and
-redistribution remain subject to the original terms from their providers.
+The default Dataset Viewer configuration displays frame-level training data.
+Select the `episode_metadata` configuration to inspect one structured metadata
+row per episode. Public split counts follow the LeRobot episode ranges recorded
+in `meta/info.json`; the frame Viewer uses one physical `train` table because
+LeRobot stores all episode ranges in the same Parquet shard.
 
-## Data and format
+## Versioning
 
-See the Farpoint source repository's
-[`docs/dataset-v1/data-contract.md`](https://github.com/xuwenyihust/farpoint/blob/main/docs/dataset-v1/data-contract.md)
-for the data contract and LeRobot compatibility policy.
+Dataset versions are independent of the Farpoint GitHub repository and Python
+package version. The dataset records the exact Farpoint Git revision and
+simulation provenance used to generate each episode.
 
-The dataset is intended to be consumed independently of the source repository;
-the source repository contains the generation and validation pipeline, while
-this Hugging Face repository contains the released dataset artifacts.
-
-## Releases
-
-- `v1.0.0`: the original 12 successful legacy randomized episodes.
-- `v1.1.0`: 29 successful episodes, combining the original 12 episodes with 17
-  V1.1 profiled episodes. Legacy records are labeled
-  `farpoint_legacy_randomized_v0`; profiled records are labeled
-  `farpoint_v1_1_profiled` in `meta/episode_metadata.jsonl`.
-- `v1.1.1`: the same 29 episodes with Viewer-compatible metadata in
-  `meta/episode_metadata.parquet`.
-- `v1.2.0`: the same validated 29-episode corpus, published through the
-  reproducible Farpoint release pipeline with a Viewer-safe public package.
-
-The default revision tracks the latest release. Earlier releases remain
-available through their Hugging Face revision tags.
+`v0.0.0` is the first experimental clean baseline. No compatibility guarantee
+is made for future pre-1.0 dataset releases.
 
 ## Intended use
 
-The dataset is intended for robot learning research, simulation evaluation,
-benchmarking, and development of data pipelines. It is not a guarantee of
-real-world robot performance or safety.
+This dataset is intended for robot-learning data pipeline development,
+behavior-cloning experiments, simulation evaluation, and analysis of
+position-conditioned manipulation. Its small scale and simulation-only origin
+make it unsuitable as a standalone foundation for real-world robot deployment.
+
+## License
+
+Farpoint-authored dataset content is released under the Creative Commons
+Attribution 4.0 International license (CC BY 4.0):
+
+https://creativecommons.org/licenses/by/4.0/
+
+This license applies only to content that Farpoint has the right to license.
+Isaac Sim, NVIDIA Omniverse, NVIDIA-provided robot assets, textures, and other
+third-party components are not relicensed or redistributed by Farpoint. Their
+use remains subject to the original provider terms.
+
+## Limitations
+
+- Simulation-only data; no sim-to-real performance is claimed.
+- One robot and gripper configuration.
+- One cube shape and one task family.
+- Position variation is broader than other scene variation dimensions.
+- Successful demonstrations only; failures remain in collection evidence.
 
 ## Attribution
 
-Please cite the Farpoint repository and identify the dataset release version
-used in your work.
+Please cite the Farpoint source repository and identify the dataset repository
+and revision used in your work.

@@ -15,6 +15,7 @@ import release_dataset  # noqa: E402
 def release_fixture(tmp_path: Path, spec: dict, *, accepted: bool = True, revision: str = "abc123"):
     (tmp_path / "canonical").mkdir()
     (tmp_path / "public").mkdir()
+    (tmp_path / "public" / "README.md").write_text("# Dataset\n")
     manifest = {
         "dataset_version": spec["dataset_version"],
         "dataset_tag": spec["dataset_tag"],
@@ -54,6 +55,20 @@ def test_coverage_first_collection_release_is_accepted_without_yield_acceptance(
     assert release_dataset.evidence_accepted(evidence) is True
 
 
+def test_public_release_audit_requires_dataset_card(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        release_dataset,
+        "audit_viewer_package",
+        lambda _: {"valid": True, "errors": []},
+    )
+    missing = release_dataset.audit_public_release_package(tmp_path)
+    assert missing["valid"] is False
+    assert missing["errors"] == ["missing Dataset Card: README.md"]
+
+    (tmp_path / "README.md").write_text("# Dataset\n")
+    assert release_dataset.audit_public_release_package(tmp_path)["valid"] is True
+
+
 def test_stage_rejects_unknown_code_revision(tmp_path, successful_audits):
     spec = release_dataset.load_release_spec()
     release_fixture(tmp_path, spec, revision="unknown")
@@ -64,7 +79,7 @@ def test_stage_rejects_unknown_code_revision(tmp_path, successful_audits):
 def test_publish_requires_exact_version_confirmation(tmp_path):
     spec = release_dataset.load_release_spec()
     with pytest.raises(ValueError, match="confirmation must exactly match"):
-        release_dataset.publish_staged_release(tmp_path, spec, "v0.0.0")
+        release_dataset.publish_staged_release(tmp_path, spec, "not-the-dataset-tag")
 
 
 def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeypatch):
@@ -87,6 +102,39 @@ def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeyp
     )
     with pytest.raises(ValueError, match="staged release is no longer valid"):
         release_dataset.publish_staged_release(tmp_path, spec, spec["dataset_tag"])
+
+
+def test_upload_rc_requires_matching_dataset_version(tmp_path):
+    spec = release_dataset.load_release_spec()
+    with pytest.raises(ValueError, match="RC revision must match"):
+        release_dataset.upload_release_candidate(tmp_path, spec, "v9.9.9-rc1")
+
+
+def test_upload_rc_uses_isolated_revision(tmp_path, successful_audits, monkeypatch):
+    spec = release_dataset.load_release_spec()
+    manifest = release_fixture(tmp_path, spec)
+    release_dataset.write_json(
+        tmp_path / "stage.json",
+        {
+            "status": "READY",
+            "dataset_tag": spec["dataset_tag"],
+            "code_revision": manifest["code_revision"],
+            "release_spec_sha256": manifest["release_spec_sha256"],
+        },
+    )
+    calls = []
+
+    def upload(package, repo_id, revision):
+        calls.append((package, repo_id, revision))
+        return {"commit": "hub-commit", "revision": revision}
+
+    monkeypatch.setattr(release_dataset, "upload_huggingface_rc", upload)
+    revision = f"{spec['dataset_tag']}-rc1"
+    result = release_dataset.upload_release_candidate(tmp_path, spec, revision)
+
+    assert result["revision"] == revision
+    assert calls == [(tmp_path / "public", spec["hf_repo_id"], revision)]
+    assert json.loads((tmp_path / "rc.json").read_text())["commit"] == "hub-commit"
 
 
 def test_v2_release_requires_collection_or_benchmark_manifest(tmp_path, monkeypatch):
@@ -193,6 +241,7 @@ def test_validate_release_accepts_collection_evidence(tmp_path, monkeypatch):
     (tmp_path / "canonical" / "meta").mkdir(parents=True)
     (tmp_path / "canonical" / "meta" / "farpoint_v2.json").write_text("{}")
     (tmp_path / "public").mkdir()
+    (tmp_path / "public" / "README.md").write_text("# Dataset\n")
     collection = {
         "schema_version": "farpoint.collection.v1",
         "acceptance": {"accepted": True},

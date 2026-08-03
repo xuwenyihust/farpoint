@@ -18,6 +18,16 @@ def test_current_release_spec_is_consistent():
     assert check_versions() == []
 
 
+def test_current_dataset_card_separates_frames_from_metadata_in_viewer():
+    spec = load_release_spec()
+    project_root = Path(__file__).resolve().parents[1]
+    card = project_root.joinpath(spec["dataset_card"]).read_text()
+
+    assert 'path: "data/**/*.parquet"' in card
+    assert "config_name: episode_metadata" in card
+    assert 'path: "meta/episode_metadata.parquet"' in card
+
+
 def test_release_spec_rejects_prefixed_version(tmp_path):
     path = tmp_path / "dataset-release.toml"
     path.write_text(
