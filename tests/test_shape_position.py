@@ -78,8 +78,8 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "bilateral_contact_min_finger_position_radians": 0.12,
         "unilateral_force_limit_newtons": 1000.0,
         "unilateral_force_backoff_radians": 0.00001,
-        "bilateral_force_limit_newtons": 100.0,
-        "bilateral_hold_max_force_newtons": 100.0,
+        "bilateral_force_limit_newtons": 1000.0,
+        "bilateral_hold_max_force_newtons": 1000.0,
         "bilateral_force_backoff_radians": 0.00001,
     }
     assert configured["scene"]["pick_object"]["position"] == resolved["variation"]["resolved"]["object_position_m"]
