@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when release-facing versions drift from release.toml."""
+"""Validate the independent Farpoint code and dataset version sources."""
 
 from __future__ import annotations
 
@@ -23,18 +23,21 @@ def check_versions(spec_path: Path = DEFAULT_RELEASE_SPEC) -> list[str]:
     spec = load_release_spec(spec_path)
     with (PROJECT_ROOT / "pyproject.toml").open("rb") as handle:
         package_version = tomllib.load(handle)["project"]["version"]
-    expected = spec["version"]
     errors = []
-    if package_version != expected:
-        errors.append(f"pyproject.toml version is {package_version}, expected {expected}")
-    if __version__ != expected:
-        errors.append(f"farpoint.__version__ is {__version__}, expected {expected}")
-    card = (PROJECT_ROOT / "docs" / "dataset-v1" / "huggingface-dataset-card.md").read_text(
-        encoding="utf-8"
+    if package_version != __version__:
+        errors.append(
+            f"Farpoint code version differs: pyproject.toml={package_version}, "
+            f"farpoint.__version__={__version__}"
+        )
+    card_path = PROJECT_ROOT / spec["dataset_card"]
+    if not card_path.is_file():
+        errors.append(f"dataset card does not exist: {spec['dataset_card']}")
+    elif f"`{spec['dataset_tag']}`" not in card_path.read_text(encoding="utf-8"):
+        errors.append(f"Dataset Card does not document {spec['dataset_tag']}")
+    legacy_script = PROJECT_ROOT / "scripts" / (
+        f"release_farpoint_v{spec['dataset_version'].replace('.', '_')}.py"
     )
-    if f"`{spec['tag']}`" not in card:
-        errors.append(f"Dataset Card does not document {spec['tag']}")
-    if (PROJECT_ROOT / "scripts" / f"release_farpoint_v{expected.replace('.', '_')}.py").exists():
+    if legacy_script.exists():
         errors.append("release script filename must not contain the release version")
     return errors
 
@@ -49,7 +52,10 @@ def main() -> int:
             print(f"VERSION_ERROR: {error}")
         return 1
     spec = load_release_spec(args.release_spec)
-    print(f"VERSION_OK: {spec['tag']}")
+    print(
+        f"VERSION_OK: code={__version__} "
+        f"dataset={spec['hf_repo_id']}@{spec['dataset_tag']}"
+    )
     return 0
 
 

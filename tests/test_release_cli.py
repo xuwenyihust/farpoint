@@ -16,7 +16,8 @@ def release_fixture(tmp_path: Path, spec: dict, *, accepted: bool = True, revisi
     (tmp_path / "canonical").mkdir()
     (tmp_path / "public").mkdir()
     manifest = {
-        "release_version": spec["tag"],
+        "dataset_version": spec["dataset_version"],
+        "dataset_tag": spec["dataset_tag"],
         "dataset_id": spec["dataset_id"],
         "hf_repo_id": spec["hf_repo_id"],
         "code_revision": revision,
@@ -73,7 +74,8 @@ def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeyp
         tmp_path / "stage.json",
         {
             "status": "READY",
-            "release_version": spec["tag"],
+            "dataset_version": spec["dataset_version"],
+            "dataset_tag": spec["dataset_tag"],
             "code_revision": manifest["code_revision"],
             "release_spec_sha256": manifest["release_spec_sha256"],
         },
@@ -84,7 +86,7 @@ def test_publish_revalidates_staged_release(tmp_path, successful_audits, monkeyp
         lambda *_: {"valid": False, "errors": ["viewer failed"]},
     )
     with pytest.raises(ValueError, match="staged release is no longer valid"):
-        release_dataset.publish_staged_release(tmp_path, spec, spec["tag"])
+        release_dataset.publish_staged_release(tmp_path, spec, spec["dataset_tag"])
 
 
 def test_v2_release_requires_collection_or_benchmark_manifest(tmp_path, monkeypatch):
@@ -151,7 +153,8 @@ def test_validate_release_rejects_mismatched_v2_benchmark(tmp_path, monkeypatch)
     release_dataset.write_json(
         tmp_path / "release.json",
         {
-            "release_version": spec["tag"],
+            "dataset_version": spec["dataset_version"],
+            "dataset_tag": spec["dataset_tag"],
             "dataset_id": spec["dataset_id"],
             "hf_repo_id": spec["hf_repo_id"],
             "code_revision": "abc123",
@@ -198,7 +201,8 @@ def test_validate_release_accepts_collection_evidence(tmp_path, monkeypatch):
     release_dataset.write_json(
         tmp_path / "release.json",
         {
-            "release_version": spec["tag"],
+            "dataset_version": spec["dataset_version"],
+            "dataset_tag": spec["dataset_tag"],
             "dataset_id": spec["dataset_id"],
             "hf_repo_id": spec["hf_repo_id"],
             "code_revision": "abc123",

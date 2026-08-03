@@ -6,7 +6,8 @@ Machine-specific values belong in ignored local files or environment variables.
 Recommended configuration layers:
 
 - `tasks/`: simulation task definitions
-- `datasets/`: dataset release settings
+- `datasets/`: one independent release specification per Hugging Face dataset;
+  dataset versions do not define the Farpoint code version
 - `benchmarks/`: benchmark acceptance thresholds
 - `collections/`: resource budgets, source imports, coverage, and stopping rules
 - `machines/`: local examples only; do not commit private hostnames or tokens

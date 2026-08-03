@@ -5,20 +5,24 @@ benchmark, dataset, and Hugging Face releases.
 
 ## Version policy
 
-`release.toml` is the only manually edited source for the current public
-release version and dataset identity. Package metadata, Dataset Cards, release
-manifests, Git tags, and Hugging Face tags must agree with it.
+Farpoint code and Farpoint datasets are independent products with independent
+release histories:
 
-Release versions use `MAJOR.MINOR.PATCH` in `release.toml` and `vMAJOR.MINOR.PATCH`
-for Git and Hugging Face tags. Schema versions are independent compatibility
-contracts and do not follow the release number.
+- The GitHub repository and Python package use the Farpoint code version from
+  `pyproject.toml` and `farpoint.__version__`.
+- Each Hugging Face dataset has its own specification under `configs/datasets/`,
+  including its `dataset_version`, Hub repository, schemas, and Dataset Card.
+- Schema versions are compatibility contracts and are independent of both code
+  and dataset versions.
 
-For example, a feature branch may introduce `farpoint.dataset.v2` while the
-published release remains `1.2.0`. Only the final release PR changes
-`release.toml`; contract, pilot, and benchmark PRs must not pre-bump it.
+A dataset release such as
+`wenyixu101/farpoint-ur10e-robotiq-2f85@v1.3.0` records the exact generating Git
+commit, but it does not change the Farpoint package to `1.3.0` and does not
+require a Git tag named `v1.3.0`. Future datasets use separate release specs and
+may advance at different rates while sharing this repository.
 
-The release currently recorded in `release.toml` is the published baseline.
-Ordinary feature PRs do not bump it; the next version is selected in a release PR.
+Only a dataset release PR changes that dataset's specification. Contract,
+pilot, benchmark, and collection PRs do not pre-bump a dataset version.
 
 ## Code workflow
 
@@ -59,12 +63,16 @@ episode IDs, artifact completeness, and distinct execution and quality states.
 4. Run `validate`, then `stage`; neither command uploads data.
 5. QA the Dataset Card, LeRobot loader, Viewer `/is-valid`, and first rows on a
    staging revision or staging dataset.
-6. Open a release PR containing the version change, card, release notes, manifest,
+6. Open a dataset release PR containing that dataset's version change, card,
+   release notes, manifest,
    benchmark links, and validation evidence.
 7. After the owner merges and separately approves publishing, run `publish`
    with the exact confirmed version.
-8. Verify the Hugging Face tag, Dataset Viewer, downloadable artifacts, and
+8. Verify the dataset's Hugging Face tag, Dataset Viewer, downloadable artifacts, and
    LeRobot loading from the published revision.
+
+Dataset publication does not create a Git tag. Farpoint code releases follow a
+separate package release process and may use their own Git tags.
 
 ## State model
 
