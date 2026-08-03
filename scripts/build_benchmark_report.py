@@ -540,7 +540,7 @@ def fmt_metric(value, suffix="", digits=3):
     return f"{float(value):.{digits}f}{suffix}"
 
 
-def build_report(manifest_path):
+def build_report(manifest_path, display_name=None):
     raw_manifest = read_json(manifest_path)
     if raw_manifest.get("schema_version") == "farpoint.benchmark.v2":
         run_state_path = manifest_path.parent / "run-state.json"
@@ -555,6 +555,7 @@ def build_report(manifest_path):
             ]
     manifest = normalize_manifest(raw_manifest)
     benchmark_id = manifest["benchmark_id"]
+    display_name = (display_name or benchmark_id).strip()
     report_dir = REPORTS_ROOT / "benchmarks" / benchmark_id
     report_dir.mkdir(parents=True, exist_ok=True)
     trials = [load_trial(trial, report_dir) for trial in manifest.get("trials", [])]
@@ -747,7 +748,7 @@ def build_report(manifest_path):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(benchmark_id)} | Farpoint</title>
+  <title>{html.escape(display_name)} | Farpoint</title>
   <style>
     :root {{
       --ink: #172026; --muted: #5b6873; --line: #d7e0e5; --panel: #fff;
@@ -806,10 +807,11 @@ def build_report(manifest_path):
   </style>
 </head>
 <body>
-  {report_navigation(benchmark_id)}
+  {report_navigation(display_name)}
   <header>
-    <h1>{html.escape(benchmark_id)}</h1>
+    <h1>{html.escape(display_name)}</h1>
     <p>{html.escape(summary["task_name"].replace("_", " ").title())}</p>
+    <p>{report_label} ID: <code>{html.escape(benchmark_id)}</code></p>
   </header>
   <main>
     <section class="metrics">
@@ -908,8 +910,9 @@ def build_report(manifest_path):
 def main():
     parser = argparse.ArgumentParser(description="Build a static randomized benchmark report.")
     parser.add_argument("manifest", type=Path)
+    parser.add_argument("--display-name")
     args = parser.parse_args()
-    build_report(args.manifest.resolve())
+    build_report(args.manifest.resolve(), display_name=args.display_name)
 
 
 if __name__ == "__main__":

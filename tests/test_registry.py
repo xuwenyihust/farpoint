@@ -110,6 +110,34 @@ class EpisodeRegistryTests(unittest.TestCase):
             self.assertEqual(row["record_type"], "COLLECTION")
             self.assertEqual(row["status"], "PILOT")
 
+    def test_local_display_name_is_exposed_without_changing_collection_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outputs = Path(directory) / "outputs"
+            write_json(
+                outputs / "benchmarks" / "collection-id" / "run-state.json",
+                {
+                    "schema_version": "farpoint.collection-run.v1",
+                    "collection_id": "collection-id",
+                    "task_id": "task",
+                    "execution_status": "RUNNING",
+                    "attempts": [],
+                },
+            )
+            write_json(
+                outputs / ".data-platform" / "display-names.json",
+                {
+                    "schema_version": "farpoint.display-names.v1",
+                    "records": {"collection-id": "UR10e Cube Position Collection"},
+                },
+            )
+
+            registry = EpisodeRegistry(outputs)
+            registry.scan()
+            row = registry.list_benchmarks()[0]
+
+            self.assertEqual(row["benchmark_id"], "collection-id")
+            self.assertEqual(row["display_name"], "UR10e Cube Position Collection")
+
     def test_scans_terminal_incomplete_corrupt_and_running_records(self):
         with tempfile.TemporaryDirectory() as directory:
             outputs = Path(directory) / "outputs"
