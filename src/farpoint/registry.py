@@ -151,6 +151,7 @@ CREATE INDEX IF NOT EXISTS episodes_filter_idx
 ON episodes(status, task_name, benchmark_id, seed, started_at);
 CREATE TABLE IF NOT EXISTS benchmarks (
     benchmark_id TEXT PRIMARY KEY,
+    display_name TEXT,
     record_type TEXT NOT NULL DEFAULT 'BENCHMARK',
     task_name TEXT,
     task_type TEXT,
@@ -213,6 +214,8 @@ class EpisodeRegistry:
             connection.execute(
                 "ALTER TABLE benchmarks ADD COLUMN record_type TEXT NOT NULL DEFAULT 'BENCHMARK'"
             )
+        if "display_name" not in benchmark_columns:
+            connection.execute("ALTER TABLE benchmarks ADD COLUMN display_name TEXT")
         connection.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
             (str(SCHEMA_VERSION),),
@@ -436,7 +439,9 @@ class EpisodeRegistry:
         acceptance = manifest.get("acceptance") or {}
         collection = manifest.get("schema_version") in {
             "farpoint.collection.v1",
+            "farpoint.collection.v2",
             "farpoint.collection-run.v1",
+            "farpoint.collection-state.v2",
         }
         completed = int(
             manifest.get("completed_trials")
@@ -480,11 +485,16 @@ class EpisodeRegistry:
         report = self.layout.reports / "benchmarks" / benchmark_id / "index.html"
         return {
             "benchmark_id": benchmark_id,
+            "display_name": manifest.get("display_name") or runtime.get("display_name"),
             "record_type": "COLLECTION" if collection else "BENCHMARK",
             "task_name": manifest.get("task_name") or manifest.get("task_id"),
             "task_type": manifest.get("task_type")
             or runtime.get("task_type")
-            or ("cube_position_collection" if collection else None),
+            or (
+                f"{manifest.get('object_shape') or runtime.get('object_shape') or 'position'}_position_collection"
+                if collection
+                else None
+            ),
             "status": status,
             "created_at": manifest.get("created_at") or runtime.get("created_at"),
             "finished_at": manifest.get("finished_at") or runtime.get("finished_at"),
@@ -620,7 +630,9 @@ class EpisodeRegistry:
         return [
             {
                 **dict(row),
-                "display_name": display_names.get(row["benchmark_id"]),
+                "display_name": display_names.get(row["benchmark_id"])
+                or row["display_name"]
+                or row["benchmark_id"],
             }
             for row in rows
         ]

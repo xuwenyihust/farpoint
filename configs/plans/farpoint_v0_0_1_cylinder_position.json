@@ -1,0 +1,3211 @@
+{
+  "config_revision": "1",
+  "config_sha256": "3d481e8591e3c4d8e51a98aee1be5c517dbd032eb818826d6dba7ca105e1288c",
+  "frozen_factors": {
+    "appearance_profile_id": "red_default_v1",
+    "camera_profile_id": "front_rgbd_640x360_v1",
+    "controller_profile_id": "hybrid_rmpflow_lula_ik_v1",
+    "lighting_profile_id": "distant_1000_v1",
+    "material_id": "high_friction_default_v1",
+    "object_dimensions_m": [
+      0.055,
+      0.055,
+      0.055
+    ],
+    "object_height_m": 0.055,
+    "object_initial_z_m": 0.5,
+    "object_mass_kg": 0.08,
+    "object_radius_m": 0.0275,
+    "object_shape": "cylinder",
+    "object_yaw_degrees": 0.0,
+    "physics_profile_id": "physx_contact_pickup_v1",
+    "recording_profile_id": "farpoint_multimodal_v1",
+    "robot_pose_profile_id": "ur10e_tabletop_v1",
+    "target_position_m": [
+      0.96,
+      -0.03,
+      0.42
+    ]
+  },
+  "grid": {
+    "candidates_per_cell": 6,
+    "columns": 5,
+    "interior_fraction": [
+      0.1,
+      0.9
+    ],
+    "rows": 5,
+    "x_bounds_m": [
+      0.84,
+      1.1
+    ],
+    "y_bounds_m": [
+      0.18,
+      0.38
+    ]
+  },
+  "language_instruction": "Use calibrated RGB-D observations to locate the cylinder and target, grasp the cylinder through Robotiq finger contact and friction only, and place it inside the target zone.",
+  "plan_id": "farpoint_v0_0_1_cylinder_position",
+  "plan_sha256": "2d7ad16e0b245a13f25c4b37e06a3179fda82127509abfb4ff70cd6694720c6c",
+  "planner_revision": "shape-position-grid-v1",
+  "planner_sha256": "15de24cc6cbe3eafa250c90593246016ffb27a569dcc181a3377b7ac980178a5",
+  "schema_version": "farpoint.position-plan.v1",
+  "task_id": "isaac_perception_contact_cylinder_scene",
+  "task_template_id": "isaac_perception_contact_scene",
+  "trials": [
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.845437112,
+        0.203366952
+      ],
+      "row": 0,
+      "seed": 6910026524040423266,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c00_s00",
+      "variation_id": "cylinder_position_r00_c00_s00"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.91135332,
+        0.196414085
+      ],
+      "row": 0,
+      "seed": 9046697525975385323,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r00_c01_s00",
+      "variation_id": "cylinder_position_r00_c01_s00"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.952477123,
+        0.19930501
+      ],
+      "row": 0,
+      "seed": 3734411682567765180,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "test",
+      "trial_id": "cylinder_r00_c02_s00",
+      "variation_id": "cylinder_position_r00_c02_s00"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.011007897,
+        0.197529309
+      ],
+      "row": 0,
+      "seed": 6920663956149606043,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r00_c03_s00",
+      "variation_id": "cylinder_position_r00_c03_s00"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.084033963,
+        0.187986589
+      ],
+      "row": 0,
+      "seed": 582985676772217135,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c04_s00",
+      "variation_id": "cylinder_position_r00_c04_s00"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.851036801,
+        0.225548237
+      ],
+      "row": 1,
+      "seed": 6150893885722087935,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r01_c00_s00",
+      "variation_id": "cylinder_position_r01_c00_s00"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.925991949,
+        0.233627175
+      ],
+      "row": 1,
+      "seed": 8552695541462866972,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r01_c01_s00",
+      "variation_id": "cylinder_position_r01_c01_s00"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.97460769,
+        0.232436691
+      ],
+      "row": 1,
+      "seed": 2660552185624246541,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r01_c02_s00",
+      "variation_id": "cylinder_position_r01_c02_s00"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.028559467,
+        0.241730328
+      ],
+      "row": 1,
+      "seed": 5594109676537239864,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r01_c03_s00",
+      "variation_id": "cylinder_position_r01_c03_s00"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.061568966,
+        0.239791433
+      ],
+      "row": 1,
+      "seed": 8025241901029768018,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r01_c04_s00",
+      "variation_id": "cylinder_position_r01_c04_s00"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.87089917,
+        0.26495682
+      ],
+      "row": 2,
+      "seed": 1958510152186458689,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "test",
+      "trial_id": "cylinder_r02_c00_s00",
+      "variation_id": "cylinder_position_r02_c00_s00"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.902026308,
+        0.27499595
+      ],
+      "row": 2,
+      "seed": 2395122331469639347,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r02_c01_s00",
+      "variation_id": "cylinder_position_r02_c01_s00"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.958566687,
+        0.289542597
+      ],
+      "row": 2,
+      "seed": 5934219967964824602,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "test",
+      "trial_id": "cylinder_r02_c02_s00",
+      "variation_id": "cylinder_position_r02_c02_s00"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.016405142,
+        0.293339119
+      ],
+      "row": 2,
+      "seed": 4166547241410254362,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r02_c03_s00",
+      "variation_id": "cylinder_position_r02_c03_s00"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.06027126,
+        0.273256067
+      ],
+      "row": 2,
+      "seed": 7469125249813259150,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "test",
+      "trial_id": "cylinder_r02_c04_s00",
+      "variation_id": "cylinder_position_r02_c04_s00"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.858625304,
+        0.313201611
+      ],
+      "row": 3,
+      "seed": 2675403205101382185,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r03_c00_s00",
+      "variation_id": "cylinder_position_r03_c00_s00"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.906547993,
+        0.30708611
+      ],
+      "row": 3,
+      "seed": 8832172711717767820,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r03_c01_s00",
+      "variation_id": "cylinder_position_r03_c01_s00"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.968593896,
+        0.332531074
+      ],
+      "row": 3,
+      "seed": 1559565592650465942,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r03_c02_s00",
+      "variation_id": "cylinder_position_r03_c02_s00"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.012643329,
+        0.328247471
+      ],
+      "row": 3,
+      "seed": 607253535248292078,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r03_c03_s00",
+      "variation_id": "cylinder_position_r03_c03_s00"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.070207747,
+        0.328651084
+      ],
+      "row": 3,
+      "seed": 233618595721667104,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r03_c04_s00",
+      "variation_id": "cylinder_position_r03_c04_s00"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.871159316,
+        0.35257481
+      ],
+      "row": 4,
+      "seed": 7258129972290272381,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c00_s00",
+      "variation_id": "cylinder_position_r04_c00_s00"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.922540352,
+        0.366007195
+      ],
+      "row": 4,
+      "seed": 2434734153254253104,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r04_c01_s00",
+      "variation_id": "cylinder_position_r04_c01_s00"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.969210954,
+        0.359125568
+      ],
+      "row": 4,
+      "seed": 8508401964681086985,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r04_c02_s00",
+      "variation_id": "cylinder_position_r04_c02_s00"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.007056699,
+        0.34551179
+      ],
+      "row": 4,
+      "seed": 401024397813211095,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "train",
+      "trial_id": "cylinder_r04_c03_s00",
+      "variation_id": "cylinder_position_r04_c03_s00"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.059177769,
+        0.370886695
+      ],
+      "row": 4,
+      "seed": 6626167097656354648,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 0
+      },
+      "slot": 0,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c04_s00",
+      "variation_id": "cylinder_position_r04_c04_s00"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.870727833,
+        0.207373989
+      ],
+      "row": 0,
+      "seed": 2629751388269137962,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c00_s01",
+      "variation_id": "cylinder_position_r00_c00_s01"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.92688778,
+        0.209121297
+      ],
+      "row": 0,
+      "seed": 8763319439954772106,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r00_c01_s01",
+      "variation_id": "cylinder_position_r00_c01_s01"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.952419212,
+        0.188108017
+      ],
+      "row": 0,
+      "seed": 1520088627213146714,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "test",
+      "trial_id": "cylinder_r00_c02_s01",
+      "variation_id": "cylinder_position_r00_c02_s01"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.017888101,
+        0.193809586
+      ],
+      "row": 0,
+      "seed": 9004921883493380474,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r00_c03_s01",
+      "variation_id": "cylinder_position_r00_c03_s01"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.064873912,
+        0.187343036
+      ],
+      "row": 0,
+      "seed": 2123186916475382667,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c04_s01",
+      "variation_id": "cylinder_position_r00_c04_s01"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.867592663,
+        0.24722259
+      ],
+      "row": 1,
+      "seed": 2786647604584091668,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r01_c00_s01",
+      "variation_id": "cylinder_position_r01_c00_s01"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.928173558,
+        0.232390446
+      ],
+      "row": 1,
+      "seed": 5023155700510083919,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r01_c01_s01",
+      "variation_id": "cylinder_position_r01_c01_s01"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.966090576,
+        0.243478261
+      ],
+      "row": 1,
+      "seed": 7425670224041312925,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r01_c02_s01",
+      "variation_id": "cylinder_position_r01_c02_s01"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.026328013,
+        0.248849551
+      ],
+      "row": 1,
+      "seed": 4510572929187264542,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r01_c03_s01",
+      "variation_id": "cylinder_position_r01_c03_s01"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.084922597,
+        0.2275683
+      ],
+      "row": 1,
+      "seed": 7227008290344607919,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r01_c04_s01",
+      "variation_id": "cylinder_position_r01_c04_s01"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.865511338,
+        0.288741829
+      ],
+      "row": 2,
+      "seed": 2234004384135582359,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "test",
+      "trial_id": "cylinder_r02_c00_s01",
+      "variation_id": "cylinder_position_r02_c00_s01"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.920168824,
+        0.278033414
+      ],
+      "row": 2,
+      "seed": 8854743596897295587,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r02_c01_s01",
+      "variation_id": "cylinder_position_r02_c01_s01"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.972887739,
+        0.289321927
+      ],
+      "row": 2,
+      "seed": 3857936691989195221,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "test",
+      "trial_id": "cylinder_r02_c02_s01",
+      "variation_id": "cylinder_position_r02_c02_s01"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.027544224,
+        0.292950452
+      ],
+      "row": 2,
+      "seed": 8074753914995838492,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r02_c03_s01",
+      "variation_id": "cylinder_position_r02_c03_s01"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.084908151,
+        0.273315519
+      ],
+      "row": 2,
+      "seed": 805132203736227052,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "test",
+      "trial_id": "cylinder_r02_c04_s01",
+      "variation_id": "cylinder_position_r02_c04_s01"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.880470213,
+        0.309873788
+      ],
+      "row": 3,
+      "seed": 3223533369674793514,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r03_c00_s01",
+      "variation_id": "cylinder_position_r03_c00_s01"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.925120236,
+        0.320679128
+      ],
+      "row": 3,
+      "seed": 321502035766282962,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r03_c01_s01",
+      "variation_id": "cylinder_position_r03_c01_s01"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.98090716,
+        0.332184864
+      ],
+      "row": 3,
+      "seed": 1792578505743758731,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r03_c02_s01",
+      "variation_id": "cylinder_position_r03_c02_s01"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.032354585,
+        0.319735319
+      ],
+      "row": 3,
+      "seed": 2399051882566255411,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r03_c03_s01",
+      "variation_id": "cylinder_position_r03_c03_s01"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.072523033,
+        0.310863101
+      ],
+      "row": 3,
+      "seed": 7707818087345812840,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r03_c04_s01",
+      "variation_id": "cylinder_position_r03_c04_s01"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.860685779,
+        0.352153065
+      ],
+      "row": 4,
+      "seed": 5643768579484275567,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c00_s01",
+      "variation_id": "cylinder_position_r04_c00_s01"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.903659136,
+        0.345711178
+      ],
+      "row": 4,
+      "seed": 7053589362798808290,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r04_c01_s01",
+      "variation_id": "cylinder_position_r04_c01_s01"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.952223212,
+        0.373526988
+      ],
+      "row": 4,
+      "seed": 7742451914362911761,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r04_c02_s01",
+      "variation_id": "cylinder_position_r04_c02_s01"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.010126806,
+        0.345575225
+      ],
+      "row": 4,
+      "seed": 6379557845436475632,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "train",
+      "trial_id": "cylinder_r04_c03_s01",
+      "variation_id": "cylinder_position_r04_c03_s01"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.079073612,
+        0.353772247
+      ],
+      "row": 4,
+      "seed": 7780380694551103350,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 1
+      },
+      "slot": 1,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c04_s01",
+      "variation_id": "cylinder_position_r04_c04_s01"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.882490067,
+        0.184155192
+      ],
+      "row": 0,
+      "seed": 3132163686704932434,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c00_s02",
+      "variation_id": "cylinder_position_r00_c00_s02"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.9307032,
+        0.19515596
+      ],
+      "row": 0,
+      "seed": 8203371472169303170,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r00_c01_s02",
+      "variation_id": "cylinder_position_r00_c01_s02"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.981128287,
+        0.198392604
+      ],
+      "row": 0,
+      "seed": 4744967370225565205,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "test",
+      "trial_id": "cylinder_r00_c02_s02",
+      "variation_id": "cylinder_position_r00_c02_s02"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.006324604,
+        0.194466036
+      ],
+      "row": 0,
+      "seed": 761964306898472786,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r00_c03_s02",
+      "variation_id": "cylinder_position_r00_c03_s02"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.080912996,
+        0.18527529
+      ],
+      "row": 0,
+      "seed": 4607684191207420784,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c04_s02",
+      "variation_id": "cylinder_position_r00_c04_s02"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.87959013,
+        0.231035906
+      ],
+      "row": 1,
+      "seed": 5453124972436437957,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r01_c00_s02",
+      "variation_id": "cylinder_position_r01_c00_s02"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.906308498,
+        0.23054016
+      ],
+      "row": 1,
+      "seed": 7990324324052848667,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r01_c01_s02",
+      "variation_id": "cylinder_position_r01_c01_s02"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.980385206,
+        0.239533387
+      ],
+      "row": 1,
+      "seed": 407226228107733377,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r01_c02_s02",
+      "variation_id": "cylinder_position_r01_c02_s02"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.036749622,
+        0.230240715
+      ],
+      "row": 1,
+      "seed": 7407185493797496446,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r01_c03_s02",
+      "variation_id": "cylinder_position_r01_c03_s02"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.072459459,
+        0.247378505
+      ],
+      "row": 1,
+      "seed": 370123468221102020,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r01_c04_s02",
+      "variation_id": "cylinder_position_r01_c04_s02"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.872406079,
+        0.295613337
+      ],
+      "row": 2,
+      "seed": 8612455810547444419,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "test",
+      "trial_id": "cylinder_r02_c00_s02",
+      "variation_id": "cylinder_position_r02_c00_s02"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.914293392,
+        0.279442037
+      ],
+      "row": 2,
+      "seed": 6739459938044475342,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r02_c01_s02",
+      "variation_id": "cylinder_position_r02_c01_s02"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.979815494,
+        0.288031142
+      ],
+      "row": 2,
+      "seed": 2682935556636108062,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "test",
+      "trial_id": "cylinder_r02_c02_s02",
+      "variation_id": "cylinder_position_r02_c02_s02"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.032999899,
+        0.281295428
+      ],
+      "row": 2,
+      "seed": 1849948708399231664,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r02_c03_s02",
+      "variation_id": "cylinder_position_r02_c03_s02"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.065138473,
+        0.288061139
+      ],
+      "row": 2,
+      "seed": 5253042014363607777,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "test",
+      "trial_id": "cylinder_r02_c04_s02",
+      "variation_id": "cylinder_position_r02_c04_s02"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.884198345,
+        0.327836942
+      ],
+      "row": 3,
+      "seed": 3639284845932186510,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r03_c00_s02",
+      "variation_id": "cylinder_position_r03_c00_s02"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.898233649,
+        0.32550806
+      ],
+      "row": 3,
+      "seed": 8187241188253606107,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r03_c01_s02",
+      "variation_id": "cylinder_position_r03_c01_s02"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.980024584,
+        0.318435842
+      ],
+      "row": 3,
+      "seed": 7737554719878115271,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r03_c02_s02",
+      "variation_id": "cylinder_position_r03_c02_s02"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.013964626,
+        0.316530116
+      ],
+      "row": 3,
+      "seed": 3273150435893508406,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r03_c03_s02",
+      "variation_id": "cylinder_position_r03_c03_s02"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.081523145,
+        0.322936763
+      ],
+      "row": 3,
+      "seed": 7159616703341411445,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r03_c04_s02",
+      "variation_id": "cylinder_position_r03_c04_s02"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.868693022,
+        0.346088901
+      ],
+      "row": 4,
+      "seed": 3100807405896689901,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c00_s02",
+      "variation_id": "cylinder_position_r04_c00_s02"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.903799694,
+        0.370763664
+      ],
+      "row": 4,
+      "seed": 6992401934346845149,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r04_c01_s02",
+      "variation_id": "cylinder_position_r04_c01_s02"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.95524471,
+        0.349692364
+      ],
+      "row": 4,
+      "seed": 7916157199265996035,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r04_c02_s02",
+      "variation_id": "cylinder_position_r04_c02_s02"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.024589563,
+        0.35247044
+      ],
+      "row": 4,
+      "seed": 3346830153868809855,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "train",
+      "trial_id": "cylinder_r04_c03_s02",
+      "variation_id": "cylinder_position_r04_c03_s02"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.077502646,
+        0.367976613
+      ],
+      "row": 4,
+      "seed": 7482130732073084755,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 2
+      },
+      "slot": 2,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c04_s02",
+      "variation_id": "cylinder_position_r04_c04_s02"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.881676464,
+        0.201989651
+      ],
+      "row": 0,
+      "seed": 3211520780474700662,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c00_s03",
+      "variation_id": "cylinder_position_r00_c00_s03"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.924892553,
+        0.205411204
+      ],
+      "row": 0,
+      "seed": 4111942823808622720,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r00_c01_s03",
+      "variation_id": "cylinder_position_r00_c01_s03"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.958069275,
+        0.214963257
+      ],
+      "row": 0,
+      "seed": 3360418383352943381,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "test",
+      "trial_id": "cylinder_r00_c02_s03",
+      "variation_id": "cylinder_position_r00_c02_s03"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.019549164,
+        0.210243802
+      ],
+      "row": 0,
+      "seed": 3687037018281204689,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r00_c03_s03",
+      "variation_id": "cylinder_position_r00_c03_s03"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.055325731,
+        0.189904301
+      ],
+      "row": 0,
+      "seed": 6817238774573337500,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c04_s03",
+      "variation_id": "cylinder_position_r00_c04_s03"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.881311792,
+        0.225142959
+      ],
+      "row": 1,
+      "seed": 5447410739451677525,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r01_c00_s03",
+      "variation_id": "cylinder_position_r01_c00_s03"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.905489616,
+        0.229478474
+      ],
+      "row": 1,
+      "seed": 2658768857017000555,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r01_c01_s03",
+      "variation_id": "cylinder_position_r01_c01_s03"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.952220841,
+        0.248670047
+      ],
+      "row": 1,
+      "seed": 5800384266312905512,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r01_c02_s03",
+      "variation_id": "cylinder_position_r01_c02_s03"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.036053733,
+        0.240022002
+      ],
+      "row": 1,
+      "seed": 7168458915020919191,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r01_c03_s03",
+      "variation_id": "cylinder_position_r01_c03_s03"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.066343679,
+        0.249906941
+      ],
+      "row": 1,
+      "seed": 3459108860772824121,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r01_c04_s03",
+      "variation_id": "cylinder_position_r01_c04_s03"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.862433435,
+        0.273943783
+      ],
+      "row": 2,
+      "seed": 84932592801259887,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "test",
+      "trial_id": "cylinder_r02_c00_s03",
+      "variation_id": "cylinder_position_r02_c00_s03"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.93758403,
+        0.266805065
+      ],
+      "row": 2,
+      "seed": 7975045982654077525,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r02_c01_s03",
+      "variation_id": "cylinder_position_r02_c01_s03"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.956781177,
+        0.289346045
+      ],
+      "row": 2,
+      "seed": 4884872685676751909,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "test",
+      "trial_id": "cylinder_r02_c02_s03",
+      "variation_id": "cylinder_position_r02_c02_s03"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.022381203,
+        0.287900494
+      ],
+      "row": 2,
+      "seed": 4773165860342891072,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r02_c03_s03",
+      "variation_id": "cylinder_position_r02_c03_s03"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.063613677,
+        0.271254756
+      ],
+      "row": 2,
+      "seed": 5228041194715627658,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "test",
+      "trial_id": "cylinder_r02_c04_s03",
+      "variation_id": "cylinder_position_r02_c04_s03"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.865344364,
+        0.333013541
+      ],
+      "row": 3,
+      "seed": 522732062455520678,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r03_c00_s03",
+      "variation_id": "cylinder_position_r03_c00_s03"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.921289076,
+        0.327913296
+      ],
+      "row": 3,
+      "seed": 19765260534874243,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r03_c01_s03",
+      "variation_id": "cylinder_position_r03_c01_s03"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.966374281,
+        0.324354792
+      ],
+      "row": 3,
+      "seed": 7437562609190202155,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r03_c02_s03",
+      "variation_id": "cylinder_position_r03_c02_s03"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.021750653,
+        0.332881529
+      ],
+      "row": 3,
+      "seed": 2799207634770284041,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r03_c03_s03",
+      "variation_id": "cylinder_position_r03_c03_s03"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.083547466,
+        0.333250631
+      ],
+      "row": 3,
+      "seed": 3698383382982547453,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r03_c04_s03",
+      "variation_id": "cylinder_position_r03_c04_s03"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.853815745,
+        0.367259022
+      ],
+      "row": 4,
+      "seed": 311685963270306222,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c00_s03",
+      "variation_id": "cylinder_position_r04_c00_s03"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.917229454,
+        0.368407871
+      ],
+      "row": 4,
+      "seed": 6466919683030130138,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r04_c01_s03",
+      "variation_id": "cylinder_position_r04_c01_s03"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.958425993,
+        0.344062561
+      ],
+      "row": 4,
+      "seed": 2697439147762565696,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r04_c02_s03",
+      "variation_id": "cylinder_position_r04_c02_s03"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.025468949,
+        0.371503309
+      ],
+      "row": 4,
+      "seed": 9075796853352206134,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "train",
+      "trial_id": "cylinder_r04_c03_s03",
+      "variation_id": "cylinder_position_r04_c03_s03"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.054248788,
+        0.367992619
+      ],
+      "row": 4,
+      "seed": 8109476827029029985,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 3
+      },
+      "slot": 3,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c04_s03",
+      "variation_id": "cylinder_position_r04_c04_s03"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.853771567,
+        0.208314919
+      ],
+      "row": 0,
+      "seed": 6402295725131377626,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c00_s04",
+      "variation_id": "cylinder_position_r00_c00_s04"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.920655944,
+        0.214381122
+      ],
+      "row": 0,
+      "seed": 9131228394121492904,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r00_c01_s04",
+      "variation_id": "cylinder_position_r00_c01_s04"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.964555939,
+        0.197134516
+      ],
+      "row": 0,
+      "seed": 3064647676321556872,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "test",
+      "trial_id": "cylinder_r00_c02_s04",
+      "variation_id": "cylinder_position_r00_c02_s04"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.019118495,
+        0.197978232
+      ],
+      "row": 0,
+      "seed": 8877291001155302512,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r00_c03_s04",
+      "variation_id": "cylinder_position_r00_c03_s04"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.074109687,
+        0.212831389
+      ],
+      "row": 0,
+      "seed": 5977543410945103088,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c04_s04",
+      "variation_id": "cylinder_position_r00_c04_s04"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.866583217,
+        0.237319073
+      ],
+      "row": 1,
+      "seed": 8729278045588854125,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r01_c00_s04",
+      "variation_id": "cylinder_position_r01_c00_s04"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.917738033,
+        0.234324298
+      ],
+      "row": 1,
+      "seed": 813891817046879065,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r01_c01_s04",
+      "variation_id": "cylinder_position_r01_c01_s04"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.974816589,
+        0.247319866
+      ],
+      "row": 1,
+      "seed": 5384756256226004402,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r01_c02_s04",
+      "variation_id": "cylinder_position_r01_c02_s04"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.01444516,
+        0.253462241
+      ],
+      "row": 1,
+      "seed": 469316072422428929,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r01_c03_s04",
+      "variation_id": "cylinder_position_r01_c03_s04"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.073128628,
+        0.232206505
+      ],
+      "row": 1,
+      "seed": 3415338109546438233,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r01_c04_s04",
+      "variation_id": "cylinder_position_r01_c04_s04"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.884588836,
+        0.293999886
+      ],
+      "row": 2,
+      "seed": 4421675652399532162,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "test",
+      "trial_id": "cylinder_r02_c00_s04",
+      "variation_id": "cylinder_position_r02_c00_s04"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.915071346,
+        0.283195859
+      ],
+      "row": 2,
+      "seed": 5863094112816554785,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r02_c01_s04",
+      "variation_id": "cylinder_position_r02_c01_s04"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.987438708,
+        0.267456277
+      ],
+      "row": 2,
+      "seed": 6262573251167194147,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "test",
+      "trial_id": "cylinder_r02_c02_s04",
+      "variation_id": "cylinder_position_r02_c02_s04"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.036827354,
+        0.294220676
+      ],
+      "row": 2,
+      "seed": 1869500577456416717,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r02_c03_s04",
+      "variation_id": "cylinder_position_r02_c03_s04"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.081994766,
+        0.271845262
+      ],
+      "row": 2,
+      "seed": 8870799134660205889,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "test",
+      "trial_id": "cylinder_r02_c04_s04",
+      "variation_id": "cylinder_position_r02_c04_s04"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.85489689,
+        0.324463117
+      ],
+      "row": 3,
+      "seed": 7617669248301092204,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r03_c00_s04",
+      "variation_id": "cylinder_position_r03_c00_s04"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.920230505,
+        0.323755349
+      ],
+      "row": 3,
+      "seed": 2313561600012525678,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r03_c01_s04",
+      "variation_id": "cylinder_position_r03_c01_s04"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.984802015,
+        0.335016373
+      ],
+      "row": 3,
+      "seed": 1624708024883534083,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r03_c02_s04",
+      "variation_id": "cylinder_position_r03_c02_s04"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.034959568,
+        0.331041132
+      ],
+      "row": 3,
+      "seed": 7271777822744855751,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r03_c03_s04",
+      "variation_id": "cylinder_position_r03_c03_s04"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.072295285,
+        0.306622322
+      ],
+      "row": 3,
+      "seed": 3544762665850720478,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r03_c04_s04",
+      "variation_id": "cylinder_position_r03_c04_s04"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.853776656,
+        0.351769489
+      ],
+      "row": 4,
+      "seed": 2174828995253042788,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c00_s04",
+      "variation_id": "cylinder_position_r04_c00_s04"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.901396369,
+        0.368038091
+      ],
+      "row": 4,
+      "seed": 5446883542408047054,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r04_c01_s04",
+      "variation_id": "cylinder_position_r04_c01_s04"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.958039366,
+        0.373939914
+      ],
+      "row": 4,
+      "seed": 2924427161308981135,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r04_c02_s04",
+      "variation_id": "cylinder_position_r04_c02_s04"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.019696968,
+        0.349127754
+      ],
+      "row": 4,
+      "seed": 3253871601446750532,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "train",
+      "trial_id": "cylinder_r04_c03_s04",
+      "variation_id": "cylinder_position_r04_c03_s04"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.083864206,
+        0.351156308
+      ],
+      "row": 4,
+      "seed": 8642627706617602636,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 4
+      },
+      "slot": 4,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c04_s04",
+      "variation_id": "cylinder_position_r04_c04_s04"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.855628991,
+        0.197739806
+      ],
+      "row": 0,
+      "seed": 4620245943092088950,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c00_s05",
+      "variation_id": "cylinder_position_r00_c00_s05"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.899911868,
+        0.207363296
+      ],
+      "row": 0,
+      "seed": 4849099238778756712,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r00_c01_s05",
+      "variation_id": "cylinder_position_r00_c01_s05"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.983812894,
+        0.19517896
+      ],
+      "row": 0,
+      "seed": 7710345064991776123,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "test",
+      "trial_id": "cylinder_r00_c02_s05",
+      "variation_id": "cylinder_position_r00_c02_s05"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.04140109,
+        0.210050929
+      ],
+      "row": 0,
+      "seed": 5882114461819247594,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r00_c03_s05",
+      "variation_id": "cylinder_position_r00_c03_s05"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.071668527,
+        0.193591923
+      ],
+      "row": 0,
+      "seed": 3017025292910446347,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 0,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "validation",
+      "trial_id": "cylinder_r00_c04_s05",
+      "variation_id": "cylinder_position_r00_c04_s05"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.864112823,
+        0.228827568
+      ],
+      "row": 1,
+      "seed": 7102989608367176890,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r01_c00_s05",
+      "variation_id": "cylinder_position_r01_c00_s05"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.929654627,
+        0.227011395
+      ],
+      "row": 1,
+      "seed": 7371193788065693937,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r01_c01_s05",
+      "variation_id": "cylinder_position_r01_c01_s05"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.973922995,
+        0.232781359
+      ],
+      "row": 1,
+      "seed": 5587836367418854622,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r01_c02_s05",
+      "variation_id": "cylinder_position_r01_c02_s05"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.009060915,
+        0.254835081
+      ],
+      "row": 1,
+      "seed": 1714454360653488826,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r01_c03_s05",
+      "variation_id": "cylinder_position_r01_c03_s05"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.081489332,
+        0.242135636
+      ],
+      "row": 1,
+      "seed": 8568668087254331469,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 1,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r01_c04_s05",
+      "variation_id": "cylinder_position_r01_c04_s05"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.848065599,
+        0.268559208
+      ],
+      "row": 2,
+      "seed": 13346055704627060,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "test",
+      "trial_id": "cylinder_r02_c00_s05",
+      "variation_id": "cylinder_position_r02_c00_s05"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.900781761,
+        0.295234778
+      ],
+      "row": 2,
+      "seed": 5901608867137338590,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r02_c01_s05",
+      "variation_id": "cylinder_position_r02_c01_s05"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.951095143,
+        0.286124706
+      ],
+      "row": 2,
+      "seed": 3938570191925417588,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "test",
+      "trial_id": "cylinder_r02_c02_s05",
+      "variation_id": "cylinder_position_r02_c02_s05"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.013453745,
+        0.282059587
+      ],
+      "row": 2,
+      "seed": 6459692639100612675,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r02_c03_s05",
+      "variation_id": "cylinder_position_r02_c03_s05"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.05645668,
+        0.293802292
+      ],
+      "row": 2,
+      "seed": 5596840307117368078,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 2,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "test",
+      "trial_id": "cylinder_r02_c04_s05",
+      "variation_id": "cylinder_position_r02_c04_s05"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.861047322,
+        0.335445246
+      ],
+      "row": 3,
+      "seed": 553992879032034157,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r03_c00_s05",
+      "variation_id": "cylinder_position_r03_c00_s05"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.934768568,
+        0.304323837
+      ],
+      "row": 3,
+      "seed": 4318604415337024428,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r03_c01_s05",
+      "variation_id": "cylinder_position_r03_c01_s05"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.966655818,
+        0.311432793
+      ],
+      "row": 3,
+      "seed": 3601037605405597600,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r03_c02_s05",
+      "variation_id": "cylinder_position_r03_c02_s05"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.023629462,
+        0.329896091
+      ],
+      "row": 3,
+      "seed": 2587291304104365352,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r03_c03_s05",
+      "variation_id": "cylinder_position_r03_c03_s05"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.082286079,
+        0.333932026
+      ],
+      "row": 3,
+      "seed": 5249949767733878893,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 3,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r03_c04_s05",
+      "variation_id": "cylinder_position_r03_c04_s05"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.855870714,
+        0.364009443
+      ],
+      "row": 4,
+      "seed": 2436300276783969612,
+      "seed_material": {
+        "cell_column": 0,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c00_s05",
+      "variation_id": "cylinder_position_r04_c00_s05"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.926882863,
+        0.375312462
+      ],
+      "row": 4,
+      "seed": 9200262830806254914,
+      "seed_material": {
+        "cell_column": 1,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r04_c01_s05",
+      "variation_id": "cylinder_position_r04_c01_s05"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.959336918,
+        0.359465027
+      ],
+      "row": 4,
+      "seed": 4345124119382555255,
+      "seed_material": {
+        "cell_column": 2,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r04_c02_s05",
+      "variation_id": "cylinder_position_r04_c02_s05"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.010771259,
+        0.373317121
+      ],
+      "row": 4,
+      "seed": 6452394798712433313,
+      "seed_material": {
+        "cell_column": 3,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "train",
+      "trial_id": "cylinder_r04_c03_s05",
+      "variation_id": "cylinder_position_r04_c03_s05"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.057646272,
+        0.367570435
+      ],
+      "row": 4,
+      "seed": 7672192518042884701,
+      "seed_material": {
+        "cell_column": 4,
+        "cell_row": 4,
+        "plan_id": "farpoint_v0_0_1_cylinder_position",
+        "schema_version": "farpoint.position-plan.v1",
+        "slot": 5
+      },
+      "slot": 5,
+      "split": "validation",
+      "trial_id": "cylinder_r04_c04_s05",
+      "variation_id": "cylinder_position_r04_c04_s05"
+    }
+  ],
+  "varied_axes": [
+    "object_initial_position_x_m",
+    "object_initial_position_y_m"
+  ]
+}

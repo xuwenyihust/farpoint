@@ -235,6 +235,11 @@ def validate_position_plan(manifest: dict[str, Any]) -> None:
 
 def load_position_plan(path: str | Path) -> dict[str, Any]:
     manifest = json.loads(Path(path).read_text(encoding="utf-8"))
+    if manifest.get("schema_version") == "farpoint.position-plan.v1":
+        from farpoint.shape_position import validate_shape_position_plan
+
+        validate_shape_position_plan(manifest)
+        return manifest
     validate_position_plan(manifest)
     return manifest
 
@@ -243,6 +248,12 @@ def resolve_position_trial(
     manifest: dict[str, Any], trial_id: str, *, reserve_index: int = 0
 ) -> dict[str, Any]:
     """Resolve a primary or predeclared reserve into episode variation metadata."""
+    if manifest.get("schema_version") == "farpoint.position-plan.v1":
+        if reserve_index:
+            raise ValueError("shape position plans do not use reserve candidates")
+        from farpoint.shape_position import resolve_shape_position_trial
+
+        return resolve_shape_position_trial(manifest, trial_id)
     validate_position_plan(manifest)
     trial = next((item for item in manifest["trials"] if item["trial_id"] == trial_id), None)
     if trial is None:
@@ -294,6 +305,12 @@ def apply_position_trial(
     task: dict[str, Any], manifest: dict[str, Any], trial_id: str, *, reserve_index: int = 0
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Apply one manifest trial to a task while freezing every non-position factor."""
+    if manifest.get("schema_version") == "farpoint.position-plan.v1":
+        if reserve_index:
+            raise ValueError("shape position plans do not use reserve candidates")
+        from farpoint.shape_position import apply_shape_position_trial
+
+        return apply_shape_position_trial(task, manifest, trial_id)
     if manifest["task_id"] != task.get("name"):
         raise ValueError(
             f"position plan task_id {manifest['task_id']!r} does not match task {task.get('name')!r}"

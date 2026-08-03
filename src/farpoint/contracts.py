@@ -16,6 +16,8 @@ SCHEMA_FILES = {
     "farpoint.variation.v2": "farpoint_variation_v2.schema.json",
     "farpoint.benchmark.v2": "farpoint_benchmark_v2.schema.json",
     "farpoint.collection.v1": "farpoint_collection_v1.schema.json",
+    "farpoint.collection.v2": "farpoint_collection_v2.schema.json",
+    "farpoint.position-plan.v1": "farpoint_position_plan_v1.schema.json",
 }
 SPLITS = ("train", "validation", "test")
 SHAPE_TERMS = {
@@ -293,4 +295,44 @@ def validate_collection_episode_links(
         outcome = episode.get("outcome") or {}
         if outcome.get("success") is not True or outcome.get("dataset_valid") is not True:
             errors.append(f"collection selected episode is not successful: {trial_id}")
+    return errors
+
+
+def validate_shape_collection_semantics(collection: dict[str, Any]) -> list[str]:
+    """Validate coverage-only collection v2 without imposing a yield threshold."""
+    errors = []
+    attempts = collection.get("attempts") or []
+    acceptance = collection.get("acceptance") or {}
+    selected = [row for row in attempts if row.get("selected_for_dataset") is True]
+    per_cell = dict(sorted(Counter(row.get("cell_id") for row in selected).items()))
+    splits = {
+        split: sum(row.get("dataset_split") == split for row in selected) for split in SPLITS
+    }
+    successes = sum(row.get("outcome_success") is True for row in attempts)
+    observed_yield = successes / len(attempts) if attempts else 0.0
+    expected = {
+        "observed_task_attempts": len(attempts),
+        "observed_task_successes": successes,
+        "observed_selected_episodes": len(selected),
+        "observed_covered_cells": len(per_cell),
+        "selected_per_cell": per_cell,
+        "observed_splits": splits,
+    }
+    for key, value in expected.items():
+        if acceptance.get(key) != value:
+            errors.append(f"shape collection {key} does not match attempts")
+    if not math.isclose(acceptance.get("observed_task_yield", -1), observed_yield, abs_tol=1e-9):
+        errors.append("shape collection observed_task_yield does not match attempts")
+    accepted = (
+        len(attempts) <= acceptance.get("maximum_task_attempts", 0)
+        and len(selected) == acceptance.get("required_selected_episodes")
+        and len(per_cell) == acceptance.get("required_cells")
+        and bool(per_cell)
+        and set(per_cell.values()) == {acceptance.get("required_selected_per_cell")}
+        and splits == acceptance.get("required_splits")
+    )
+    if acceptance.get("accepted") is not accepted:
+        errors.append("shape collection accepted does not match coverage evidence")
+    if any(not row.get("outcome_success") or not row.get("dataset_valid") for row in selected):
+        errors.append("shape collection selected an ineligible attempt")
     return errors

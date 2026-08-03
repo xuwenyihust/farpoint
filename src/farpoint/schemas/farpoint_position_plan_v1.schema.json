@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Farpoint Shape Position Plan v1",
+  "type": "object",
+  "required": ["schema_version", "plan_id", "task_id", "task_template_id", "language_instruction", "config_revision", "planner_revision", "planner_sha256", "config_sha256", "plan_sha256", "varied_axes", "grid", "frozen_factors", "trials"],
+  "properties": {
+    "schema_version": {"const": "farpoint.position-plan.v1"},
+    "plan_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "task_template_id": {"type": "string", "minLength": 1},
+    "language_instruction": {"type": "string", "minLength": 1},
+    "config_revision": {"type": "string", "minLength": 1},
+    "planner_revision": {"const": "shape-position-grid-v1"},
+    "planner_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "varied_axes": {"type": "array", "items": {"type": "string"}},
+    "grid": {"type": "object"},
+    "frozen_factors": {"type": "object"},
+    "trials": {"type": "array", "minItems": 150, "maxItems": 150}
+  }
+}

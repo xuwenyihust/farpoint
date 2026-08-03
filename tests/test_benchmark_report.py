@@ -311,6 +311,49 @@ class BenchmarkReportTests(unittest.TestCase):
         self.assertIn("Grid Cell Coverage", rendered)
         self.assertIn("r04_c04", rendered)
 
+    def test_collection_v2_renders_one_per_cell_and_manifest_display_name(self):
+        manifest = {
+            "schema_version": "farpoint.collection-state.v2",
+            "collection_id": "cylinder",
+            "display_name": "UR10e Cylinder Position Collection",
+            "task_id": "cylinder_task",
+            "execution_status": "RUNNING",
+            "attempts": [],
+            "acceptance": {
+                "accepted": False,
+                "observed_task_yield": 0.0,
+                "maximum_task_attempts": 150,
+                "observed_task_attempts": 0,
+                "observed_task_successes": 0,
+                "required_selected_episodes": 25,
+                "observed_selected_episodes": 0,
+                "required_cells": 25,
+                "observed_covered_cells": 0,
+                "required_selected_per_cell": 1,
+                "selected_per_cell": {},
+                "required_splits": {"train": 17, "validation": 4, "test": 4},
+                "observed_splits": {"train": 0, "validation": 0, "test": 0},
+            },
+        }
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            old_episodes = build_benchmark_report.EPISODES_ROOT
+            old_reports = build_benchmark_report.REPORTS_ROOT
+            build_benchmark_report.EPISODES_ROOT = root / "episodes"
+            build_benchmark_report.REPORTS_ROOT = root / "reports"
+            try:
+                path = root / "benchmarks/cylinder/run-state.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps(manifest))
+                rendered = build_report(path).read_text()
+            finally:
+                build_benchmark_report.EPISODES_ROOT = old_episodes
+                build_benchmark_report.REPORTS_ROOT = old_reports
+        self.assertIn("UR10e Cylinder Position Collection", rendered)
+        self.assertIn("0 / 1", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -71,7 +71,9 @@ def normalize_manifest(manifest):
     )
     if normalized.get("schema_version") in {
         "farpoint.collection.v1",
+        "farpoint.collection.v2",
         "farpoint.collection-run.v1",
+        "farpoint.collection-state.v2",
     }:
         normalized["report_kind"] = "collection"
         normalized["benchmark_id"] = normalized.get("collection_id")
@@ -555,7 +557,7 @@ def build_report(manifest_path, display_name=None):
             ]
     manifest = normalize_manifest(raw_manifest)
     benchmark_id = manifest["benchmark_id"]
-    display_name = (display_name or benchmark_id).strip()
+    display_name = (display_name or raw_manifest.get("display_name") or benchmark_id).strip()
     report_dir = REPORTS_ROOT / "benchmarks" / benchmark_id
     report_dir.mkdir(parents=True, exist_ok=True)
     trials = [load_trial(trial, report_dir) for trial in manifest.get("trials", [])]
@@ -729,13 +731,16 @@ def build_report(manifest_path, display_name=None):
             f'<strong>{collection["imported_attempts"]} / {collection["new_attempts"]}</strong></div>'
         )
         cells = []
+        required_per_cell = int(
+            (manifest.get("acceptance") or {}).get("required_selected_per_cell", 2)
+        )
         for row in range(5):
             for column in range(5):
                 cell_id = f"r{row:02d}_c{column:02d}"
                 count = int(collection["selected_per_cell"].get(cell_id, 0))
-                state = "complete" if count == 2 else ("partial" if count else "empty")
+                state = "complete" if count == required_per_cell else ("partial" if count else "empty")
                 cells.append(
-                    f'<div class="cell {state}"><span>{cell_id}</span><strong>{count} / 2</strong></div>'
+                    f'<div class="cell {state}"><span>{cell_id}</span><strong>{count} / {required_per_cell}</strong></div>'
                 )
         collection_grid = (
             '<section class="panel"><h2>Grid Cell Coverage</h2>'

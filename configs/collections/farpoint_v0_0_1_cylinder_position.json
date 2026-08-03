@@ -1,0 +1,33 @@
+{
+  "schema_version": "farpoint.collection-policy.v3",
+  "policy_id": "farpoint_v0_0_1_cylinder_position",
+  "display_name": "UR10e Cylinder Position Collection",
+  "task_id": "isaac_perception_contact_cylinder_scene",
+  "object_shape": "cylinder",
+  "position_plan": "configs/plans/farpoint_v0_0_1_cylinder_position.json",
+  "position_plan_sha256": "2d7ad16e0b245a13f25c4b37e06a3179fda82127509abfb4ff70cd6694720c6c",
+  "config_sha256": "3d481e8591e3c4d8e51a98aee1be5c517dbd032eb818826d6dba7ca105e1288c",
+  "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0",
+  "simulator_image_digest": "sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d",
+  "simulator_payload": {
+    "sha256": "4fa899ad4b32994d18865df9fbf5f192d3322e4f45b997a8c9c54096cbeea873",
+    "paths": [
+      "configs/plans/farpoint_v0_0_1_cylinder_position.json",
+      "configs/variations/farpoint_v0_0_1_cylinder_position.json",
+      "examples/isaac_perception_contact_scene/scene.py",
+      "examples/isaac_perception_contact_scene/task.yaml",
+      "examples/isaac_ur10e_robotiq_scene/scene.py",
+      "scripts/run_remote_isaac_example.sh",
+      "src/farpoint/position_plan.py",
+      "src/farpoint/shape_position.py"
+    ]
+  },
+  "acceptance": {
+    "required_cells": 25,
+    "selected_episodes": 25,
+    "selected_per_cell": 1,
+    "maximum_task_attempts": 150,
+    "maximum_candidates_per_cell": 6,
+    "splits": {"train": 17, "validation": 4, "test": 4}
+  }
+}
