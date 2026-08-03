@@ -50,7 +50,7 @@ from run_position_benchmark import (  # noqa: E402
 DEFAULT_POLICY = PROJECT_ROOT / "configs/collections/farpoint_v0_0_1_cylinder_position.json"
 BENCHMARKS_ROOT = PROJECT_ROOT / "outputs/benchmarks"
 EPISODES_ROOT = PROJECT_ROOT / "outputs/episodes"
-EXAMPLE_PATH = "examples/isaac_perception_contact_scene"
+EXAMPLE_PATH = "examples/isaac_cylinder_contact_scene"
 
 
 def utc_now() -> str:

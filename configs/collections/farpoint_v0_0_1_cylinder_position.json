@@ -5,19 +5,20 @@
   "task_id": "isaac_perception_contact_cylinder_scene",
   "object_shape": "cylinder",
   "position_plan": "configs/plans/farpoint_v0_0_1_cylinder_position.json",
-  "position_plan_sha256": "f8151bb79e90bc2d5638c0157e293fd137edabcb4cd73418db74a327a032c7b3",
-  "config_sha256": "dcdc556ee2e895c60860d39871999d4ac014dee1d42d4ff929f72e74a6436431",
+  "position_plan_sha256": "5b30a6a3749c72e4071e91f12e3a29fa7fc38daa46638ecefa817e8952b7494d",
+  "config_sha256": "936899b94196bdd89dc561ac031e568290ac2f6cd48f09758fa58597d67311db",
   "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0",
   "simulator_image_digest": "sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d",
   "simulator_payload": {
-    "sha256": "43e9ae65371771fb8a4010f33648c8f3551db4e2bafd34dc0523346e13020845",
+    "sha256": "c16da4976c30eef966c4ee3bd5907bfb6b1e18a1a26856a90197587d17786323",
     "paths": [
       "configs/plans/farpoint_v0_0_1_cylinder_position.json",
       "configs/variations/farpoint_v0_0_1_cylinder_position.json",
-      "examples/isaac_perception_contact_scene/scene.py",
+      "examples/isaac_cylinder_contact_scene/scene.py",
       "examples/isaac_perception_contact_scene/task.yaml",
       "examples/isaac_ur10e_robotiq_scene/scene.py",
       "scripts/run_remote_isaac_example.sh",
+      "src/farpoint/cylinder_control.py",
       "src/farpoint/position_plan.py",
       "src/farpoint/shape_position.py"
     ]
