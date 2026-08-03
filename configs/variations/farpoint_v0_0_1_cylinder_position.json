@@ -43,7 +43,7 @@
       "unilateral_recenter_step": 0.0001,
       "unilateral_recenter_max_correction": 0.003,
       "unilateral_recenter_persistence_frames": 12,
-      "bilateral_contact_min_finger_position_radians": 0.12,
+      "bilateral_contact_min_finger_position_radians": 0.001,
       "unilateral_force_limit_newtons": 1000.0,
       "unilateral_force_backoff_radians": 0.00001,
       "bilateral_force_limit_newtons": 1000.0,
