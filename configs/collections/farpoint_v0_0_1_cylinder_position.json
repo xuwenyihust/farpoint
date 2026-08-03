@@ -5,12 +5,12 @@
   "task_id": "isaac_perception_contact_cylinder_scene",
   "object_shape": "cylinder",
   "position_plan": "configs/plans/farpoint_v0_0_1_cylinder_position.json",
-  "position_plan_sha256": "4f18b3a19f57f8ca9e54de3484d070249b28568ae6fe98445f9c2c64e14341cd",
-  "config_sha256": "b7e18c01ffdbea235a149ff97e81f30d26fb17828be0dcc085da83787a84450e",
+  "position_plan_sha256": "f7b4ae546c366674b1733bb64e9c6d2f6993cc405d1ad55cc2448ddbd3f359f5",
+  "config_sha256": "a537fef2cb1cec817af88231d494cb6195f46d56e4609b68cf84f8fc50e21195",
   "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0",
   "simulator_image_digest": "sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d",
   "simulator_payload": {
-    "sha256": "66668a64440a4f301e52b5cf3f6a1b6035b59f8d81d877a0e59629233d7d1197",
+    "sha256": "e3e3003e1ef997d79f8905804296dc1a88acd861d6969d19bc5d612768889793",
     "paths": [
       "configs/plans/farpoint_v0_0_1_cylinder_position.json",
       "configs/variations/farpoint_v0_0_1_cylinder_position.json",
