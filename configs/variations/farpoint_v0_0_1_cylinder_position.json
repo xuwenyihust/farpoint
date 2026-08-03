@@ -15,10 +15,10 @@
   },
   "frozen_factors": {
     "object_shape": "cylinder",
-    "object_dimensions_m": [0.07, 0.07, 0.12],
+    "object_dimensions_m": [0.07, 0.07, 0.18],
     "object_radius_m": 0.035,
-    "object_height_m": 0.12,
-    "object_initial_z_m": 0.5,
+    "object_height_m": 0.18,
+    "object_initial_z_m": 0.47,
     "object_yaw_degrees": 0.0,
     "object_mass_kg": 0.08,
     "material_id": "high_friction_cylinder_v1",
