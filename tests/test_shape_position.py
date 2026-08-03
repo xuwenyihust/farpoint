@@ -45,7 +45,7 @@ def test_cylinder_trial_uses_shape_prefixed_identity_and_metadata():
     resolved = resolve_shape_position_trial(plan(), "cylinder_r02_c02_s00")
     assert resolved["variation"]["variation_id"] == "cylinder_position_r02_c02_s00"
     assert resolved["variation"]["resolved"]["object_shape"] == "cylinder"
-    assert resolved["variation"]["resolved"]["object_dimensions_m"] == [0.07, 0.07, 0.055]
+    assert resolved["variation"]["resolved"]["object_dimensions_m"] == [0.055] * 3
     assert resolved["split"] == "test"
 
 
@@ -68,6 +68,9 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "static_friction": 2.5,
         "dynamic_friction": 2.0,
         "finger_contact_max_effort": 20.0,
+        "grasp_aperture_bias_xy": [0.0, 0.005],
+        "grasp_tracking_max_xy_error": 0.006,
+        "grasp_descent_max_xy_error": 0.006,
     }
     assert configured["scene"]["pick_object"]["position"] == resolved["variation"]["resolved"]["object_position_m"]
     assert task["randomization"]["enabled"] is True
