@@ -46,7 +46,8 @@
       "unilateral_force_backoff_radians": 0.00001,
       "bilateral_force_limit_newtons": 1000.0,
       "bilateral_hold_max_force_newtons": 1000.0,
-      "bilateral_force_backoff_radians": 0.00001
+      "bilateral_force_backoff_radians": 0.00001,
+      "gripper_force_max_preload_error_radians": 0.08
     }
   }
 }

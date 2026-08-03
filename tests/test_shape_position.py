@@ -81,6 +81,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "bilateral_force_limit_newtons": 1000.0,
         "bilateral_hold_max_force_newtons": 1000.0,
         "bilateral_force_backoff_radians": 0.00001,
+        "gripper_force_max_preload_error_radians": 0.08,
     }
     assert configured["scene"]["pick_object"]["position"] == resolved["variation"]["resolved"]["object_position_m"]
     assert task["randomization"]["enabled"] is True
