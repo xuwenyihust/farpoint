@@ -87,6 +87,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "grasp_validation_frames": 1,
         "grasp_validation_min_support_frames": 1,
         "grasp_validation_terminal_stable_frames": 1,
+        "grasp_proof_lift_frames": 300,
         "unilateral_force_limit_newtons": 5.0,
         "unilateral_force_backoff_radians": 0.002,
         "bilateral_force_limit_newtons": 10.0,
