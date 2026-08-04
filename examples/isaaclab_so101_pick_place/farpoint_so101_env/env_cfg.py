@@ -153,15 +153,20 @@ class ObservationsCfg:
 
 
 @configclass
+class EmptyManagerCfg:
+    """Placeholder for managers not needed by the oracle MVP."""
+
+
+@configclass
 class SO101CubePickPlaceEnvCfg(ManagerBasedRLEnvCfg):
     scene: SO101CubeSceneCfg = SO101CubeSceneCfg()
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
-    events = None
-    rewards = None
-    terminations = None
-    commands = None
-    curriculum = None
+    events: EmptyManagerCfg = EmptyManagerCfg()
+    rewards: EmptyManagerCfg = EmptyManagerCfg()
+    terminations: EmptyManagerCfg = EmptyManagerCfg()
+    commands: EmptyManagerCfg = EmptyManagerCfg()
+    curriculum: EmptyManagerCfg = EmptyManagerCfg()
 
     def __post_init__(self):
         self.decimation = 4
