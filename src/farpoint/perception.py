@@ -152,6 +152,69 @@ def estimate_dominant_color_pose(
     }
 
 
+def _undirected_yaw_difference_degrees(first, second):
+    """Angular distance when a cube has four equivalent upright rotations."""
+    return abs((float(first) - float(second) + 45.0) % 90.0 - 45.0)
+
+
+def estimate_dominant_color_yaw(
+    rgb,
+    depth,
+    intrinsics,
+    camera_to_world,
+    channel,
+    *,
+    min_pixels=20,
+    min_channel=80,
+    min_dominance=30,
+    min_confidence=0.15,
+):
+    """Estimate an upright cube's yaw from RGB-D support points.
+
+    The result is deliberately modulo 90 degrees: a uniformly coloured cube
+    has no observable distinction between its four upright face rotations.
+    This estimator never receives scene state and is therefore safe for use by
+    the controller; simulator yaw may only be compared by an offline audit.
+    """
+    image = np.asarray(rgb)
+    depth_image = np.asarray(depth, dtype=np.float64)
+    if depth_image.shape != image.shape[:2]:
+        raise ValueError("depth shape must match the RGB image")
+    mask = color_mask(image, channel, min_channel=min_channel, min_dominance=min_dominance)
+    valid = mask & np.isfinite(depth_image) & (depth_image > 0.0)
+    rows, columns = np.nonzero(valid)
+    if len(rows) < int(min_pixels):
+        raise PerceptionError(f"{channel} segmentation found {len(rows)} valid pixels; at least {int(min_pixels)} are required")
+    points = backproject_pixels(
+        np.column_stack([columns.astype(np.float64), rows.astype(np.float64)]),
+        depth_image[rows, columns], intrinsics, camera_to_world,
+    )[:, :2]
+    center = np.median(points, axis=0)
+    centered = points - center
+    covariance = np.cov(centered, rowvar=False)
+    values, vectors = np.linalg.eigh(covariance)
+    principal = vectors[:, int(np.argmax(values))]
+    yaw = math.degrees(math.atan2(float(principal[1]), float(principal[0]))) % 90.0
+    major, minor = float(max(values)), float(min(values))
+    anisotropy = (major - minor) / max(major + minor, 1e-12)
+    pixel_support = min(1.0, len(points) / max(float(min_pixels) * 8.0, 1.0))
+    confidence = round(pixel_support * max(0.0, anisotropy), 4)
+    if confidence < float(min_confidence):
+        raise PerceptionError(f"cube yaw confidence {confidence:.4f} is below {float(min_confidence):.4f}")
+    return {
+        "yaw_degrees": round(float(yaw), 6),
+        "symmetry_period_degrees": 90.0,
+        "valid_pixels": int(len(points)),
+        "confidence": confidence,
+        "xy_covariance": covariance.tolist(),
+    }
+
+
+def cube_yaw_error_degrees(estimated_yaw_degrees, ground_truth_yaw_degrees):
+    """Return modulo-90 yaw error for audit-only simulator ground truth."""
+    return round(_undirected_yaw_difference_degrees(estimated_yaw_degrees, ground_truth_yaw_degrees), 6)
+
+
 def xy_error(estimate, ground_truth):
     return math.hypot(
         float(estimate[0]) - float(ground_truth[0]),

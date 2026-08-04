@@ -1,0 +1,10 @@
+{
+  "schema_version": "farpoint.yaw-variation.v1",
+  "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+  "task_id": "isaac_perception_contact_scene",
+  "config_revision": "1",
+  "grid": {"x_bounds_m": [0.84, 1.1], "y_bounds_m": [0.18, 0.38], "rows": 5, "columns": 5, "reserve_candidates_per_condition": 2, "interior_fraction": [0.1, 0.9]},
+  "yaw_degrees": [0.0, 15.0, 30.0, 45.0],
+  "object_spec": {"object_family": "rigid_prismatic", "object_shape": "cube", "object_variant_id": "cube_55mm_red_v1", "object_dimensions_m": [0.055, 0.055, 0.055], "size_profile_id": "cube_55mm_v1", "material_id": "high_friction_default_v1", "appearance_profile_id": "red_default_v1", "grasp_profile_id": "parallel_jaw_cube_face_v1", "perception_profile_id": "rgbd_cube_yaw_v1"},
+  "frozen_factors": {"object_initial_z_m": 0.5, "object_mass_kg": 0.08, "target_position_m": [0.96, -0.03, 0.42], "camera_profile_id": "front_rgbd_640x360_v1", "lighting_profile_id": "distant_1000_v1", "robot_pose_profile_id": "ur10e_tabletop_v1", "controller_profile_id": "hybrid_rmpflow_lula_ik_yaw_aware_v1", "physics_profile_id": "physx_contact_pickup_v1", "recording_profile_id": "farpoint_multimodal_v1"}
+}

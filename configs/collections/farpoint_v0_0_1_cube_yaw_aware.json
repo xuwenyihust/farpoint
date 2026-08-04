@@ -1,0 +1,13 @@
+{
+  "schema_version": "farpoint.yaw-collection-policy.v1",
+  "policy_id": "farpoint_v0_0_1_cube_yaw_aware",
+  "task_id": "isaac_perception_contact_scene",
+  "yaw_plan": "configs/plans/farpoint_v0_0_1_cube_yaw_aware.json",
+  "target_successes": 100,
+  "selected_per_condition": 1,
+  "maximum_task_attempts": 134,
+  "minimum_task_yield": 0.75,
+  "release_profile": "yaw_aware_v1",
+  "release_includes_prior_position_baseline": false,
+  "pilot": {"cells": ["r00_c00", "r02_c02", "r04_c04"], "yaws_degrees": [0.0, 15.0, 30.0, 45.0], "required_successes": 12, "maximum_yaw_error_degrees": 10.0}
+}

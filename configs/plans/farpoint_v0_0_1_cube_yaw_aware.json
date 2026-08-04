@@ -1,0 +1,5770 @@
+{
+  "config_revision": "1",
+  "config_sha256": "809e4fd8e653487d866c11cce8d77fc8122e1dd45d7580af4771fd995baac773",
+  "frozen_factors": {
+    "camera_profile_id": "front_rgbd_640x360_v1",
+    "controller_profile_id": "hybrid_rmpflow_lula_ik_yaw_aware_v1",
+    "lighting_profile_id": "distant_1000_v1",
+    "object_initial_z_m": 0.5,
+    "object_mass_kg": 0.08,
+    "physics_profile_id": "physx_contact_pickup_v1",
+    "recording_profile_id": "farpoint_multimodal_v1",
+    "robot_pose_profile_id": "ur10e_tabletop_v1",
+    "target_position_m": [
+      0.96,
+      -0.03,
+      0.42
+    ]
+  },
+  "grid": {
+    "columns": 5,
+    "interior_fraction": [
+      0.1,
+      0.9
+    ],
+    "reserve_candidates_per_condition": 2,
+    "rows": 5,
+    "x_bounds_m": [
+      0.84,
+      1.1
+    ],
+    "y_bounds_m": [
+      0.18,
+      0.38
+    ]
+  },
+  "object_spec": {
+    "appearance_profile_id": "red_default_v1",
+    "grasp_profile_id": "parallel_jaw_cube_face_v1",
+    "material_id": "high_friction_default_v1",
+    "object_dimensions_m": [
+      0.055,
+      0.055,
+      0.055
+    ],
+    "object_family": "rigid_prismatic",
+    "object_shape": "cube",
+    "object_variant_id": "cube_55mm_red_v1",
+    "perception_profile_id": "rgbd_cube_yaw_v1",
+    "size_profile_id": "cube_55mm_v1"
+  },
+  "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+  "plan_sha256": "aa9713e26245c32bf14a79c9efeb1555f873c831b0c898ae18d0e9b625bb2390",
+  "planner_revision": "cube-yaw-grid-v1",
+  "planner_sha256": "68a470c93baa840bc39dae62e440f443a192aa3eeb48c2b52ee38b83c23d0cfa",
+  "schema_version": "farpoint.yaw-variation.v1",
+  "task_id": "isaac_perception_contact_scene",
+  "trials": [
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.846819901,
+        0.184892857
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.87756624,
+            0.193895865
+          ],
+          "reserve_index": 1,
+          "seed": 6620855775321838220,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.853014731,
+            0.184112697
+          ],
+          "reserve_index": 2,
+          "seed": 2024633918122049600,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 6793958907761807197,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r00_c00",
+      "variation_id": "cube_55mm_yaw00_r00_c00"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.905237579,
+        0.187498639
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.934867098,
+            0.212850566
+          ],
+          "reserve_index": 1,
+          "seed": 7790238327500346953,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.923522961,
+            0.196235474
+          ],
+          "reserve_index": 2,
+          "seed": 3307510816500668634,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 6922940436983779366,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r00_c01",
+      "variation_id": "cube_55mm_yaw00_r00_c01"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.989221097,
+        0.201395864
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.97400228,
+            0.192903708
+          ],
+          "reserve_index": 1,
+          "seed": 1268744058081742183,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.977654613,
+            0.200921719
+          ],
+          "reserve_index": 2,
+          "seed": 8693815025775141726,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 3598473790549505333,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r00_c02",
+      "variation_id": "cube_55mm_yaw00_r00_c02"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.008940533,
+        0.208155876
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.024105967,
+            0.213637541
+          ],
+          "reserve_index": 1,
+          "seed": 2341460305583081953,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.026356708,
+            0.205358853
+          ],
+          "reserve_index": 2,
+          "seed": 7097293366465902998,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 776915835984971601,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r00_c03",
+      "variation_id": "cube_55mm_yaw00_r00_c03"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.063754483,
+        0.193115807
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.091366786,
+            0.199312978
+          ],
+          "reserve_index": 1,
+          "seed": 9011299631104057041,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.090925621,
+            0.193083384
+          ],
+          "reserve_index": 2,
+          "seed": 5899524270463926154,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 6463251973504936579,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r00_c04",
+      "variation_id": "cube_55mm_yaw00_r00_c04"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.879612001,
+        0.24863483
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.875422996,
+            0.24086734
+          ],
+          "reserve_index": 1,
+          "seed": 1532356548471569853,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.883246451,
+            0.248800505
+          ],
+          "reserve_index": 2,
+          "seed": 816102794627945094,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 6917319212485300257,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r01_c00",
+      "variation_id": "cube_55mm_yaw00_r01_c00"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.937072163,
+        0.243074661
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.938177815,
+            0.233497822
+          ],
+          "reserve_index": 1,
+          "seed": 8661617988779230135,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.936756183,
+            0.252881057
+          ],
+          "reserve_index": 2,
+          "seed": 4042199795716316460,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 4295613611101614660,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r01_c01",
+      "variation_id": "cube_55mm_yaw00_r01_c01"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.990131972,
+        0.232136133
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.961111567,
+            0.235095533
+          ],
+          "reserve_index": 1,
+          "seed": 8821129969712283370,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.988095737,
+            0.22507255
+          ],
+          "reserve_index": 2,
+          "seed": 3729816658758239906,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 9186202988003692474,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r01_c02",
+      "variation_id": "cube_55mm_yaw00_r01_c02"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.014026182,
+        0.241895292
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.033875264,
+            0.243120675
+          ],
+          "reserve_index": 1,
+          "seed": 6454206454219725737,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.005649777,
+            0.230484819
+          ],
+          "reserve_index": 2,
+          "seed": 1043172888866825682,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 8239314445029983004,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r01_c03",
+      "variation_id": "cube_55mm_yaw00_r01_c03"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.094605624,
+        0.239874398
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.076126688,
+            0.249330622
+          ],
+          "reserve_index": 1,
+          "seed": 7181382685852115589,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.06219435,
+            0.229848243
+          ],
+          "reserve_index": 2,
+          "seed": 5677506321485202670,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 3908717675497217109,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r01_c04",
+      "variation_id": "cube_55mm_yaw00_r01_c04"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.86301805,
+        0.279374714
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.874583584,
+            0.27206643
+          ],
+          "reserve_index": 1,
+          "seed": 5785891856792461049,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.849120838,
+            0.292399773
+          ],
+          "reserve_index": 2,
+          "seed": 6321559725931155567,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 2626836144786369294,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r02_c00",
+      "variation_id": "cube_55mm_yaw00_r02_c00"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.9009225,
+        0.27223205
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.904658392,
+            0.285785796
+          ],
+          "reserve_index": 1,
+          "seed": 4522250436739916312,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.911506281,
+            0.289424771
+          ],
+          "reserve_index": 2,
+          "seed": 8652860910494170559,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 5153778128591192154,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r02_c01",
+      "variation_id": "cube_55mm_yaw00_r02_c01"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.960557781,
+        0.276316194
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.982221465,
+            0.269448756
+          ],
+          "reserve_index": 1,
+          "seed": 6662014271195530168,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.98686399,
+            0.266942172
+          ],
+          "reserve_index": 2,
+          "seed": 1294031663196916129,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 9140872289825672800,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r02_c02",
+      "variation_id": "cube_55mm_yaw00_r02_c02"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.003668732,
+        0.293405258
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.010011633,
+            0.26452457
+          ],
+          "reserve_index": 1,
+          "seed": 3287927918239630094,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.026196455,
+            0.276935972
+          ],
+          "reserve_index": 2,
+          "seed": 2918233782475804455,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 5580962670440014296,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r02_c03",
+      "variation_id": "cube_55mm_yaw00_r02_c03"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.060338487,
+        0.280600796
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.072356444,
+            0.28183884
+          ],
+          "reserve_index": 1,
+          "seed": 5056502715974801565,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.069871454,
+            0.276205039
+          ],
+          "reserve_index": 2,
+          "seed": 5097024790494709475,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 3892364414024851927,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r02_c04",
+      "variation_id": "cube_55mm_yaw00_r02_c04"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.847256714,
+        0.329903908
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.878159313,
+            0.313859356
+          ],
+          "reserve_index": 1,
+          "seed": 2455061095445098344,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.878224347,
+            0.317492197
+          ],
+          "reserve_index": 2,
+          "seed": 7170396446040584587,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 2859158745414178553,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r03_c00",
+      "variation_id": "cube_55mm_yaw00_r03_c00"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.905419525,
+        0.311166378
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.922387263,
+            0.309149395
+          ],
+          "reserve_index": 1,
+          "seed": 2862697076191771947,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.9370473,
+            0.304182371
+          ],
+          "reserve_index": 2,
+          "seed": 4049898576868297369,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 637144500003973880,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "train",
+      "trial_id": "yaw00_r03_c01",
+      "variation_id": "cube_55mm_yaw00_r03_c01"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.968084238,
+        0.322881708
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.968260029,
+            0.317450272
+          ],
+          "reserve_index": 1,
+          "seed": 3671530822533091695,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.981093573,
+            0.314446484
+          ],
+          "reserve_index": 2,
+          "seed": 2836646810407316627,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 2777470585754622884,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "validation",
+      "trial_id": "yaw00_r03_c02",
+      "variation_id": "cube_55mm_yaw00_r03_c02"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.021550493,
+        0.331438674
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.015639896,
+            0.331940233
+          ],
+          "reserve_index": 1,
+          "seed": 3563517736113068351,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.037365405,
+            0.33062008
+          ],
+          "reserve_index": 2,
+          "seed": 7249184994059820227,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 6216690522319985308,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "validation",
+      "trial_id": "yaw00_r03_c03",
+      "variation_id": "cube_55mm_yaw00_r03_c03"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.058314097,
+        0.310527009
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.080556947,
+            0.305663403
+          ],
+          "reserve_index": 1,
+          "seed": 1973106001392585022,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.076419126,
+            0.330828833
+          ],
+          "reserve_index": 2,
+          "seed": 8035823479153503829,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 2466224709791035281,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "validation",
+      "trial_id": "yaw00_r03_c04",
+      "variation_id": "cube_55mm_yaw00_r03_c04"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.870820872,
+        0.359877917
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.871365073,
+            0.354319081
+          ],
+          "reserve_index": 1,
+          "seed": 6454866749088818788,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.855548133,
+            0.357151945
+          ],
+          "reserve_index": 2,
+          "seed": 4322450778752662283,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 7694492513213347073,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "validation",
+      "trial_id": "yaw00_r04_c00",
+      "variation_id": "cube_55mm_yaw00_r04_c00"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.93673577,
+        0.351971777
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.908370955,
+            0.368899624
+          ],
+          "reserve_index": 1,
+          "seed": 2881384900343763791,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.920826222,
+            0.35765862
+          ],
+          "reserve_index": 2,
+          "seed": 9061015114575291551,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 3460260412587320833,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "test",
+      "trial_id": "yaw00_r04_c01",
+      "variation_id": "cube_55mm_yaw00_r04_c01"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.974751436,
+        0.346956141
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.978113664,
+            0.353436996
+          ],
+          "reserve_index": 1,
+          "seed": 4723534997085102047,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.953249111,
+            0.36293398
+          ],
+          "reserve_index": 2,
+          "seed": 4742138040948237069,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 5261451481317717668,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "test",
+      "trial_id": "yaw00_r04_c02",
+      "variation_id": "cube_55mm_yaw00_r04_c02"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.037874342,
+        0.362849469
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.029065198,
+            0.361879886
+          ],
+          "reserve_index": 1,
+          "seed": 5060660598895708565,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.02137179,
+            0.350214659
+          ],
+          "reserve_index": 2,
+          "seed": 7774631780824090821,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 1110769825806978633,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "test",
+      "trial_id": "yaw00_r04_c03",
+      "variation_id": "cube_55mm_yaw00_r04_c03"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.089505143,
+        0.348253427
+      ],
+      "object_yaw_degrees": 0.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.084568379,
+            0.375803132
+          ],
+          "reserve_index": 1,
+          "seed": 5202183260154037520,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.071212676,
+            0.345532109
+          ],
+          "reserve_index": 2,
+          "seed": 8708048220507508154,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 0.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 413229755321552728,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 0.0
+      },
+      "split": "test",
+      "trial_id": "yaw00_r04_c04",
+      "variation_id": "cube_55mm_yaw00_r04_c04"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.867123231,
+        0.186401202
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.847908689,
+            0.210152414
+          ],
+          "reserve_index": 1,
+          "seed": 4966154194363045134,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.845752068,
+            0.199949991
+          ],
+          "reserve_index": 2,
+          "seed": 1770195027201146706,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 8526249486382997707,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r00_c00",
+      "variation_id": "cube_55mm_yaw15_r00_c00"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.927882305,
+        0.190605563
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.931068203,
+            0.206474918
+          ],
+          "reserve_index": 1,
+          "seed": 864420615569456593,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.92935141,
+            0.186453146
+          ],
+          "reserve_index": 2,
+          "seed": 2363477534809868704,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 1865593004746899557,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r00_c01",
+      "variation_id": "cube_55mm_yaw15_r00_c01"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.984053022,
+        0.20155272
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.960227742,
+            0.19415762
+          ],
+          "reserve_index": 1,
+          "seed": 9169568032376570053,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.967583697,
+            0.197890744
+          ],
+          "reserve_index": 2,
+          "seed": 5562816376825870278,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 8235791026349950742,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r00_c02",
+      "variation_id": "cube_55mm_yaw15_r00_c02"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.036300804,
+        0.191462527
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.025468407,
+            0.203972013
+          ],
+          "reserve_index": 1,
+          "seed": 7311766697553147370,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.031066709,
+            0.194598572
+          ],
+          "reserve_index": 2,
+          "seed": 3397276020692443364,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 4200149191576358475,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r00_c03",
+      "variation_id": "cube_55mm_yaw15_r00_c03"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.082848102,
+        0.190887466
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.0757898,
+            0.212631378
+          ],
+          "reserve_index": 1,
+          "seed": 5041220668110288280,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.073428838,
+            0.187104454
+          ],
+          "reserve_index": 2,
+          "seed": 6669383562605012881,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 2319855281882216809,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r00_c04",
+      "variation_id": "cube_55mm_yaw15_r00_c04"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.871537397,
+        0.224953785
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.863701767,
+            0.240857359
+          ],
+          "reserve_index": 1,
+          "seed": 4146392865358343563,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.884335598,
+            0.228357183
+          ],
+          "reserve_index": 2,
+          "seed": 6574497409795959203,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 6186478897922044719,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r01_c00",
+      "variation_id": "cube_55mm_yaw15_r01_c00"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.921682895,
+        0.253353916
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.930977258,
+            0.234094023
+          ],
+          "reserve_index": 1,
+          "seed": 3922282306262037397,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.908418272,
+            0.234146036
+          ],
+          "reserve_index": 2,
+          "seed": 4620120433712872751,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 6497447413726079263,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r01_c01",
+      "variation_id": "cube_55mm_yaw15_r01_c01"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.956699707,
+        0.230915453
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.957761206,
+            0.241916244
+          ],
+          "reserve_index": 1,
+          "seed": 3549933652596890681,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.978694064,
+            0.226200831
+          ],
+          "reserve_index": 2,
+          "seed": 5416530569917579037,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 3808847002424665095,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r01_c02",
+      "variation_id": "cube_55mm_yaw15_r01_c02"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.008679282,
+        0.224645958
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.018557289,
+            0.237204219
+          ],
+          "reserve_index": 1,
+          "seed": 4848980187395016956,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.012336475,
+            0.255941794
+          ],
+          "reserve_index": 2,
+          "seed": 6045065385784907066,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 9024524557658452311,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r01_c03",
+      "variation_id": "cube_55mm_yaw15_r01_c03"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.061164638,
+        0.241083539
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.057148961,
+            0.23941805
+          ],
+          "reserve_index": 1,
+          "seed": 8840655289013730960,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.084852477,
+            0.251353666
+          ],
+          "reserve_index": 2,
+          "seed": 2068355037613742812,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 2304259420776464358,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r01_c04",
+      "variation_id": "cube_55mm_yaw15_r01_c04"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.881610163,
+        0.288597922
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.863601553,
+            0.267091581
+          ],
+          "reserve_index": 1,
+          "seed": 7353502066461009983,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.875658398,
+            0.272241269
+          ],
+          "reserve_index": 2,
+          "seed": 7666705451121156747,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 195024542249325347,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r02_c00",
+      "variation_id": "cube_55mm_yaw15_r02_c00"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.899948426,
+        0.288495127
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.936767312,
+            0.265855238
+          ],
+          "reserve_index": 1,
+          "seed": 8521091784938705577,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.911342539,
+            0.278491084
+          ],
+          "reserve_index": 2,
+          "seed": 1136982054230688647,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 7860745116951534134,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r02_c01",
+      "variation_id": "cube_55mm_yaw15_r02_c01"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.99050708,
+        0.28696251
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.979017123,
+            0.294763882
+          ],
+          "reserve_index": 1,
+          "seed": 7803470208145712585,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.988901374,
+            0.280356139
+          ],
+          "reserve_index": 2,
+          "seed": 2199315058587013667,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 3429477839754637789,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r02_c02",
+      "variation_id": "cube_55mm_yaw15_r02_c02"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.042321016,
+        0.288260987
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.027910897,
+            0.265047953
+          ],
+          "reserve_index": 1,
+          "seed": 75430450157107515,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.002767135,
+            0.269992119
+          ],
+          "reserve_index": 2,
+          "seed": 2382840115721585571,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 760429904284389480,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r02_c03",
+      "variation_id": "cube_55mm_yaw15_r02_c03"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.087450363,
+        0.274500935
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.065556323,
+            0.295781986
+          ],
+          "reserve_index": 1,
+          "seed": 425928195423133868,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.074558712,
+            0.28112156
+          ],
+          "reserve_index": 2,
+          "seed": 3331785282272593087,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 1558079597246778437,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r02_c04",
+      "variation_id": "cube_55mm_yaw15_r02_c04"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.861490474,
+        0.320388666
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.856278455,
+            0.326803095
+          ],
+          "reserve_index": 1,
+          "seed": 6932829955220247165,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.885059655,
+            0.320679222
+          ],
+          "reserve_index": 2,
+          "seed": 5651786139110242523,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 4789869722913848138,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r03_c00",
+      "variation_id": "cube_55mm_yaw15_r03_c00"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.918374991,
+        0.330793302
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.915769361,
+            0.319427141
+          ],
+          "reserve_index": 1,
+          "seed": 824460778912388133,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.920856872,
+            0.314489432
+          ],
+          "reserve_index": 2,
+          "seed": 2620758070269323538,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 8877385444638498640,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "train",
+      "trial_id": "yaw15_r03_c01",
+      "variation_id": "cube_55mm_yaw15_r03_c01"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.963125907,
+        0.323168184
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.985419903,
+            0.321661364
+          ],
+          "reserve_index": 1,
+          "seed": 3477139602884776910,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.98137523,
+            0.323868699
+          ],
+          "reserve_index": 2,
+          "seed": 943098926472467522,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 7728567174555195496,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "validation",
+      "trial_id": "yaw15_r03_c02",
+      "variation_id": "cube_55mm_yaw15_r03_c02"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.02139605,
+        0.322105644
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.023671134,
+            0.331080107
+          ],
+          "reserve_index": 1,
+          "seed": 848792366751388721,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.005317631,
+            0.332510847
+          ],
+          "reserve_index": 2,
+          "seed": 6283946004934835204,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 7841329316525316569,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "validation",
+      "trial_id": "yaw15_r03_c03",
+      "variation_id": "cube_55mm_yaw15_r03_c03"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.089997489,
+        0.33197484
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.070498742,
+            0.334876752
+          ],
+          "reserve_index": 1,
+          "seed": 2824146483480600880,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.062459715,
+            0.306326426
+          ],
+          "reserve_index": 2,
+          "seed": 3226395090484615762,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 119119956449668101,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "validation",
+      "trial_id": "yaw15_r03_c04",
+      "variation_id": "cube_55mm_yaw15_r03_c04"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.865042421,
+        0.364669042
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.847481302,
+            0.350764634
+          ],
+          "reserve_index": 1,
+          "seed": 4255399908773549302,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.866352111,
+            0.361065104
+          ],
+          "reserve_index": 2,
+          "seed": 3535922091570920900,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 7037898710757309369,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "validation",
+      "trial_id": "yaw15_r04_c00",
+      "variation_id": "cube_55mm_yaw15_r04_c00"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.93735968,
+        0.359104536
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.921540036,
+            0.347320332
+          ],
+          "reserve_index": 1,
+          "seed": 7219926737816345703,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.913239056,
+            0.375290404
+          ],
+          "reserve_index": 2,
+          "seed": 6012570460370677026,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 135649883666692851,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "test",
+      "trial_id": "yaw15_r04_c01",
+      "variation_id": "cube_55mm_yaw15_r04_c01"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.973567872,
+        0.369583276
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.976736856,
+            0.363129648
+          ],
+          "reserve_index": 1,
+          "seed": 428273234938830961,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.980092062,
+            0.36186673
+          ],
+          "reserve_index": 2,
+          "seed": 2188567639714047728,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 3032364528666210970,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "test",
+      "trial_id": "yaw15_r04_c02",
+      "variation_id": "cube_55mm_yaw15_r04_c02"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.024683077,
+        0.34530818
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.011850861,
+            0.346612248
+          ],
+          "reserve_index": 1,
+          "seed": 111212858421374612,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.00866664,
+            0.355477368
+          ],
+          "reserve_index": 2,
+          "seed": 3257805890094144260,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 3892499680259281422,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "test",
+      "trial_id": "yaw15_r04_c03",
+      "variation_id": "cube_55mm_yaw15_r04_c03"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.056897797,
+        0.372357049
+      ],
+      "object_yaw_degrees": 15.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.087340637,
+            0.352038451
+          ],
+          "reserve_index": 1,
+          "seed": 5808853545449464303,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.074299451,
+            0.345073204
+          ],
+          "reserve_index": 2,
+          "seed": 2283914453741258345,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 15.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 3033544519762887129,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 15.0
+      },
+      "split": "test",
+      "trial_id": "yaw15_r04_c04",
+      "variation_id": "cube_55mm_yaw15_r04_c04"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.879106227,
+        0.215409357
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.848234543,
+            0.209074551
+          ],
+          "reserve_index": 1,
+          "seed": 8391446072760860519,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.885238523,
+            0.198154508
+          ],
+          "reserve_index": 2,
+          "seed": 3712715048100418134,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 4824516783408827417,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r00_c00",
+      "variation_id": "cube_55mm_yaw30_r00_c00"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.918855677,
+        0.207592973
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.901188528,
+            0.215183788
+          ],
+          "reserve_index": 1,
+          "seed": 6126771746571685025,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.925504949,
+            0.201136548
+          ],
+          "reserve_index": 2,
+          "seed": 2776011196347743324,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 2906714909785550435,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r00_c01",
+      "variation_id": "cube_55mm_yaw30_r00_c01"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.954939853,
+        0.212738055
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.953358757,
+            0.208226964
+          ],
+          "reserve_index": 1,
+          "seed": 2566473225483728595,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.972901165,
+            0.202672887
+          ],
+          "reserve_index": 2,
+          "seed": 9116089462084865981,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 908724701576170530,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r00_c02",
+      "variation_id": "cube_55mm_yaw30_r00_c02"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.038257457,
+        0.194366747
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.041186666,
+            0.203382177
+          ],
+          "reserve_index": 1,
+          "seed": 7096910182338447984,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.009883756,
+            0.215085682
+          ],
+          "reserve_index": 2,
+          "seed": 4195330648972131690,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 1745807813867281571,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r00_c03",
+      "variation_id": "cube_55mm_yaw30_r00_c03"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.092904609,
+        0.200017825
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.082853765,
+            0.192724165
+          ],
+          "reserve_index": 1,
+          "seed": 543706136613292689,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.07143196,
+            0.203843448
+          ],
+          "reserve_index": 2,
+          "seed": 4242137027572037700,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 2675618873010683561,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r00_c04",
+      "variation_id": "cube_55mm_yaw30_r00_c04"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.885559812,
+        0.247841342
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.860271427,
+            0.233420548
+          ],
+          "reserve_index": 1,
+          "seed": 5074364803647254456,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.874119745,
+            0.239130508
+          ],
+          "reserve_index": 2,
+          "seed": 4843182534391794089,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 6220481624713859590,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r01_c00",
+      "variation_id": "cube_55mm_yaw30_r01_c00"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.922549009,
+        0.250398084
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.931984641,
+            0.241125216
+          ],
+          "reserve_index": 1,
+          "seed": 660468773158485003,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.916723996,
+            0.251240587
+          ],
+          "reserve_index": 2,
+          "seed": 8211996233374341847,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 3027007565647065059,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r01_c01",
+      "variation_id": "cube_55mm_yaw30_r01_c01"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.983189691,
+        0.254260562
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.959038557,
+            0.22696871
+          ],
+          "reserve_index": 1,
+          "seed": 4817023727194081529,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.985504242,
+            0.25117567
+          ],
+          "reserve_index": 2,
+          "seed": 7282395525386811741,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 4568438463311748727,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r01_c02",
+      "variation_id": "cube_55mm_yaw30_r01_c02"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.001953245,
+        0.243527654
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.036981198,
+            0.2313713
+          ],
+          "reserve_index": 1,
+          "seed": 995510203864519863,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.008363595,
+            0.246627194
+          ],
+          "reserve_index": 2,
+          "seed": 3164115302574380602,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 4659957037612322551,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r01_c03",
+      "variation_id": "cube_55mm_yaw30_r01_c03"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.087374924,
+        0.237228443
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.066271927,
+            0.225958415
+          ],
+          "reserve_index": 1,
+          "seed": 6057781092907446425,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.060582438,
+            0.225919732
+          ],
+          "reserve_index": 2,
+          "seed": 2013630939155664261,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 4071138535391935685,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r01_c04",
+      "variation_id": "cube_55mm_yaw30_r01_c04"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.859048887,
+        0.273176083
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.87294718,
+            0.284134928
+          ],
+          "reserve_index": 1,
+          "seed": 6623347000145685405,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.872656888,
+            0.268181601
+          ],
+          "reserve_index": 2,
+          "seed": 2610188555616493283,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 7039542567116373620,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r02_c00",
+      "variation_id": "cube_55mm_yaw30_r02_c00"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.912979137,
+        0.289237459
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.927263099,
+            0.288755931
+          ],
+          "reserve_index": 1,
+          "seed": 5499123084540678912,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.928240488,
+            0.284656288
+          ],
+          "reserve_index": 2,
+          "seed": 1271712292468490612,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 3931673425121605169,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r02_c01",
+      "variation_id": "cube_55mm_yaw30_r02_c01"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.953669778,
+        0.283956744
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.960937015,
+            0.274592288
+          ],
+          "reserve_index": 1,
+          "seed": 71511672306764100,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.953969914,
+            0.277542351
+          ],
+          "reserve_index": 2,
+          "seed": 2585898966171738305,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 4232279784993520095,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r02_c02",
+      "variation_id": "cube_55mm_yaw30_r02_c02"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.004841278,
+        0.295062265
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.025919169,
+            0.279346053
+          ],
+          "reserve_index": 1,
+          "seed": 7201169851627754116,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.029858032,
+            0.270087473
+          ],
+          "reserve_index": 2,
+          "seed": 9125714498673882491,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 5682492183044761069,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r02_c03",
+      "variation_id": "cube_55mm_yaw30_r02_c03"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.082584089,
+        0.264392916
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.059166528,
+            0.290957737
+          ],
+          "reserve_index": 1,
+          "seed": 6691464991112448631,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.091017693,
+            0.27101887
+          ],
+          "reserve_index": 2,
+          "seed": 5106989982727436827,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 1347466756681702096,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r02_c04",
+      "variation_id": "cube_55mm_yaw30_r02_c04"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.848655305,
+        0.333810699
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.864575242,
+            0.331679823
+          ],
+          "reserve_index": 1,
+          "seed": 4929428238140087237,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.845499829,
+            0.312226365
+          ],
+          "reserve_index": 2,
+          "seed": 4397019464370045483,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 7327868188043530946,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r03_c00",
+      "variation_id": "cube_55mm_yaw30_r03_c00"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.930814914,
+        0.30836
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.92662282,
+            0.30524203
+          ],
+          "reserve_index": 1,
+          "seed": 4645325421961137385,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.910470028,
+            0.311598382
+          ],
+          "reserve_index": 2,
+          "seed": 4326611419860497048,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 6134005668267531152,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "train",
+      "trial_id": "yaw30_r03_c01",
+      "variation_id": "cube_55mm_yaw30_r03_c01"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.970724814,
+        0.333948937
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.981137234,
+            0.311501048
+          ],
+          "reserve_index": 1,
+          "seed": 7404364795811333793,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.976444237,
+            0.315989526
+          ],
+          "reserve_index": 2,
+          "seed": 6104324606089708531,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 4745164821225241274,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "validation",
+      "trial_id": "yaw30_r03_c02",
+      "variation_id": "cube_55mm_yaw30_r03_c02"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.026832937,
+        0.305644028
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.015965386,
+            0.332670557
+          ],
+          "reserve_index": 1,
+          "seed": 3601150308514856208,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.040085738,
+            0.332644454
+          ],
+          "reserve_index": 2,
+          "seed": 6444771461399125553,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 6029222619114721712,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "validation",
+      "trial_id": "yaw30_r03_c03",
+      "variation_id": "cube_55mm_yaw30_r03_c03"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.078763726,
+        0.307393321
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.062824105,
+            0.324850088
+          ],
+          "reserve_index": 1,
+          "seed": 5371107807514662758,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.076174321,
+            0.329937938
+          ],
+          "reserve_index": 2,
+          "seed": 4369000366057633163,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 8707294752683671101,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "validation",
+      "trial_id": "yaw30_r03_c04",
+      "variation_id": "cube_55mm_yaw30_r03_c04"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.846692655,
+        0.347425514
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.850146312,
+            0.364687358
+          ],
+          "reserve_index": 1,
+          "seed": 8165589393312292787,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.880113251,
+            0.364508028
+          ],
+          "reserve_index": 2,
+          "seed": 9220037347916963080,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 3157004985141982163,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "validation",
+      "trial_id": "yaw30_r04_c00",
+      "variation_id": "cube_55mm_yaw30_r04_c00"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.909244203,
+        0.363539433
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.920114624,
+            0.373915317
+          ],
+          "reserve_index": 1,
+          "seed": 778264694804364661,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.900244154,
+            0.360389672
+          ],
+          "reserve_index": 2,
+          "seed": 3604811286849621809,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 472819044169758664,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "test",
+      "trial_id": "yaw30_r04_c01",
+      "variation_id": "cube_55mm_yaw30_r04_c01"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.974488999,
+        0.367033448
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.972009824,
+            0.352583774
+          ],
+          "reserve_index": 1,
+          "seed": 7514355958189316504,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.989309576,
+            0.374962231
+          ],
+          "reserve_index": 2,
+          "seed": 7750322114698826476,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 3478148867373083163,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "test",
+      "trial_id": "yaw30_r04_c02",
+      "variation_id": "cube_55mm_yaw30_r04_c02"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.021788133,
+        0.357294199
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.021413335,
+            0.349779275
+          ],
+          "reserve_index": 1,
+          "seed": 1607044329671480163,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.013463235,
+            0.368504344
+          ],
+          "reserve_index": 2,
+          "seed": 4807579037633971832,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 2918679482283981547,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "test",
+      "trial_id": "yaw30_r04_c03",
+      "variation_id": "cube_55mm_yaw30_r04_c03"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.089634027,
+        0.364692854
+      ],
+      "object_yaw_degrees": 30.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.0739975,
+            0.358368547
+          ],
+          "reserve_index": 1,
+          "seed": 3049308981692352902,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.054518453,
+            0.344757372
+          ],
+          "reserve_index": 2,
+          "seed": 4408570166674180022,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 30.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 1174960296726989732,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 30.0
+      },
+      "split": "test",
+      "trial_id": "yaw30_r04_c04",
+      "variation_id": "cube_55mm_yaw30_r04_c04"
+    },
+    {
+      "cell_id": "r00_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.873849917,
+        0.204429804
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.850409249,
+            0.202788969
+          ],
+          "reserve_index": 1,
+          "seed": 6671177687803048399,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.853075082,
+            0.197329495
+          ],
+          "reserve_index": 2,
+          "seed": 6980701454610649636,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 6303977732538696429,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r00_c00",
+      "variation_id": "cube_55mm_yaw45_r00_c00"
+    },
+    {
+      "cell_id": "r00_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.9037737,
+        0.211004737
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.921585202,
+            0.191175471
+          ],
+          "reserve_index": 1,
+          "seed": 3837450492463038887,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.904400477,
+            0.192425605
+          ],
+          "reserve_index": 2,
+          "seed": 5060708291343052573,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 7572922548318591104,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r00_c01",
+      "variation_id": "cube_55mm_yaw45_r00_c01"
+    },
+    {
+      "cell_id": "r00_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.961577188,
+        0.193642095
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.975665328,
+            0.213356835
+          ],
+          "reserve_index": 1,
+          "seed": 2722945012270110340,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.971926331,
+            0.187099159
+          ],
+          "reserve_index": 2,
+          "seed": 6707950917171836294,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 2793235261158943330,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r00_c02",
+      "variation_id": "cube_55mm_yaw45_r00_c02"
+    },
+    {
+      "cell_id": "r00_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.027844288,
+        0.204461804
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.024886345,
+            0.189836765
+          ],
+          "reserve_index": 1,
+          "seed": 3941966841098693410,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.00861092,
+            0.214936434
+          ],
+          "reserve_index": 2,
+          "seed": 2524124742510914344,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 8943335407479774382,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r00_c03",
+      "variation_id": "cube_55mm_yaw45_r00_c03"
+    },
+    {
+      "cell_id": "r00_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.092564406,
+        0.205659838
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.066328064,
+            0.196680479
+          ],
+          "reserve_index": 1,
+          "seed": 3305445810284737917,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.089549167,
+            0.206525373
+          ],
+          "reserve_index": 2,
+          "seed": 8777032126531088089,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 0,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 0,
+      "seed": 6755875720959128760,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 0,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r00_c04",
+      "variation_id": "cube_55mm_yaw45_r00_c04"
+    },
+    {
+      "cell_id": "r01_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.866584632,
+        0.254781723
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.882524822,
+            0.236816275
+          ],
+          "reserve_index": 1,
+          "seed": 4959209332755316448,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.881863432,
+            0.247071448
+          ],
+          "reserve_index": 2,
+          "seed": 8171448937633824252,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 6162750252434309160,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r01_c00",
+      "variation_id": "cube_55mm_yaw45_r01_c00"
+    },
+    {
+      "cell_id": "r01_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.904546563,
+        0.255072938
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.916510329,
+            0.230643045
+          ],
+          "reserve_index": 1,
+          "seed": 6677133085269754490,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.899984079,
+            0.238942288
+          ],
+          "reserve_index": 2,
+          "seed": 6257482190679486913,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 8163597426726176782,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r01_c01",
+      "variation_id": "cube_55mm_yaw45_r01_c01"
+    },
+    {
+      "cell_id": "r01_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.984363617,
+        0.242386381
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.961338834,
+            0.225056054
+          ],
+          "reserve_index": 1,
+          "seed": 8103258763757456872,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.953431867,
+            0.239762093
+          ],
+          "reserve_index": 2,
+          "seed": 3815762021536015728,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 5159427288869672574,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r01_c02",
+      "variation_id": "cube_55mm_yaw45_r01_c02"
+    },
+    {
+      "cell_id": "r01_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.01525756,
+        0.250853526
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.008088738,
+            0.245684255
+          ],
+          "reserve_index": 1,
+          "seed": 2191526259665608911,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.032962281,
+            0.233664351
+          ],
+          "reserve_index": 2,
+          "seed": 8580279550935846669,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 5934135184943279041,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r01_c03",
+      "variation_id": "cube_55mm_yaw45_r01_c03"
+    },
+    {
+      "cell_id": "r01_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.061621369,
+        0.245561347
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.057700927,
+            0.232334819
+          ],
+          "reserve_index": 1,
+          "seed": 7317247427029242369,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.086645202,
+            0.226442343
+          ],
+          "reserve_index": 2,
+          "seed": 4882769144150916308,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 1,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 1,
+      "seed": 5254535016801759736,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 1,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r01_c04",
+      "variation_id": "cube_55mm_yaw45_r01_c04"
+    },
+    {
+      "cell_id": "r02_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.875618715,
+        0.281463478
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.85820423,
+            0.289503167
+          ],
+          "reserve_index": 1,
+          "seed": 5196067204357472877,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.860245476,
+            0.2944356
+          ],
+          "reserve_index": 2,
+          "seed": 601516089174147105,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 4647606908600502526,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r02_c00",
+      "variation_id": "cube_55mm_yaw45_r02_c00"
+    },
+    {
+      "cell_id": "r02_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.900705291,
+        0.276912868
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.912175401,
+            0.266794513
+          ],
+          "reserve_index": 1,
+          "seed": 6410878856390211235,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.936053828,
+            0.264369091
+          ],
+          "reserve_index": 2,
+          "seed": 7800896504313198940,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 8500934227433932367,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r02_c01",
+      "variation_id": "cube_55mm_yaw45_r02_c01"
+    },
+    {
+      "cell_id": "r02_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.954834581,
+        0.273749222
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.962676237,
+            0.295016386
+          ],
+          "reserve_index": 1,
+          "seed": 6479364775232046765,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.988068848,
+            0.269533006
+          ],
+          "reserve_index": 2,
+          "seed": 2821664152023621121,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 4521093287231987136,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r02_c02",
+      "variation_id": "cube_55mm_yaw45_r02_c02"
+    },
+    {
+      "cell_id": "r02_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.010805226,
+        0.284770037
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.020296015,
+            0.26788832
+          ],
+          "reserve_index": 1,
+          "seed": 1036207099943401510,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.039301609,
+            0.274661932
+          ],
+          "reserve_index": 2,
+          "seed": 4570432866396528454,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 4069706974320494724,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r02_c03",
+      "variation_id": "cube_55mm_yaw45_r02_c03"
+    },
+    {
+      "cell_id": "r02_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.078582287,
+        0.268118871
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.064769982,
+            0.282595153
+          ],
+          "reserve_index": 1,
+          "seed": 7527756839547183308,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.081563074,
+            0.287317297
+          ],
+          "reserve_index": 2,
+          "seed": 1982467659548728817,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 2,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 2,
+      "seed": 6770532045603381353,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 2,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r02_c04",
+      "variation_id": "cube_55mm_yaw45_r02_c04"
+    },
+    {
+      "cell_id": "r03_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.859685719,
+        0.325060189
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.874621693,
+            0.31423979
+          ],
+          "reserve_index": 1,
+          "seed": 8542005430735080795,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.874657283,
+            0.31705319
+          ],
+          "reserve_index": 2,
+          "seed": 783482387563684026,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 8848575553619339960,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r03_c00",
+      "variation_id": "cube_55mm_yaw45_r03_c00"
+    },
+    {
+      "cell_id": "r03_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.937284879,
+        0.326135782
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.911896814,
+            0.320592594
+          ],
+          "reserve_index": 1,
+          "seed": 3790150094301677477,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.920369212,
+            0.304381599
+          ],
+          "reserve_index": 2,
+          "seed": 7978456458584690478,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 2534429475328534891,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "train",
+      "trial_id": "yaw45_r03_c01",
+      "variation_id": "cube_55mm_yaw45_r03_c01"
+    },
+    {
+      "cell_id": "r03_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.971171819,
+        0.329460111
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.96948494,
+            0.314124022
+          ],
+          "reserve_index": 1,
+          "seed": 8892081631733988526,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.967946277,
+            0.320782681
+          ],
+          "reserve_index": 2,
+          "seed": 2161564898013514804,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 3628806389154622249,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "validation",
+      "trial_id": "yaw45_r03_c02",
+      "variation_id": "cube_55mm_yaw45_r03_c02"
+    },
+    {
+      "cell_id": "r03_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.031981834,
+        0.335492967
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.01299002,
+            0.325541678
+          ],
+          "reserve_index": 1,
+          "seed": 686641252750296654,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.006290596,
+            0.315710415
+          ],
+          "reserve_index": 2,
+          "seed": 5169112905145884279,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 2130754171180722742,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "validation",
+      "trial_id": "yaw45_r03_c03",
+      "variation_id": "cube_55mm_yaw45_r03_c03"
+    },
+    {
+      "cell_id": "r03_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.076357384,
+        0.311315263
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.055453749,
+            0.316300476
+          ],
+          "reserve_index": 1,
+          "seed": 808623663777287813,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.061489022,
+            0.309398874
+          ],
+          "reserve_index": 2,
+          "seed": 7358635365401290118,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 3,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 3,
+      "seed": 9011282024299793567,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 3,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "validation",
+      "trial_id": "yaw45_r03_c04",
+      "variation_id": "cube_55mm_yaw45_r03_c04"
+    },
+    {
+      "cell_id": "r04_c00",
+      "column": 0,
+      "object_position_xy_m": [
+        0.865022488,
+        0.36303162
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.877650226,
+            0.354439879
+          ],
+          "reserve_index": 1,
+          "seed": 8238048156101743729,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.860648791,
+            0.345306885
+          ],
+          "reserve_index": 2,
+          "seed": 2446062523282020329,
+          "seed_material": {
+            "column": 0,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 55389216022072318,
+      "seed_material": {
+        "column": 0,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "validation",
+      "trial_id": "yaw45_r04_c00",
+      "variation_id": "cube_55mm_yaw45_r04_c00"
+    },
+    {
+      "cell_id": "r04_c01",
+      "column": 1,
+      "object_position_xy_m": [
+        0.90960897,
+        0.358861059
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.905740926,
+            0.362688625
+          ],
+          "reserve_index": 1,
+          "seed": 2916271387883284887,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.914899405,
+            0.358116181
+          ],
+          "reserve_index": 2,
+          "seed": 9002544767251186506,
+          "seed_material": {
+            "column": 1,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 6739815749744330766,
+      "seed_material": {
+        "column": 1,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "test",
+      "trial_id": "yaw45_r04_c01",
+      "variation_id": "cube_55mm_yaw45_r04_c01"
+    },
+    {
+      "cell_id": "r04_c02",
+      "column": 2,
+      "object_position_xy_m": [
+        0.97645757,
+        0.348147092
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            0.978276907,
+            0.367159256
+          ],
+          "reserve_index": 1,
+          "seed": 3057120266560131637,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            0.960593289,
+            0.365395537
+          ],
+          "reserve_index": 2,
+          "seed": 268759683352409166,
+          "seed_material": {
+            "column": 2,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 5775241522655318775,
+      "seed_material": {
+        "column": 2,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "test",
+      "trial_id": "yaw45_r04_c02",
+      "variation_id": "cube_55mm_yaw45_r04_c02"
+    },
+    {
+      "cell_id": "r04_c03",
+      "column": 3,
+      "object_position_xy_m": [
+        1.011262699,
+        0.370400702
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.022038467,
+            0.375929591
+          ],
+          "reserve_index": 1,
+          "seed": 4063095224212798019,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.023075456,
+            0.373255868
+          ],
+          "reserve_index": 2,
+          "seed": 4963766405747915083,
+          "seed_material": {
+            "column": 3,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 4941856822102417480,
+      "seed_material": {
+        "column": 3,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "test",
+      "trial_id": "yaw45_r04_c03",
+      "variation_id": "cube_55mm_yaw45_r04_c03"
+    },
+    {
+      "cell_id": "r04_c04",
+      "column": 4,
+      "object_position_xy_m": [
+        1.062165439,
+        0.35497849
+      ],
+      "object_yaw_degrees": 45.0,
+      "reserve_candidates": [
+        {
+          "object_position_xy_m": [
+            1.069167505,
+            0.371590798
+          ],
+          "reserve_index": 1,
+          "seed": 2819956154089572541,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 1,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        },
+        {
+          "object_position_xy_m": [
+            1.055121488,
+            0.348698452
+          ],
+          "reserve_index": 2,
+          "seed": 771527070898928731,
+          "seed_material": {
+            "column": 4,
+            "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+            "reserve_index": 2,
+            "row": 4,
+            "schema_version": "farpoint.yaw-variation.v1",
+            "yaw_degrees": 45.0
+          }
+        }
+      ],
+      "reserve_index": 0,
+      "row": 4,
+      "seed": 5156497639963296791,
+      "seed_material": {
+        "column": 4,
+        "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
+        "reserve_index": 0,
+        "row": 4,
+        "schema_version": "farpoint.yaw-variation.v1",
+        "yaw_degrees": 45.0
+      },
+      "split": "test",
+      "trial_id": "yaw45_r04_c04",
+      "variation_id": "cube_55mm_yaw45_r04_c04"
+    }
+  ],
+  "varied_axes": [
+    "object_initial_position_x_m",
+    "object_initial_position_y_m",
+    "object_initial_yaw_degrees"
+  ],
+  "yaw_degrees": [
+    0.0,
+    15.0,
+    30.0,
+    45.0
+  ]
+}
