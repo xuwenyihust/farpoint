@@ -27,7 +27,10 @@ SO101_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=so101_usd_path(),
         activate_contact_sensors=True,
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False, max_depenetration_velocity=5.0),
+        # The real SO-101 servos continuously hold link weight.  Model the arm
+        # as gravity-compensated position control while leaving scene objects
+        # (including the cube) fully dynamic under PhysX gravity.
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True, max_depenetration_velocity=5.0),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=32,
