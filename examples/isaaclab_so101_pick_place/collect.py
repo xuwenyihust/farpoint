@@ -17,6 +17,13 @@ from isaaclab.app import AppLauncher
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+# USD limits observed from the pinned SO-101 asset (radians), kept explicit so
+# controller targets cannot be normalized or extrapolated by a backend.
+SO101_JOINT_LIMITS = np.asarray(
+    [[-1.920, 1.920], [-1.745, 1.745], [-1.745, 1.571],
+     [-1.658, 1.658], [-2.793, 2.793]], dtype=np.float32
+)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -108,11 +115,11 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
     jacobian = _numpy(jacobians[0, body_index, :3, :5])
     delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
-    action[:5] = action[:5] + np.clip(delta, -0.045, 0.045)
-    # Keep the generated target inside the USD joint limits.  The position
-    # action manager does not clamp targets when ``use_default_offset=False``.
-    limits = _numpy(robot.data.soft_joint_pos_limits[0, :5])
-    action[:5] = np.clip(action[:5], limits[:, 0], limits[:, 1])
+    action[:5] = action[:5] + np.clip(delta, -0.01, 0.01)
+    # Keep the generated target inside the pinned USD joint limits.  The
+    # position action manager does not clamp targets when offset-free control
+    # is enabled, and some PhysX articulations report wider soft limits.
+    action[:5] = np.clip(action[:5], SO101_JOINT_LIMITS[:, 0], SO101_JOINT_LIMITS[:, 1])
     return torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
 
 
