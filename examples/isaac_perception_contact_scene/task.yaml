@@ -202,6 +202,9 @@ perception:
   enabled: true
   xy_center_method: "bounds"
   object_channel: "red"
+  # Used only by the v0.0.1 yaw-aware plan. Existing position-only runs do not
+  # invoke the yaw estimator.
+  yaw_min_confidence: 0.15
   target_channel: "green"
   min_channel: 70
   min_dominance: 25

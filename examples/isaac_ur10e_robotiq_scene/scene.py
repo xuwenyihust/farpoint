@@ -55,11 +55,14 @@ from farpoint.episode_metadata import resolve_measured_object_pose
 from farpoint.perception import (
     PerceptionError,
     estimate_dominant_color_pose,
+    estimate_dominant_color_yaw,
+    cube_yaw_error_degrees,
     look_at_calibration,
     xy_error,
 )
 from farpoint.physics import enable_enhanced_determinism
 from farpoint.position_plan import apply_position_trial, load_position_plan
+from farpoint.yaw_plan import apply_yaw_trial, load_yaw_plan
 from farpoint.variation import load_variation_config, resolve_variation
 
 
@@ -245,7 +248,7 @@ def count_prim_subtree(stage, root_path):
     return sum(1 for prim in stage.Traverse() if str(prim.GetPath()).startswith(root_path))
 
 
-def set_cube_transform(stage, path, center, scale):
+def set_cube_transform(stage, path, center, scale, rotation_degrees=None):
     from pxr import UsdGeom
 
     prim = stage.GetPrimAtPath(path)
@@ -260,6 +263,12 @@ def set_cube_transform(stage, path, center, scale):
         scale_attr.Set(tuple(scale))
     else:
         xform.AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(tuple(scale))
+    if rotation_degrees is not None:
+        rotation_attr = prim.GetAttribute("xformOp:rotateXYZ")
+        if rotation_attr:
+            rotation_attr.Set(tuple(rotation_degrees))
+        else:
+            xform.AddRotateXYZOp(UsdGeom.XformOp.PrecisionDouble).Set(tuple(rotation_degrees))
 
 
 def apply_physics_body(stage, path, mass=None, kinematic=False):
@@ -1070,14 +1079,17 @@ def main():
     base_task = parse_simple_yaml(TASK_PATH)
     episode_seed = int(os.environ.get("FARPOINT_EPISODE_SEED", "0"))
     position_plan_path = os.environ.get("FARPOINT_POSITION_PLAN") or None
+    yaw_plan_path = os.environ.get("FARPOINT_YAW_PLAN") or None
     trial_id = os.environ.get("FARPOINT_TRIAL_ID") or None
     reserve_index = int(os.environ.get("FARPOINT_RESERVE_INDEX", "0"))
     variation_id = os.environ.get("FARPOINT_VARIATION_ID") or None
     variation = None
     position_trial = None
     position_plan = None
-    if bool(position_plan_path) != bool(trial_id):
-        raise ValueError("FARPOINT_POSITION_PLAN and FARPOINT_TRIAL_ID must be provided together")
+    if position_plan_path and yaw_plan_path:
+        raise ValueError("provide only one of FARPOINT_POSITION_PLAN and FARPOINT_YAW_PLAN")
+    if bool(position_plan_path or yaw_plan_path) != bool(trial_id):
+        raise ValueError("a plan path and FARPOINT_TRIAL_ID must be provided together")
     if position_plan_path:
         position_plan = load_position_plan(position_plan_path)
         base_task, position_trial = apply_position_trial(
@@ -1085,6 +1097,14 @@ def main():
             position_plan,
             trial_id,
             reserve_index=reserve_index,
+        )
+        variation = position_trial["variation"]
+        variation_id = variation["variation_id"]
+        episode_seed = int(position_trial["seed"])
+    elif yaw_plan_path:
+        position_plan = load_yaw_plan(yaw_plan_path)
+        base_task, position_trial = apply_yaw_trial(
+            base_task, position_plan, trial_id, reserve_index=reserve_index
         )
         variation = position_trial["variation"]
         variation_id = variation["variation_id"]
@@ -1232,6 +1252,11 @@ def main():
             if scene_key != "target_zone":
                 GeomPrim(paths=shape.paths, apply_collision_apis=True)
         pick_object_config = task["scene"]["pick_object"]
+        if pick_object_config.get("rotation_degrees"):
+            set_cube_transform(
+                stage, pick_object_config["path"], pick_object_config["position"],
+                pick_object_config["scale"], pick_object_config["rotation_degrees"],
+            )
         apply_physics_body(
             stage,
             pick_object_config["path"],
@@ -1493,6 +1518,8 @@ def main():
         latest_depth = None
         perception_failures = []
         perception_updates = 0
+        initial_object_yaw_estimate = None
+        yaw_alignment_target_degrees = None
         if perception_enabled:
             for _ in range(int(perception_config.get("warmup_frames", 8))):
                 step_control_frame()
@@ -1523,6 +1550,22 @@ def main():
                     "xy_center_method", "median"
                 ),
             )
+            if position_plan and position_plan.get("schema_version") == "farpoint.yaw-variation.v1":
+                initial_object_yaw_estimate = estimate_dominant_color_yaw(
+                    latest_rgb, latest_depth, camera_intrinsics, camera_to_world,
+                    perception_config.get("object_channel", "red"),
+                    min_pixels=perception_config.get("min_pixels", 20),
+                    min_channel=perception_config.get("min_channel", 80),
+                    min_dominance=perception_config.get("min_dominance", 30),
+                    min_confidence=float(perception_config.get("yaw_min_confidence", 0.15)),
+                )
+                yaw_alignment_target_degrees = initial_object_yaw_estimate["yaw_degrees"]
+                orientation = list(pickup_config.get("end_effector_orientation_degrees", [180.0, 0.0, 0.0]))
+                orientation[2] += yaw_alignment_target_degrees
+                pickup_config["end_effector_orientation_degrees"] = orientation
+                pickup_config["grasp_axis_target_yaw_degrees"] = float(
+                    pickup_config.get("grasp_axis_target_yaw_degrees", 90.0)
+                ) + yaw_alignment_target_degrees
             initial_target_estimate = estimate_dominant_color_pose(
                 latest_rgb,
                 latest_depth,
@@ -6640,6 +6683,17 @@ def main():
         metrics["benchmark_id"] = benchmark_id
         metrics["benchmark_repeat"] = benchmark_repeat
         metrics["randomization"] = randomization
+        if initial_object_yaw_estimate is not None:
+            requested_yaw = float(variation["resolved"]["object_yaw_degrees"])
+            metrics["yaw_aware"] = {
+                "generation_profile": "yaw_aware_v1",
+                "control_source": "rgbd_cube_yaw",
+                "estimate": initial_object_yaw_estimate,
+                "ground_truth_yaw_degrees_audit_only": requested_yaw,
+                "audit_error_degrees": cube_yaw_error_degrees(initial_object_yaw_estimate["yaw_degrees"], requested_yaw),
+                "alignment_target_degrees": yaw_alignment_target_degrees,
+                "alignment_stable": yaw_alignment_target_degrees is not None,
+            }
 
         joint_smoothness = measured_joint_smoothness(joint_history)
         metrics["joint_smoothness_score"] = (
@@ -6704,7 +6758,7 @@ def main():
                 raise ValueError("FARPOINT_CONFIG_SHA256 does not match the position plan")
             if camera_intrinsics is None or camera_to_world is None:
                 raise ValueError("release metadata requires measured camera calibration")
-            frozen = position_plan["frozen_factors"]
+            frozen = {**position_plan["frozen_factors"], **position_plan.get("object_spec", {})}
             camera_rotation = np.asarray(camera_to_world, dtype=np.float64)[:3, :3]
             camera_position = np.asarray(camera_to_world, dtype=np.float64)[:3, 3].tolist()
             camera_quaternion = rotation_matrix_quaternion_xyzw(camera_rotation)
@@ -6719,6 +6773,9 @@ def main():
             object_position = list(ground_truth_pick_start_position)
             target_position = list(ground_truth_place_target_position)
             identity_orientation = [0.0, 0.0, 0.0, 1.0]
+            object_orientation = (episode_variation.get("resolved") or {}).get(
+                "object_orientation_xyzw", identity_orientation
+            )
             recording_fps = (1.0 / rendering_dt) / int(
                 dataset_config["observation_every_n_frames"]
             )
@@ -6760,8 +6817,10 @@ def main():
                             "material_id": frozen["material_id"],
                             "initial_pose": {
                                 "position_m": object_position,
-                                "orientation_xyzw": identity_orientation,
-                                "yaw_degrees": frozen["object_yaw_degrees"],
+                                "orientation_xyzw": object_orientation,
+                                "yaw_degrees": (episode_variation.get("resolved") or {}).get(
+                                    "object_yaw_degrees", frozen.get("object_yaw_degrees", 0.0)
+                                ),
                                 "coordinate_frame": "world",
                             },
                         },

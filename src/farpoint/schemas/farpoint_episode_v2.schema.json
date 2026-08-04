@@ -166,8 +166,12 @@
       "properties": {
         "object_position_m": {"$ref": "#/$defs/vector3"},
         "object_yaw_degrees": {"type": "number"},
+        "object_orientation_xyzw": {"$ref": "#/$defs/quaternion"},
         "object_shape": {"type": "string", "minLength": 1},
         "object_dimensions_m": {"$ref": "#/$defs/vector3"},
+        "object_variant_id": {"type": "string", "minLength": 1},
+        "grasp_profile_id": {"type": "string", "minLength": 1},
+        "perception_profile_id": {"type": "string", "minLength": 1},
         "appearance_profile_id": {"type": "string", "minLength": 1},
         "camera_profile_id": {"type": "string", "minLength": 1},
         "lighting_profile_id": {"type": "string", "minLength": 1}
