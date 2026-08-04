@@ -46,7 +46,7 @@ SO101_CFG = ArticulationCfg(
         },
         # Place the fixed base at the rear edge of the workspace so the
         # workshop arm's neutral gripper is over the configured table.
-        pos=(0.125, 0.092, 0.0),
+        pos=(0.125, 0.218, 0.0),
         rot=(0.70710678, 0.0, 0.0, 0.70710678),
     ),
     actuators={
