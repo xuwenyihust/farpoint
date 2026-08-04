@@ -68,7 +68,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "static_friction": 2.5,
         "dynamic_friction": 2.0,
         "finger_contact_max_effort": 8.0,
-        "grasp_height_offset_meters": -0.05,
+        "grasp_height_offset_meters": -0.03,
         "grasp_alignment_start_frame": 250,
         "grasp_hover_clearance": 0.25,
         "grasp_aperture_bias_xy": [-0.0015, 0.001],
