@@ -204,6 +204,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     # tensor cached before write_joint_state would restore the USD default.
     env.step(initial_joints)
     print(f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
+    action_term = env.action_manager.get_term("joint_positions")
+    print(
+        "SO101_ACTION_DEBUG "
+        f"raw={_numpy(action_term.raw_actions[0]).tolist()} "
+        f"processed={_numpy(action_term.processed_actions[0]).tolist()} "
+        f"joint_targets={_numpy(robot.data.joint_pos_target[0]).tolist()}",
+        flush=True,
+    )
     body_index = _body_index(robot)
     home_ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
     open_jaw = float(robot.data.joint_pos[0, 5].item())
