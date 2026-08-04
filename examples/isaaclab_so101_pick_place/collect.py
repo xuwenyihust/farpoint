@@ -184,17 +184,20 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         dtype=torch.float32,
         device=device,
     )
+    print(f"SO101_RESET_DEBUG after_reset={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
     object_spec = trial["resolved"]
     _move_object(scene[active_name], object_spec["position_m"], device)
     env.sim.step()
+    print(f"SO101_RESET_DEBUG after_sim_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     # Advance one manager step so FrameTransformer data reflects the reset
     # articulation before choosing the HOME waypoint.  Without this sync,
     # the first observation can be a stale pre-reset pose.
     # Send the same explicit pose as the first manager action; using the stale
     # tensor cached before write_joint_state would restore the USD default.
     env.step(initial_joints)
+    print(f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     body_index = _body_index(robot)
     home_ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
     open_jaw = float(robot.data.joint_pos[0, 5].item())
