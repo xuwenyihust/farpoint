@@ -1536,6 +1536,13 @@ def main():
                         if prim.IsA(UsdGeom.Camera) and str(prim.GetPath()) not in before_paths
                     ]
                     wrist_camera_prim_path = wrist_paths[-1] if wrist_paths else None
+                # Replicator creates render products lazily. With two RGB-D
+                # products, one post-attach frame is not sufficient on Isaac
+                # Sim 6; settle both streams before the perception warm-up.
+                for _ in range(3):
+                    rep.orchestrator.step(
+                        rt_subframes=int(camera_config.get("rt_subframes", 1))
+                    )
             else:
                 preview_writer = rep.WriterRegistry.get("BasicWriter")
                 preview_writer.initialize(output_dir=str(preview_dir), rgb=True)
