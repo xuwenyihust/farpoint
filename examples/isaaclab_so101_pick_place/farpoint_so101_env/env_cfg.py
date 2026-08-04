@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import isaaclab.sim as sim_utils
+import isaaclab.envs.mdp as lab_mdp
 from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.envs.mdp.actions.actions_cfg import JointPositionActionCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
@@ -158,11 +160,20 @@ class EmptyManagerCfg:
 
 
 @configclass
+class EventsCfg:
+    reset_scene_to_default = EventTerm(
+        func=lab_mdp.reset_scene_to_default,
+        mode="reset",
+        params={"reset_joint_targets": True},
+    )
+
+
+@configclass
 class SO101CubePickPlaceEnvCfg(ManagerBasedRLEnvCfg):
     scene: SO101CubeSceneCfg = SO101CubeSceneCfg()
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
-    events: EmptyManagerCfg = EmptyManagerCfg()
+    events: EventsCfg = EventsCfg()
     rewards: EmptyManagerCfg = EmptyManagerCfg()
     terminations: EmptyManagerCfg = EmptyManagerCfg()
     commands: EmptyManagerCfg = EmptyManagerCfg()
