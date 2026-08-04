@@ -97,9 +97,9 @@ def _body_index(robot) -> int:
     indexes, _names = robot.find_bodies("gripper")
     if len(indexes) != 1:
         raise RuntimeError(f"expected one SO-101 gripper body, got {indexes}")
-    # Isaac Lab's public body-link Jacobian includes the full articulation
-    # body index space (unlike the legacy PhysX view, which excluded the root).
-    return int(indexes[0])
+    # The USD robot is fixed-base, so Isaac Lab's public Jacobian excludes the
+    # fixed root row (jacobi_body_idx == body_idx - 1).
+    return int(indexes[0]) - 1
 
 
 def _ik_action(robot, ee_frame, target, current, body_index, device):
