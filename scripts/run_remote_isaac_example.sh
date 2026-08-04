@@ -94,6 +94,11 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${RESOURCE_DIR}" "${PHASE_DIR}"
+# Isaac Sim runs as an unprivileged user inside the image while this runner
+# creates runtime lock files as root.  Keep generated (Git-ignored) episode
+# artifacts writable by the simulation user in a fresh clone as well.
+mkdir -p "outputs/episodes"
+chmod -R a+rwX "outputs"
 python3 scripts/data_platform_cli.py run-start \
   --run-id "${RUN_ID}" \
   --task-name "${EXAMPLE_NAME}" \
@@ -119,6 +124,9 @@ docker run --rm --user 0:0 --entrypoint bash \
     archive_lock /runtime/cache/ov/_cache.lock cache.lock
     archive_lock /runtime/hub/hub.lock hub.lock
     archive_lock /runtime/logs/omni.telemetry.transmitter.lock telemetry.lock
+    # The subsequent simulation container is deliberately unprivileged.  Do
+    # not leave root-created cache directories or archived locks inaccessible.
+    chmod -R a+rwX /runtime
   ' _ "${RUN_ID}"
 record_phase "runtime_lock_archive_end" runtime="${RUN_RUNTIME}"
 record_phase "resource_monitor_start" output="${RESOURCE_LOG}"
