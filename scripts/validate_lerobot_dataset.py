@@ -230,6 +230,35 @@ def _decode_video_frames(path: Path) -> int:
         return sum(1 for _ in container.decode(streams[0]))
 
 
+def validate_camera_video_frames(
+    root: Path,
+    camera: str,
+    expected_frames: int,
+    result: dict[str, Any],
+) -> None:
+    """Decode every shard for one camera and match it to the data table."""
+    paths = sorted((root / "videos" / camera).rglob("*.mp4"))
+    if not paths:
+        add_error(result, f"{camera} directory must contain at least one MP4 shard")
+        return
+    decoded_frames = 0
+    for path in paths:
+        relative = path.relative_to(root)
+        if path.stat().st_size == 0:
+            add_error(result, f"video is empty: {relative}")
+            continue
+        try:
+            decoded = _decode_video_frames(path)
+        except (OSError, ValueError, RuntimeError) as error:
+            add_error(result, f"cannot decode video {relative}: {error}")
+            continue
+        if decoded == 0:
+            add_error(result, f"video has no decodable frames: {relative}")
+        decoded_frames += decoded
+    if decoded_frames != expected_frames:
+        add_error(result, f"{camera} decoded frame count does not match data Parquet")
+
+
 def validate_v2_artifacts(
     root: Path,
     episodes: list[dict[str, Any]],
@@ -331,22 +360,9 @@ def validate_v2_artifacts(
     if info.get("total_frames") is not None and info.get("total_frames") != len(data_rows):
         add_error(result, "meta/info.json total_frames does not match data Parquet")
 
-    video_frames = 0
-    for path in sorted((root / "videos" / "observation.images.front").rglob("*.mp4")):
-        relative = path.relative_to(root)
-        if path.stat().st_size == 0:
-            add_error(result, f"video is empty: {relative}")
-            continue
-        try:
-            decoded = _decode_video_frames(path)
-        except (OSError, ValueError, RuntimeError) as error:
-            add_error(result, f"cannot decode video {relative}: {error}")
-            continue
-        if decoded == 0:
-            add_error(result, f"video has no decodable frames: {relative}")
-        video_frames += decoded
-    if video_frames != len(data_rows):
-        add_error(result, "front camera decoded frame count does not match data Parquet")
+    validate_camera_video_frames(
+        root, "observation.images.front", len(data_rows), result
+    )
 
 
 def validate_v2_dataset(
@@ -516,9 +532,13 @@ def validate_v3_dataset(root: Path, sidecar: dict[str, Any], info: dict[str, Any
         if (episode.get("task") or {}).get("instruction") not in task_names:
             add_error(result, f"SO-101 episode task is missing at row {index}")
     validate_v2_artifacts(root, episodes, tasks, info, result)
-    wrist_dir = root / "videos" / "observation.images.wrist"
-    if not list(wrist_dir.rglob("*.mp4")):
-        add_error(result, "wrist camera directory must contain at least one MP4 shard")
+    expected_frames = sum(
+        int((episode.get("recording") or {}).get("frame_count") or 0)
+        for episode in episodes
+    )
+    validate_camera_video_frames(
+        root, "observation.images.wrist", expected_frames, result
+    )
     result["checks"]["episode_contracts"] = bool(episodes) and not result["errors"]
 
 

@@ -6,7 +6,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from validate_lerobot_dataset import validate_dataset
+from validate_lerobot_dataset import validate_camera_video_frames, validate_dataset
 
 from v2_fixtures import GIT_COMMIT, SHA, dataset_sidecar_v2, episode_metadata_v2
 
@@ -14,6 +14,30 @@ from v2_fixtures import GIT_COMMIT, SHA, dataset_sidecar_v2, episode_metadata_v2
 def write_json(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_camera_video_validator_rejects_wrist_frame_count_mismatch(tmp_path, monkeypatch):
+    video = (
+        tmp_path
+        / "videos"
+        / "observation.images.wrist"
+        / "chunk-000"
+        / "file-000.mp4"
+    )
+    video.parent.mkdir(parents=True)
+    video.write_bytes(b"not-empty")
+    monkeypatch.setattr(
+        "validate_lerobot_dataset._decode_video_frames", lambda _path: 2
+    )
+    result = {"errors": []}
+
+    validate_camera_video_frames(
+        tmp_path, "observation.images.wrist", 3, result
+    )
+
+    assert result["errors"] == [
+        "observation.images.wrist decoded frame count does not match data Parquet"
+    ]
 
 
 def valid_sidecar():

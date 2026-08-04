@@ -56,10 +56,12 @@ class OracleObservation:
 class OracleStateMachine:
     phase: OraclePhase = OraclePhase.HOME
     phase_steps: int = 0
+    contact_steps: int = 0
     stable_steps: int = 0
     failure_reason: str | None = None
     phase_timeout_steps: int = 180
     required_stable_steps: int = 15
+    required_contact_steps: int = 10
 
     def _advance(self) -> None:
         index = PHASE_ORDER.index(self.phase)
@@ -91,8 +93,10 @@ class OracleStateMachine:
             OraclePhase.RETREAT,
         } and observation.reached_target:
             self._advance()
-        elif self.phase is OraclePhase.CLOSE and observation.has_contact:
-            self._advance()
+        elif self.phase is OraclePhase.CLOSE:
+            self.contact_steps = self.contact_steps + 1 if observation.has_contact else 0
+            if self.contact_steps >= self.required_contact_steps:
+                self._advance()
         elif self.phase is OraclePhase.VERIFY_CONTACT and observation.has_contact and observation.cube_lifted:
             self._advance()
         elif self.phase is OraclePhase.OPEN and observation.gripper_released:

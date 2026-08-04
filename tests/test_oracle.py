@@ -22,9 +22,11 @@ def test_damped_least_squares_validates_dimensions():
 
 
 def test_oracle_requires_contact_lift_release_and_stability():
-    machine = OracleStateMachine(required_stable_steps=2)
+    machine = OracleStateMachine(required_stable_steps=2, required_contact_steps=2)
     for _phase in (OraclePhase.HOME, OraclePhase.PREGRASP, OraclePhase.DESCEND):
         machine.step(OracleObservation(reached_target=True))
+    assert machine.phase is OraclePhase.CLOSE
+    machine.step(OracleObservation(has_contact=True))
     assert machine.phase is OraclePhase.CLOSE
     machine.step(OracleObservation(has_contact=True))
     assert machine.phase is OraclePhase.VERIFY_CONTACT

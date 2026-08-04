@@ -27,35 +27,43 @@ SO101_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=so101_usd_path(),
         activate_contact_sensors=True,
-        # The real SO-101 servos continuously hold link weight.  Model the arm
-        # as gravity-compensated position control while leaving scene objects
-        # (including the cube) fully dynamic under PhysX gravity.
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=True, max_depenetration_velocity=5.0),
+        # The printed SO-101 fingertips are rubberized.  The workshop USD has
+        # no explicit physics material, so Isaac otherwise falls back to a
+        # low-friction default that releases the cube during lift.
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            static_friction=2.0,
+            dynamic_friction=1.5,
+            restitution=0.0,
+        ),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False, max_depenetration_velocity=5.0),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=32,
-            solver_velocity_iteration_count=4,
+            solver_velocity_iteration_count=1,
             fix_root_link=True,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
-            "Rotation": 0.0,
-            "Pitch": 0.0,
-            "Elbow": 0.0,
-            "Wrist_Pitch": 0.0,
-            "Wrist_Roll": 0.0,
-            "Jaw": 0.0,
+            "Rotation": -0.2736,
+            "Pitch": -0.6109,
+            "Elbow": -0.0745,
+            "Wrist_Pitch": 1.5148,
+            "Wrist_Roll": -1.6034,
+            "Jaw": 1.7453,
         },
         # Mount the fixed base at the table edge and on the table surface.
         # Keeping z=0 would intersect the 4 cm table collider at reset.
-        pos=(-0.05, 0.0, 0.032),
+        # The workshop USD assumes a raised mounting pedestal.  At the table
+        # surface the pitched arm intersects the tabletop; 26.7 cm preserves
+        # clearance while keeping the cube-height grasp inside the workspace.
+        pos=(-0.05, 0.0, 0.267),
         rot=(0.70710678, 0.0, 0.0, 0.70710678),
     ),
     actuators={
-        # The USD's real-robot gains are too under-damped for 30 Hz position
-        # targets in simulation; these preserve the joint limits while making
-        # the oracle's hold and release phases numerically stable.
+        # Isaac Sim 6.0 needs more damping than the workshop's Isaac Sim 5.1
+        # values at this task's 30 Hz control rate.  Keep the same 30 N-m
+        # effort limits while suppressing the reset transient.
         "rotation": ImplicitActuatorCfg(joint_names_expr=["Rotation"], effort_limit_sim=30, stiffness=100, damping=10),
         "pitch": ImplicitActuatorCfg(joint_names_expr=["Pitch"], effort_limit_sim=30, stiffness=80, damping=8),
         "elbow": ImplicitActuatorCfg(joint_names_expr=["Elbow"], effort_limit_sim=30, stiffness=70, damping=7),

@@ -44,6 +44,7 @@ def _cube(name: str, edge: float, color: tuple[float, float, float]):
 class SO101CubeSceneCfg(InteractiveSceneCfg):
     num_envs = 1
     env_spacing = 2.0
+    replicate_physics = False
     ground = AssetBaseCfg(prim_path="/World/Ground", spawn=sim_utils.GroundPlaneCfg())
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
@@ -94,8 +95,19 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
             FrameTransformerCfg.FrameCfg(prim_path="{ENV_REGEX_NS}/Robot/gripper", name="gripper")
         ],
     )
-    contact_grasp = ContactSensorCfg(
+    contact_jaw = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/jaw",
+        update_period=0.0,
+        history_length=3,
+        filter_prim_paths_expr=[
+            "{ENV_REGEX_NS}/CubeSmallRed",
+            "{ENV_REGEX_NS}/CubeSmallBlue",
+            "{ENV_REGEX_NS}/CubeLargeRed",
+            "{ENV_REGEX_NS}/CubeLargeBlue",
+        ],
+    )
+    contact_gripper = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/gripper",
         update_period=0.0,
         history_length=3,
         filter_prim_paths_expr=[
@@ -111,7 +123,14 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
         width=640,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(focal_length=18.0, focus_distance=0.35),
-        offset=TiledCameraCfg.OffsetCfg(pos=(0.42, -0.38, 0.34), rot=(0.78, -0.38, -0.25, -0.43), convention="opengl"),
+        # Isaac Lab 3.0 camera offsets use xyzw quaternions.  The collector
+        # also sets this static camera with set_world_poses_from_view after
+        # reset, so its optical axis is defined by an explicit look-at point.
+        offset=TiledCameraCfg.OffsetCfg(
+            pos=(0.42, -0.38, 0.34),
+            rot=(-0.3815, -0.2510, -0.4317, 0.7829),
+            convention="opengl",
+        ),
     )
     wrist_camera = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/gripper/FarpointWristCamera",
@@ -119,7 +138,14 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
         width=640,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(focal_length=13.5, focus_distance=0.08),
-        offset=TiledCameraCfg.OffsetCfg(pos=(-0.005, 0.06, -0.062), rot=(0.9238795, -0.3826834, 0.0, 0.0), convention="opengl"),
+        # The original workshop-style value was written as wxyz.  OffsetCfg
+        # in the pinned Isaac Lab release expects xyzw; leaving it unconverted
+        # points the optical axis back into the gripper body.
+        offset=TiledCameraCfg.OffsetCfg(
+            pos=(-0.005, 0.06, -0.062),
+            rot=(-0.3826834, 0.0, 0.0, 0.9238795),
+            convention="opengl",
+        ),
     )
     light = AssetBaseCfg(
         prim_path="/World/DomeLight",
@@ -161,6 +187,10 @@ class EmptyManagerCfg:
 
 @configclass
 class EventsCfg:
+    disable_camera_mount_collision = EventTerm(
+        func=mdp.disable_workshop_camera_mount_collision,
+        mode="prestartup",
+    )
     reset_scene_to_default = EventTerm(
         func=lab_mdp.reset_scene_to_default,
         mode="reset",

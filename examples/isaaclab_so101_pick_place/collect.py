@@ -23,6 +23,9 @@ SO101_JOINT_LIMITS = np.asarray(
     [[-1.920, 1.920], [-1.745, 1.745], [-1.745, 1.571],
      [-1.658, 1.658], [-2.793, 2.793]], dtype=np.float32
 )
+SO101_HOME_JOINTS = np.asarray(
+    [-0.2736, -0.6109, -0.0745, 1.5148, -1.6034, 1.7453], dtype=np.float32
+)
 
 
 def parse_args():
@@ -32,6 +35,7 @@ def parse_args():
     parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "outputs/so101_collection/manifest.json")
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "outputs/episodes")
     parser.add_argument("--max-attempts-this-run", type=int, default=150)
+    parser.add_argument("--diagnose-jacobian", action="store_true")
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
     args.headless = args.mode == "headless"
@@ -91,12 +95,67 @@ def _image(camera, device):
     return np.asarray(_numpy(camera.data.output["rgb"][0, ..., :3]), dtype=np.uint8)
 
 
-def _contact(sensor) -> bool:
-    if hasattr(sensor.data, "force_matrix_w"):
-        forces = sensor.data.force_matrix_w
-        return bool(torch.linalg.vector_norm(forces, dim=-1).max().item() > 2.0)
-    if hasattr(sensor.data, "net_forces_w"):
-        return bool(torch.linalg.vector_norm(sensor.data.net_forces_w, dim=-1).max().item() > 2.0)
+def _aim_front_camera(scene, device) -> None:
+    """Set the fixed front camera from an unambiguous eye/target pair."""
+    eye = torch.tensor([[0.42, -0.38, 0.34]], dtype=torch.float32, device=device)
+    target = torch.tensor([[0.20, 0.02, 0.06]], dtype=torch.float32, device=device)
+    scene["front_camera"].set_world_poses_from_view(eye, target)
+
+
+def _contact(sensors) -> bool:
+    if not isinstance(sensors, (tuple, list)):
+        sensors = (sensors,)
+    for sensor in sensors:
+        if hasattr(sensor.data, "force_matrix_w"):
+            forces = sensor.data.force_matrix_w
+            if bool(torch.linalg.vector_norm(forces, dim=-1).max().item() > 2.0):
+                return True
+        elif hasattr(sensor.data, "net_forces_w"):
+            if bool(torch.linalg.vector_norm(sensor.data.net_forces_w, dim=-1).max().item() > 2.0):
+                return True
+    return False
+
+
+def _bilateral_contact(sensors, threshold_n: float = 0.3) -> bool:
+    """Require cube-filtered force on both the moving and fixed fingers."""
+    for sensor in sensors:
+        if not hasattr(sensor.data, "force_matrix_w"):
+            return False
+        force = float(torch.linalg.vector_norm(sensor.data.force_matrix_w, dim=-1).max().item())
+        if force <= threshold_n:
+            return False
+    return True
+
+
+def _contact_debug(sensors) -> list[dict[str, float]]:
+    values = []
+    for sensor in sensors:
+        item = {}
+        if hasattr(sensor.data, "force_matrix_w"):
+            item["cube_filtered_max_n"] = float(
+                torch.linalg.vector_norm(sensor.data.force_matrix_w, dim=-1).max().item()
+            )
+        if hasattr(sensor.data, "net_forces_w"):
+            item["all_contacts_max_n"] = float(
+                torch.linalg.vector_norm(sensor.data.net_forces_w, dim=-1).max().item()
+            )
+        values.append(item)
+    return values
+
+
+def _unexpected_finger_collision(sensors, threshold_n: float = 5.0) -> bool:
+    """Detect non-cube finger contact from net versus filtered forces."""
+    for sensor in sensors:
+        if not hasattr(sensor.data, "net_forces_w"):
+            continue
+        net = float(torch.linalg.vector_norm(sensor.data.net_forces_w, dim=-1).max().item())
+        filtered = 0.0
+        if hasattr(sensor.data, "force_matrix_w"):
+            filtered = float(
+                torch.linalg.vector_norm(sensor.data.force_matrix_w, dim=-1).max().item()
+            )
+        if net > threshold_n and filtered <= 0.3:
+            return True
     return False
 
 
@@ -107,7 +166,7 @@ def _body_index(robot) -> int:
     return int(indexes[0])
 
 
-def _ik_action(robot, ee_frame, target, current, body_index, device):
+def _ik_action(robot, ee_frame, target, commanded, body_index, device):
     # Use the articulation's body-link pose and Jacobian from the same frame;
     # FrameTransformer target offsets can lag one simulation tick on reset.
     ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3])
@@ -123,15 +182,32 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
         _ik_action._jac_printed = True
     jacobian = _numpy(jacobians[0, jacobi_body_index, :3, :5])
     position_error = np.asarray(target) - ee
-    delta = damped_least_squares(jacobian, position_error, damping=0.06)
-    action = _numpy(current).astype(np.float32).copy()
+    measured = _numpy(robot.data.joint_pos[0]).astype(np.float32)
+    posture_error = np.zeros(5, dtype=np.float32)
+    posture_error[3] = 1.30 - measured[3]
+    # Rotate the workshop wrist camera mount away from the tabletop.  At the
+    # asset's -1.603 rad roll its collider reaches below the table before the
+    # open fingers reach the cube.
+    posture_error[4] = -measured[4]
+    delta = damped_least_squares(
+        jacobian,
+        position_error,
+        damping=0.06,
+        nullspace_error=posture_error,
+        nullspace_gain=0.20,
+    )
+    action = np.asarray(commanded, dtype=np.float32).copy()
+    # Integrate resolved-rate IK in command space.  Re-basing on measured
+    # joints every frame erases accumulated position error and caps the drive
+    # torque below what is needed to move the gravity-loaded arm.
     action[:5] = action[:5] + np.clip(delta, -0.02, 0.02)
+    action[:5] = np.clip(action[:5], measured[:5] - 0.30, measured[:5] + 0.30)
     # Keep the generated target inside the pinned USD joint limits.  The
     # position action manager does not clamp targets when offset-free control
     # is enabled, and some PhysX articulations report wider soft limits.
     action[:5] = np.clip(action[:5], SO101_JOINT_LIMITS[:, 0], SO101_JOINT_LIMITS[:, 1])
     if not getattr(_ik_action, "_printed", False) and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02:
-        print(f"SO101_IK_DEBUG ee={ee.tolist()} delta={delta.tolist()} current={_numpy(current).tolist()} action={action.tolist()}", flush=True)
+        print(f"SO101_IK_DEBUG ee={ee.tolist()} delta={delta.tolist()} commanded={np.asarray(commanded).tolist()} action={action.tolist()}", flush=True)
         _ik_action._printed = True
     return torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
 
@@ -166,21 +242,51 @@ def _variant_name(trial):
     return f"cube_{size}_{color_name}"
 
 
+def run_jacobian_diagnostic(env) -> None:
+    """Compare reported translational Jacobian columns with driven joint motion."""
+    robot = env.scene["robot"]
+    body_index = _body_index(robot)
+    device = env.device
+    records = []
+    for joint_index, joint_name in enumerate(SIM_JOINT_NAMES[:5]):
+        env.reset()
+        home = torch.tensor(SO101_HOME_JOINTS[None, :], dtype=torch.float32, device=device)
+        env.step(home)
+        baseline = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
+        analytic = _numpy(
+            robot.data.body_link_jacobian_w.torch[0, body_index - 1, :3, joint_index]
+        ).copy()
+        perturbed = home.clone()
+        perturbed[0, joint_index] += 0.08
+        for _ in range(8):
+            env.step(perturbed)
+        observed = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]) - baseline
+        records.append(
+            {
+                "joint": joint_name,
+                "analytic": analytic.tolist(),
+                "observed": observed.tolist(),
+                "dot": float(np.dot(analytic, observed)),
+            }
+        )
+    print("SO101_JACOBIAN_DIAGNOSTIC " + json.dumps(records, sort_keys=True), flush=True)
+
+
 def run_attempt(env, trial, output_root: Path, git_commit: str):
     device = env.device
     scene = env.scene
     robot = scene["robot"]
     ee_frame = scene["ee_frame"]
-    contact = scene["contact_grasp"]
+    contact = (scene["contact_jaw"], scene["contact_gripper"])
     active_name = _variant_name(trial)
     inactive = [name for name in ("cube_small_red", "cube_small_blue", "cube_large_red", "cube_large_blue") if name != active_name]
     env.farpoint_active_cube = active_name
     env.reset()
-    # Hold the pinned USD's authored zero drive pose.  The fixed-base root and
-    # joint state are established by the scene reset; teleporting them again
-    # after initialization can violate the articulation constraints.
+    # Hold the configured workshop pose on the first physics step.  Starting
+    # from the authored all-zero pose leaves the arm horizontal and produces a
+    # large gravity transient before the oracle receives its first observation.
     initial_joints = torch.tensor(
-        [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+        [SO101_HOME_JOINTS.tolist()],
         dtype=torch.float32,
         device=device,
     )
@@ -189,19 +295,12 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
     object_spec = trial["resolved"]
     _move_object(scene[active_name], object_spec["position_m"], device)
-    env.sim.step()
-    print(f"SO101_RESET_DEBUG after_sim_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
-    for diagnostic_step in range(2, 5):
-        env.sim.step()
-        print(
-            f"SO101_RESET_DEBUG after_sim_step_{diagnostic_step}={_numpy(robot.data.joint_pos[0]).tolist()}",
-            flush=True,
-        )
     # Advance one manager step so FrameTransformer data reflects the reset
     # articulation before choosing the HOME waypoint.  Without this sync,
     # the first observation can be a stale pre-reset pose.
     # Send the same explicit pose as the first manager action; using the stale
     # tensor cached before write_joint_state would restore the USD default.
+    _aim_front_camera(scene, device)
     env.step(initial_joints)
     print(f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     action_term = env.action_manager.get_term("joint_positions")
@@ -215,10 +314,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     body_index = _body_index(robot)
     home_ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
     open_jaw = float(robot.data.joint_pos[0, 5].item())
-    closed_jaw = float(np.deg2rad(-8.0))
+    closed_jaw = float(np.deg2rad(-10.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     target_position = np.asarray([0.22, 0.10, 0.060], dtype=np.float32)
+    closed_tool_xy = np.asarray((0.002, -0.012, 0.0), dtype=np.float32)
     machine = OracleStateMachine(phase_timeout_steps=360)
+    commanded_joints = _numpy(initial_joints[0]).astype(np.float32).copy()
+    cube_was_lifted = False
     rows = []
     root = output_root / f"episode_{trial['attempt_id']}"
     if root.exists():
@@ -229,19 +331,33 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             target = home_ee
             jaw = open_jaw
         elif phase in {OraclePhase.PREGRASP, OraclePhase.DESCEND, OraclePhase.CLOSE}:
-            target = object_position + np.asarray((0.0, 0.0, 0.075 if phase is OraclePhase.PREGRASP else 0.035))
+            # Targets refer to the gripper link origin, not the fingertips.
+            # Collider-derived tool-center offset, computed with Isaac Lab's
+            # xyzw body quaternions.  This places both finger meshes across the
+            # cube sidewalls while keeping their lower vertices above table.
+            if phase is OraclePhase.PREGRASP:
+                tool_offset = (0.007, -0.007, 0.090)
+            elif phase is OraclePhase.DESCEND:
+                tool_offset = (0.007, -0.007, 0.038)
+            else:
+                tool_offset = (0.002, -0.012, 0.038)
+            target = object_position + np.asarray(tool_offset)
             jaw = closed_jaw if phase is OraclePhase.CLOSE else open_jaw
         elif phase is OraclePhase.VERIFY_CONTACT:
-            target = object_position + np.asarray((0.0, 0.0, 0.12))
+            target = object_position + closed_tool_xy + np.asarray((0.0, 0.0, 0.12))
             jaw = closed_jaw
         elif phase in {OraclePhase.LIFT, OraclePhase.PREPLACE}:
-            target = target_position + np.asarray((0.0, 0.0, 0.13)) if phase is OraclePhase.PREPLACE else object_position + np.asarray((0.0, 0.0, 0.13))
+            target = (
+                target_position + closed_tool_xy + np.asarray((0.0, 0.0, 0.13))
+                if phase is OraclePhase.PREPLACE
+                else object_position + closed_tool_xy + np.asarray((0.0, 0.0, 0.13))
+            )
             jaw = closed_jaw
         elif phase in {OraclePhase.PLACE_DESCEND, OraclePhase.OPEN, OraclePhase.SETTLE}:
-            target = target_position + np.asarray((0.0, 0.0, 0.045))
+            target = target_position + closed_tool_xy + np.asarray((0.0, 0.0, 0.045))
             jaw = open_jaw if phase is not OraclePhase.PLACE_DESCEND else closed_jaw
         else:
-            target = target_position + np.asarray((0.0, 0.0, 0.14))
+            target = target_position + closed_tool_xy + np.asarray((0.0, 0.0, 0.14))
             jaw = open_jaw
 
         current = robot.data.joint_pos[0]
@@ -258,21 +374,58 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
                 f"target={np.asarray(target).tolist()}",
                 flush=True,
             )
-        action = _ik_action(robot, ee_frame, target, current, body_index, device)
+        action = _ik_action(robot, ee_frame, target, commanded_joints, body_index, device)
         action[0, 5] = jaw
+        commanded_joints = _numpy(action[0]).astype(np.float32).copy()
         state = _numpy(current)
         front = _image(scene["front_camera"], device)
         wrist = _image(scene["wrist_camera"], device)
         row = _write_frame(root, frame, state, _numpy(action[0]), front, wrist)
         row["phase"] = phase.value
+        has_contact = _contact(contact)
+        bilateral_contact = _bilateral_contact(contact)
+        cube_z = float(scene[active_name].data.root_pos_w[0, 2].item())
+        cube_lifted = cube_z > object_position[2] + 0.025
+        cube_was_lifted = cube_was_lifted or cube_lifted
+        unexpected_collision = (
+            phase in {OraclePhase.PREGRASP, OraclePhase.DESCEND}
+            and _unexpected_finger_collision(contact)
+        )
+        cube_dropped = (
+            cube_was_lifted
+            and phase
+            in {OraclePhase.VERIFY_CONTACT, OraclePhase.LIFT, OraclePhase.PREPLACE}
+            and not bilateral_contact
+            and cube_z < object_position[2] + 0.015
+        )
+        row["contact"] = {
+            "cube_contact": has_contact,
+            "bilateral_cube_contact": bilateral_contact,
+            "unexpected_collision": unexpected_collision,
+            "sensors": _contact_debug(contact),
+        }
+        row["truth"] = {
+            "object_root_pose_xyzw": _numpy(scene[active_name].data.root_pose_w[0]).tolist(),
+            "object_linear_velocity_mps": _numpy(scene[active_name].data.root_lin_vel_w[0]).tolist(),
+            "gripper_link_pose_xyzw": _numpy(robot.data.body_link_pose_w.torch[0, body_index]).tolist(),
+            "jaw_link_pose_xyzw": _numpy(
+                robot.data.body_link_pose_w.torch[0, robot.body_names.index("jaw")]
+            ).tolist(),
+        }
         rows.append(row)
+        posture_ready = abs(float(current[3].item()) - 1.30) < 0.05 and abs(float(current[4].item())) < 0.05
         obs = OracleObservation(
-            reached_target=float(np.linalg.norm(_numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]) - target)) < 0.012,
-            has_contact=_contact(contact),
-            cube_lifted=float(scene[active_name].data.root_pos_w[0, 2].item()) > object_position[2] + 0.025,
+            reached_target=(
+                float(np.linalg.norm(_numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]) - target)) < 0.012
+                and posture_ready
+            ),
+            has_contact=bilateral_contact,
+            cube_lifted=cube_lifted,
             cube_in_target=float(torch.linalg.vector_norm(scene[active_name].data.root_pos_w[0, :2] - torch.tensor(target_position[:2], device=device)).item()) < 0.035,
             gripper_released=abs(float(current[5].item()) - open_jaw) < 0.08,
             cube_stable=float(torch.linalg.vector_norm(scene[active_name].data.root_lin_vel_w[0]).item()) < 0.03,
+            collision=unexpected_collision,
+            cube_dropped=cube_dropped,
         )
         machine.step(obs)
         env.step(action)
@@ -280,12 +433,26 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             break
     success = machine.phase is OraclePhase.SUCCEEDED
     if not success:
+        ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3])
+        jacobian = _numpy(robot.data.body_link_jacobian_w.torch[0, body_index - 1, :3, :5])
+        terminal_error = np.asarray(target) - ee
+        terminal_delta = damped_least_squares(jacobian, terminal_error, damping=0.06)
+        body_poses = {
+            name: _numpy(robot.data.body_link_pose_w.torch[0, index]).tolist()
+            for index, name in enumerate(robot.body_names)
+            if name in {"wrist", "gripper", "jaw"}
+        }
         print(
             "SO101_ORACLE_DEBUG "
             f"phase={machine.phase.value} reason={machine.failure_reason} "
-            f"ee={_numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).tolist()} "
+            f"ee={ee.tolist()} "
             f"target={np.asarray(target).tolist()} "
-            f"joints={_numpy(robot.data.joint_pos[0]).tolist()}",
+            f"error={terminal_error.tolist()} delta={terminal_delta.tolist()} "
+            f"joints={_numpy(robot.data.joint_pos[0]).tolist()} "
+            f"targets={_numpy(robot.data.joint_pos_target[0]).tolist()} "
+            f"contact={_contact(contact)} cube={_numpy(scene[active_name].data.root_pos_w[0]).tolist()} "
+            f"contact_forces={json.dumps(_contact_debug(contact), sort_keys=True)} "
+            f"body_poses={json.dumps(body_poses, sort_keys=True)}",
             flush=True,
         )
     metadata = {
@@ -327,6 +494,9 @@ def main():
     env_cfg = SO101CubePickPlaceEnvCfg()
     env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
     try:
+        if args_cli.diagnose_jacobian:
+            run_jacobian_diagnostic(env)
+            return
         for _ in range(args_cli.max_attempts_this_run):
             attempt = next_attempt(manifest, plan)
             if attempt is None:
