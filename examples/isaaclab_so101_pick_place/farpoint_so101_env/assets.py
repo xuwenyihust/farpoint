@@ -37,11 +37,11 @@ SO101_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
-            "Rotation": -0.2736,
-            "Pitch": -0.6109,
-            "Elbow": -0.0745,
-            "Wrist_Pitch": 1.5148,
-            "Wrist_Roll": -1.6034,
+            "Rotation": 0.0,
+            "Pitch": 0.0,
+            "Elbow": 0.0,
+            "Wrist_Pitch": 0.0,
+            "Wrist_Roll": 0.0,
             "Jaw": 1.7453,
         },
         # Mount the fixed base at the table edge and on the table surface.
