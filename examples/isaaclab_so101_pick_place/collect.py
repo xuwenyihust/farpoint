@@ -112,7 +112,7 @@ def _body_index(robot) -> int:
 def _ik_action(robot, ee_frame, target, current, body_index, device):
     ee = _numpy(ee_frame.data.target_pos_w[0, 0])
     jacobians = robot.data.body_link_jacobian_w.torch
-    if not getattr(_ik_action, "_jac_printed", False):
+    if not getattr(_ik_action, "_jac_printed", False) and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02:
         print(
             f"SO101_JAC_DEBUG body_index={body_index} shape={tuple(jacobians.shape)} "
             f"max={float(torch.abs(jacobians).max().item())} "
@@ -130,7 +130,7 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
     # position action manager does not clamp targets when offset-free control
     # is enabled, and some PhysX articulations report wider soft limits.
     action[:5] = np.clip(action[:5], SO101_JOINT_LIMITS[:, 0], SO101_JOINT_LIMITS[:, 1])
-    if not getattr(_ik_action, "_printed", False):
+    if not getattr(_ik_action, "_printed", False) and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02:
         print(f"SO101_IK_DEBUG ee={ee.tolist()} delta={delta.tolist()} current={_numpy(current).tolist()} action={action.tolist()}", flush=True)
         _ik_action._printed = True
     return torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
