@@ -179,6 +179,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     object_spec = trial["resolved"]
     _move_object(scene[active_name], object_spec["position_m"], device)
     env.sim.step()
+    # Advance one manager step so FrameTransformer data reflects the reset
+    # articulation before choosing the HOME waypoint.  Without this sync,
+    # the first observation can be a stale pre-reset pose.
+    env.step(robot.data.joint_pos.torch.clone())
     home_ee = _numpy(ee_frame.data.target_pos_w[0, 0]).copy()
     body_index = _body_index(robot)
     open_jaw = float(robot.data.joint_pos[0, 5].item())
