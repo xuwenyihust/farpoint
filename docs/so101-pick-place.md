@@ -26,6 +26,16 @@ python scripts/export_lerobot_dataset.py \
 python scripts/validate_lerobot_dataset.py artifacts/so101/lerobot_v3
 ```
 
+To copy source/configuration to the DGX Spark without copying generated data:
+
+```bash
+FARPOINT_DGX_HOST=dgx-spark scripts/sync_so101_to_dgx.sh
+ssh dgx-spark 'cd /home/wenyixu/projects/farpoint && scripts/run_so101_isaaclab.sh headless'
+```
+
+Set `FARPOINT_DGX_HOST` to an IP address if the `.local` hostname is not
+available. Set `FARPOINT_DGX_ROOT` to use a different remote project path.
+
 The launcher downloads the pinned NVIDIA workshop USD into the ignored
 `.cache/farpoint/assets` directory and verifies its SHA256 before starting the
 Isaac Sim 6.0 container. `viewer` and `headless` use the same collector; the
