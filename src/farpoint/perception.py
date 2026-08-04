@@ -168,6 +168,7 @@ def estimate_dominant_color_yaw(
     min_channel=80,
     min_dominance=30,
     min_confidence=0.15,
+    confidence_probe_degrees=15.0,
 ):
     """Estimate an upright cube's yaw from RGB-D support points.
 
@@ -207,7 +208,11 @@ def estimate_dominant_color_yaw(
     best_index = int(np.argmin(areas))
     yaw = float(candidate_angles[best_index])
     best_area = areas[best_index]
-    offset = max(1, int(10.0 / 0.5))
+    # Evaluate a meaningful fraction of the cube's 90-degree symmetry period.
+    # A 10-degree neighbour is too close to the half-degree rasterization of
+    # the projected support; 15 degrees remains local yet gives a stable
+    # RGB-D-only separation measurement.
+    offset = max(1, int(float(confidence_probe_degrees) / 0.5))
     nearby = [areas[(best_index - offset) % len(areas)], areas[(best_index + offset) % len(areas)]]
     orientation_separation = max(0.0, min(nearby) / max(best_area, 1e-12) - 1.0)
     pixel_support = min(1.0, len(points) / max(float(min_pixels) * 8.0, 1.0))
