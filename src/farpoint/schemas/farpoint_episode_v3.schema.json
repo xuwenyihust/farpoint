@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xuwenyihust/farpoint/src/farpoint/schemas/farpoint_episode_v3.schema.json",
+  "title": "Farpoint Episode Metadata v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "identity", "provenance", "task", "embodiment", "scene", "variation", "recording", "outcome"],
+  "properties": {
+    "schema_version": {"const": "farpoint.episode.v3"},
+    "identity": {"$ref": "#/$defs/identity"},
+    "provenance": {"type": "object", "minProperties": 1},
+    "task": {"$ref": "#/$defs/task"},
+    "embodiment": {"$ref": "#/$defs/embodiment"},
+    "scene": {"$ref": "#/$defs/scene"},
+    "variation": {"$ref": "#/$defs/variation"},
+    "recording": {"$ref": "#/$defs/recording"},
+    "outcome": {"$ref": "#/$defs/outcome"}
+  },
+  "$defs": {
+    "vector3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "quaternion": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["episode_id", "trial_id", "task_id", "split", "episode_seed"],
+      "properties": {
+        "episode_id": {"type": "string", "minLength": 1}, "trial_id": {"type": "string", "minLength": 1},
+        "task_id": {"type": "string", "minLength": 1}, "split": {"enum": ["train", "validation", "test"]},
+        "episode_seed": {"type": "integer", "minimum": 0}, "dataset_episode_index": {"type": "integer", "minimum": 0}
+      }
+    },
+    "task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "instruction", "object_shape", "success_criteria_id"],
+      "properties": {"task_id": {"type": "string"}, "instruction": {"type": "string"}, "object_shape": {"type": "string"}, "success_criteria_id": {"type": "string"}}
+    },
+    "embodiment": {
+      "type": "object", "additionalProperties": true,
+      "required": ["robot", "gripper", "arm_dof", "gripper_dof", "controller", "control_mode", "grasp_mode", "joint_mapping"],
+      "properties": {
+        "robot": {"const": "so101"}, "gripper": {"const": "so101_jaw"}, "arm_dof": {"const": 5}, "gripper_dof": {"const": 1},
+        "controller": {"type": "string"}, "control_mode": {"const": "joint_position"}, "grasp_mode": {"const": "contact_only"}, "joint_mapping": {"type": "object"}
+      }
+    },
+    "object": {
+      "type": "object", "additionalProperties": true,
+      "required": ["shape", "asset_id", "dimensions_m", "initial_pose", "rgba", "mass_kg", "static_friction", "dynamic_friction", "restitution"],
+      "properties": {
+        "shape": {"type": "string"}, "asset_id": {"type": "string"}, "dimensions_m": {"$ref": "#/$defs/vector3"},
+        "initial_pose": {"type": "object"}, "rgba": {"type": "array"}, "mass_kg": {"type": "number", "exclusiveMinimum": 0},
+        "static_friction": {"type": "number", "minimum": 0}, "dynamic_friction": {"type": "number", "minimum": 0}, "restitution": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "scene": {
+      "type": "object", "additionalProperties": true,
+      "required": ["coordinate_frame", "object", "target", "cameras", "lighting_profile_id"],
+      "properties": {"coordinate_frame": {"type": "string"}, "object": {"$ref": "#/$defs/object"}, "target": {"type": "object"}, "cameras": {"type": "array", "minItems": 2}, "lighting_profile_id": {"type": "string"}}
+    },
+    "variation": {
+      "type": "object", "additionalProperties": true,
+      "required": ["schema_version", "variation_id", "varied_axes", "frozen_axes", "requested", "resolved", "split"],
+      "properties": {"schema_version": {"const": "farpoint.variation.v3"}, "variation_id": {"type": "string"}, "varied_axes": {"type": "array"}, "frozen_axes": {"type": "array"}, "requested": {"type": "object"}, "resolved": {"type": "object"}, "split": {"enum": ["train", "validation", "test"]}}
+    },
+    "recording": {
+      "type": "object", "additionalProperties": true,
+      "required": ["fps", "cameras", "frame_count", "state_features", "action_features"],
+      "properties": {"fps": {"const": 30}, "cameras": {"type": "array", "minItems": 2}, "frame_count": {"type": "integer", "minimum": 1}, "state_features": {"type": "array", "minItems": 6, "maxItems": 6}, "action_features": {"type": "array", "minItems": 6, "maxItems": 6}}
+    },
+    "outcome": {
+      "type": "object", "additionalProperties": true,
+      "required": ["success", "dataset_valid", "failure_category", "failure_reason"],
+      "properties": {"success": {"type": "boolean"}, "dataset_valid": {"type": "boolean"}, "failure_category": {"type": ["string", "null"]}, "failure_reason": {"type": ["string", "null"]}}
+    }
+  }
+}

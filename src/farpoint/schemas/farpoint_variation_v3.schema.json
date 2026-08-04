@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xuwenyihust/farpoint/src/farpoint/schemas/farpoint_variation_v3.schema.json",
+  "title": "Farpoint Generic Object Variation Plan v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan_id", "task_id", "config_revision", "config_sha256", "plan_sha256", "varied_axes", "frozen_axes", "dimensions", "target", "recording", "trials"],
+  "properties": {
+    "schema_version": {"const": "farpoint.variation.v3"},
+    "plan_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "config_revision": {"type": "string", "minLength": 1},
+    "config_sha256": {"$ref": "#/$defs/sha256"},
+    "plan_sha256": {"$ref": "#/$defs/sha256"},
+    "varied_axes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "frozen_axes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "dimensions": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "target": {"type": "object"},
+    "recording": {"type": "object"},
+    "trials": {
+      "type": "array",
+      "minItems": 100,
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/trial"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "vector3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "quaternion": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+    "rgba": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "asset_id", "dimensions_m", "position_m", "orientation_xyzw", "rgba", "mass_kg", "static_friction", "dynamic_friction", "restitution"],
+      "properties": {
+        "shape": {"enum": ["cube", "cuboid", "cylinder", "mesh"]},
+        "asset_id": {"type": "string", "minLength": 1},
+        "dimensions_m": {"$ref": "#/$defs/vector3"},
+        "position_m": {"$ref": "#/$defs/vector3"},
+        "orientation_xyzw": {"$ref": "#/$defs/quaternion"},
+        "rgba": {"$ref": "#/$defs/rgba"},
+        "mass_kg": {"type": "number", "exclusiveMinimum": 0},
+        "static_friction": {"type": "number", "minimum": 0},
+        "dynamic_friction": {"type": "number", "minimum": 0},
+        "restitution": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "trial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trial_id", "variation_id", "cell_id", "split", "seed", "seed_material", "requested", "resolved"],
+      "properties": {
+        "trial_id": {"type": "string", "minLength": 1},
+        "variation_id": {"type": "string", "minLength": 1},
+        "cell_id": {"type": "string", "pattern": "^r[0-9]{2}_c[0-9]{2}$"},
+        "split": {"enum": ["train", "validation", "test"]},
+        "seed": {"type": "integer", "minimum": 0},
+        "seed_material": {"type": "object"},
+        "requested": {"$ref": "#/$defs/object"},
+        "resolved": {"$ref": "#/$defs/object"}
+      }
+    }
+  }
+}

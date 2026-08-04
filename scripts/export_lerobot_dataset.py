@@ -25,6 +25,7 @@ from export_lerobot_v1_episode import (  # noqa: E402
 )
 from farpoint.contracts import SPLITS, validate_contract  # noqa: E402
 from farpoint.episode_metadata import normalize_episode_metadata_v2  # noqa: E402
+from farpoint.so101 import LEROBOT_JOINT_NAMES, SIM_JOINT_NAMES, radians_to_lerobot  # noqa: E402
 
 
 SELECTION_SCHEMA_VERSION = "farpoint.export-selection.v1"
@@ -158,6 +159,121 @@ def _write_split_ranges(output_dir: Path, split_counts: dict[str, int]) -> None:
     info_path.write_text(json.dumps(info, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _read_rgb(episode_dir: Path, row: dict[str, Any], key: str) -> np.ndarray:
+    from PIL import Image
+
+    path = episode_dir / row[key]
+    with Image.open(path) as image:
+        return np.asarray(image.convert("RGB"), dtype=np.uint8)
+
+
+def _so101_sidecar(dataset_id: str, records: list[dict[str, Any]], fps: int, width: int, height: int, selection_policy: str | None) -> dict[str, Any]:
+    first = records[0]
+    tasks = {record["task"]["task_id"]: record["task"] for record in records}
+    sidecar = {
+        "schema_version": "farpoint.dataset.v3",
+        "dataset_id": dataset_id,
+        "format": "lerobot",
+        "format_version": "v3",
+        "demonstration_policy": "successful_only",
+        "splits": {split: sum(record["identity"]["split"] == split for record in records) for split in SPLITS},
+        "tasks": [tasks[key] for key in sorted(tasks)],
+        "robot": {"name": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1},
+        "simulation": {
+            "simulator": first["provenance"].get("simulator", "Isaac Sim"),
+            "image": first["provenance"].get("simulator_image", "nvcr.io/nvidia/isaac-sim:6.0.0"),
+            "physics": first["provenance"].get("physics_engine", "PhysX"),
+        },
+        "recording": {
+            "fps": fps,
+            "cameras": ["observation.images.front", "observation.images.wrist"],
+            "image_width": width,
+            "image_height": height,
+            "state_features": list(LEROBOT_JOINT_NAMES),
+            "action_features": list(LEROBOT_JOINT_NAMES),
+            "state_unit": "so101_calibrated_position",
+            "action_unit": "so101_calibrated_position",
+            "action_semantics": "joint_position_target_sent_at_control_step",
+        },
+        "joint_mapping": first["embodiment"]["joint_mapping"],
+        "contracts": {"episode": "farpoint.episode.v3", "variation": "farpoint.variation.v3"},
+    }
+    if selection_policy:
+        sidecar["selection_policy"] = selection_policy
+    errors = validate_contract(sidecar)
+    if errors:
+        raise ValueError("invalid farpoint.dataset.v3 sidecar: " + "; ".join(errors))
+    return sidecar
+
+
+def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
+    _, first_dir, _, first_rows, _ = loaded[0]
+    first_front = _read_rgb(first_dir, first_rows[0], "rgb_path")
+    height, width = first_front.shape[:2]
+    fps = infer_fps(first_rows)
+    records = []
+    for index, (entry, episode_dir, metadata, rows, metrics) in enumerate(loaded):
+        if metadata.get("schema_version") != "farpoint.episode.v3":
+            raise ValueError("SO-101 export cannot mix episode contract versions")
+        if infer_fps(rows) != fps:
+            raise ValueError(f"episode has a different recording rate: {episode_dir}")
+        for row in rows:
+            front = _read_rgb(episode_dir, row, "rgb_path")
+            wrist = _read_rgb(episode_dir, row, "wrist_rgb_path")
+            if front.shape[:2] != (height, width) or wrist.shape[:2] != (height, width):
+                raise ValueError(f"episode camera resolution mismatch: {episode_dir}")
+        enriched = dict(metadata)
+        enriched["identity"] = {**metadata["identity"], "dataset_episode_index": index}
+        enriched["recording"] = {**metadata["recording"], "fps": fps, "frame_count": len(rows)}
+        errors = validate_contract(enriched)
+        if errors:
+            raise ValueError(f"invalid SO-101 episode metadata: {'; '.join(errors)}")
+        records.append(enriched)
+
+    if dataset_class is None:
+        from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+        dataset_class = LeRobotDataset
+    features = {
+        "observation.state": {"dtype": "float32", "shape": (6,), "names": list(LEROBOT_JOINT_NAMES)},
+        "action": {"dtype": "float32", "shape": (6,), "names": list(LEROBOT_JOINT_NAMES)},
+        "observation.images.front": {"dtype": "video", "shape": (height, width, 3), "names": ["height", "width", "channel"]},
+        "observation.images.wrist": {"dtype": "video", "shape": (height, width, 3), "names": ["height", "width", "channel"]},
+        "next.done": {"dtype": "bool", "shape": (1,), "names": ["done"]},
+    }
+    dataset = dataset_class.create(
+        repo_id=manifest["dataset_id"], fps=fps, features=features, root=output_dir,
+        robot_type="so101_follower", use_videos=True, image_writer_processes=0,
+        image_writer_threads=2, video_backend="pyav",
+    )
+    try:
+        for (_, episode_dir, _, rows, _), record in zip(loaded, records, strict=True):
+            for frame_index, row in enumerate(rows):
+                if list(row["joint_names"]) != list(SIM_JOINT_NAMES):
+                    raise ValueError("SO-101 observations must use the canonical simulation joint order")
+                state = radians_to_lerobot(select_joint_values(row, list(SIM_JOINT_NAMES), "joint_positions"), clip=True)
+                action = radians_to_lerobot(select_joint_values(row, list(SIM_JOINT_NAMES), "action_joint_positions"), clip=True)
+                dataset.add_frame({
+                    "observation.state": state,
+                    "action": action,
+                    "observation.images.front": _read_rgb(episode_dir, row, "rgb_path"),
+                    "observation.images.wrist": _read_rgb(episode_dir, row, "wrist_rgb_path"),
+                    "next.done": np.asarray([frame_index == len(rows) - 1], dtype=np.bool_),
+                    "task": record["task"]["instruction"],
+                })
+            dataset.save_episode(parallel_encoding=False)
+        dataset.finalize()
+    except Exception:
+        shutil.rmtree(output_dir, ignore_errors=True)
+        raise
+    sidecar = _so101_sidecar(manifest["dataset_id"], records, fps, width, height, manifest.get("selection_policy"))
+    meta_dir = output_dir / "meta"
+    (meta_dir / "farpoint_v3.json").write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (meta_dir / "episode_metadata.jsonl").write_text("".join(json.dumps(record, sort_keys=True) + "\n" for record in records), encoding="utf-8")
+    _write_split_ranges(output_dir, sidecar["splits"])
+    return output_dir
+
+
 def export_dataset(
     manifest_path: Path,
     output_dir: Path,
@@ -180,6 +296,9 @@ def export_dataset(
         if not metrics.get("success") or not metrics.get("dataset_valid"):
             raise ValueError(f"release selection contains an unsuccessful episode: {episode_dir}")
         loaded.append((entry, episode_dir, metadata, observations, metrics))
+
+    if loaded[0][2].get("schema_version") == "farpoint.episode.v3":
+        return _export_so101_dataset(manifest, output_dir, loaded, dataset_class)
 
     from PIL import Image
 

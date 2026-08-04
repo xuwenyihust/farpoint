@@ -11,6 +11,9 @@ from typing import Any
 
 
 SCHEMA_FILES = {
+    "farpoint.dataset.v3": "farpoint_dataset_v3.schema.json",
+    "farpoint.episode.v3": "farpoint_episode_v3.schema.json",
+    "farpoint.variation.v3": "farpoint_variation_v3.schema.json",
     "farpoint.dataset.v2": "farpoint_dataset_v2.schema.json",
     "farpoint.episode.v2": "farpoint_episode_v2.schema.json",
     "farpoint.variation.v2": "farpoint_variation_v2.schema.json",
@@ -80,6 +83,27 @@ def task_definition(metadata: dict[str, Any]) -> dict[str, str]:
 def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
     """Check relationships that JSON Schema cannot express across nested fields."""
     errors = []
+    if record.get("schema_version") == "farpoint.episode.v3":
+        identity = record.get("identity") or {}
+        task = record.get("task") or {}
+        scene = record.get("scene") or {}
+        obj = scene.get("object") or {}
+        variation = record.get("variation") or {}
+        resolved = variation.get("resolved") or {}
+        pose = obj.get("initial_pose") or {}
+        if identity.get("task_id") != task.get("task_id"):
+            errors.append("identity.task_id does not match task.task_id")
+        if task.get("object_shape") != obj.get("shape"):
+            errors.append("task.object_shape does not match scene.object.shape")
+        for field, scene_field in (("shape", "shape"), ("dimensions_m", "dimensions_m"), ("position_m", None), ("rgba", "rgba"), ("mass_kg", "mass_kg"), ("static_friction", "static_friction"), ("dynamic_friction", "dynamic_friction")):
+            expected = pose.get("position_m") if field == "position_m" else obj.get(scene_field)
+            if resolved.get(field) != expected:
+                errors.append(f"variation.resolved.{field} does not match the scene object")
+        if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
+            errors.append("variation axes cannot be both varied and frozen")
+        if variation.get("split") != identity.get("split"):
+            errors.append("variation.split does not match identity.split")
+        return errors
     identity = record.get("identity") or {}
     task = record.get("task") or {}
     scene = record.get("scene") or {}
@@ -97,6 +121,10 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
         errors.append("variation.resolved.object_position_m does not match the scene object pose")
     if resolved.get("object_dimensions_m") != obj.get("dimensions_m"):
         errors.append("variation.resolved.object_dimensions_m does not match the scene object")
+    if resolved.get("mass_kg") is not None and resolved.get("mass_kg") != obj.get("mass_kg"):
+        errors.append("variation.resolved.mass_kg does not match the scene object")
+    if resolved.get("rgba") is not None and resolved.get("rgba") != obj.get("rgba"):
+        errors.append("variation.resolved.rgba does not match the scene object")
     if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
         errors.append("variation axes cannot be both varied and frozen")
     if variation.get("split") is not None and variation.get("split") != identity.get("split"):

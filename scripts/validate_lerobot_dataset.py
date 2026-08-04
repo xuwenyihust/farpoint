@@ -27,6 +27,7 @@ from farpoint.contracts import (  # noqa: E402
 
 
 V2_SIDECAR = "farpoint_v2.json"
+V3_SIDECAR = "farpoint_v3.json"
 PRIMARY_SIDECAR = "farpoint_v1.json"
 LEGACY_SIDECAR = "robotsim_v1.json"
 REQUIRED_FEATURES = {
@@ -77,6 +78,24 @@ def validate_v1_sidecar(sidecar: dict[str, Any], result: dict[str, Any], name: s
         add_error(result, "sidecar recording must include observation.images.front")
     for key in ("fps", "image_width", "image_height"):
         if not isinstance(recording, dict) or recording.get(key, 0) <= 0:
+            add_error(result, f"sidecar recording.{key} must be positive")
+
+
+def validate_v3_sidecar(sidecar: dict[str, Any], result: dict[str, Any]) -> None:
+    for error in validate_contract(sidecar):
+        add_error(result, f"dataset contract: {error}")
+    if sidecar.get("format") != "lerobot" or sidecar.get("format_version") != "v3":
+        add_error(result, "SO-101 sidecar must use LeRobot v3")
+    robot = sidecar.get("robot") or {}
+    for key, expected in (("name", "so101"), ("gripper", "so101_jaw"), ("arm_dof", 5), ("gripper_dof", 1)):
+        if robot.get(key) != expected:
+            add_error(result, f"sidecar robot.{key} must be {expected!r}")
+    recording = sidecar.get("recording") or {}
+    for camera in ("observation.images.front", "observation.images.wrist"):
+        if camera not in recording.get("cameras", []):
+            add_error(result, f"sidecar recording must include {camera}")
+    for key in ("fps", "image_width", "image_height"):
+        if not isinstance(recording.get(key), (int, float)) or recording[key] <= 0:
             add_error(result, f"sidecar recording.{key} must be positive")
 
 
@@ -460,6 +479,49 @@ def validate_v2_dataset(
     result["checks"]["episode_contracts"] = bool(episodes) and not result["errors"]
 
 
+def validate_v3_dataset(root: Path, sidecar: dict[str, Any], info: dict[str, Any], result: dict[str, Any]) -> None:
+    validate_v3_sidecar(sidecar, result)
+    try:
+        episodes = read_episode_metadata(root)
+        tasks = read_tasks(root)
+    except (OSError, ValueError, RuntimeError) as error:
+        add_error(result, f"cannot read SO-101 metadata: {error}")
+        return
+    for index, episode in enumerate(episodes):
+        for error in validate_contract(episode):
+            add_error(result, f"episode metadata row {index}: {error}")
+        for error in validate_episode_semantics(episode):
+            add_error(result, f"episode metadata row {index}: {error}")
+        outcome = episode.get("outcome") or {}
+        if not outcome.get("success") or not outcome.get("dataset_valid"):
+            add_error(result, f"episode metadata row {index} is not eligible")
+    identities = [episode.get("identity") or {} for episode in episodes]
+    indexes = [identity.get("dataset_episode_index") for identity in identities]
+    if indexes != list(range(len(episodes))):
+        add_error(result, "SO-101 episode indexes must be contiguous")
+    observed = Counter(identity.get("split") for identity in identities)
+    for split in SPLITS:
+        if observed[split] != (sidecar.get("splits") or {}).get(split):
+            add_error(result, f"SO-101 split count mismatch for {split}")
+    expected_ranges = {}
+    start = 0
+    for split in SPLITS:
+        stop = start + observed[split]
+        expected_ranges[split] = f"{start}:{stop}"
+        start = stop
+    if info.get("splits") != expected_ranges:
+        add_error(result, "SO-101 split ranges do not match metadata")
+    task_names = {task_instruction(row) for row in tasks}
+    for index, episode in enumerate(episodes):
+        if (episode.get("task") or {}).get("instruction") not in task_names:
+            add_error(result, f"SO-101 episode task is missing at row {index}")
+    validate_v2_artifacts(root, episodes, tasks, info, result)
+    wrist_dir = root / "videos" / "observation.images.wrist"
+    if not list(wrist_dir.rglob("*.mp4")):
+        add_error(result, "wrist camera directory must contain at least one MP4 shard")
+    result["checks"]["episode_contracts"] = bool(episodes) and not result["errors"]
+
+
 def validate_dataset(root: Path, evidence_path: Path | None = None) -> dict[str, Any]:
     root = Path(root).resolve()
     result: dict[str, Any] = {
@@ -473,13 +535,14 @@ def validate_dataset(root: Path, evidence_path: Path | None = None) -> dict[str,
     if not root.is_dir():
         add_error(result, f"dataset root does not exist: {root}")
         return result
-    candidates = [V2_SIDECAR, PRIMARY_SIDECAR, LEGACY_SIDECAR]
+    candidates = [V3_SIDECAR, V2_SIDECAR, PRIMARY_SIDECAR, LEGACY_SIDECAR]
     sidecar_path = next((root / "meta" / name for name in candidates if (root / "meta" / name).is_file()), None)
     if sidecar_path is None:
         add_error(result, "dataset has no supported Farpoint sidecar")
         return result
     sidecar_name = sidecar_path.name
     result["compatibility_mode"] = {
+        V3_SIDECAR: "so101-v3",
         V2_SIDECAR: "v2",
         PRIMARY_SIDECAR: "current",
         LEGACY_SIDECAR: "legacy",
@@ -494,7 +557,9 @@ def validate_dataset(root: Path, evidence_path: Path | None = None) -> dict[str,
     result["dataset_id"] = sidecar.get("dataset_id")
     validate_info(info, result)
     validate_layout(root, result, sidecar_name)
-    if sidecar_name == V2_SIDECAR:
+    if sidecar_name == V3_SIDECAR:
+        validate_v3_dataset(root, sidecar, info, result)
+    elif sidecar_name == V2_SIDECAR:
         validate_v2_dataset(root, sidecar, info, result, evidence_path)
     else:
         validate_v1_sidecar(sidecar, result, sidecar_name)
