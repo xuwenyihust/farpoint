@@ -66,14 +66,22 @@ def _torch_pose(position, device):
     return torch.tensor([[*position, 1.0, 0.0, 0.0, 0.0]], dtype=torch.float32, device=device)
 
 
+def _numpy(value):
+    """Convert Isaac Lab tensor or NumPy backend values to a NumPy array."""
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    return np.asarray(value)
+
+
 def _move_object(obj, position, device):
     obj.write_root_pose_to_sim(_torch_pose(position, device))
     obj.write_root_velocity_to_sim(torch.zeros((1, 6), dtype=torch.float32, device=device))
 
 
 def _image(camera, device):
-    value = camera.data.output["rgb"][0, ..., :3].detach().to(device="cpu").numpy()
-    return np.asarray(value, dtype=np.uint8)
+    return np.asarray(_numpy(camera.data.output["rgb"][0, ..., :3]), dtype=np.uint8)
 
 
 def _contact(sensor) -> bool:
@@ -93,10 +101,10 @@ def _body_index(robot) -> int:
 
 
 def _ik_action(robot, ee_frame, target, current, body_index, device):
-    ee = ee_frame.data.target_pos_w[0, 0].detach().cpu().numpy()
-    jacobian = robot.root_physx_view.get_jacobians()[0, body_index, :3, :5].detach().cpu().numpy()
+    ee = _numpy(ee_frame.data.target_pos_w[0, 0])
+    jacobian = _numpy(robot.root_physx_view.get_jacobians()[0, body_index, :3, :5])
     delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
-    action = current.detach().cpu().numpy().astype(np.float32).copy()
+    action = _numpy(current).astype(np.float32).copy()
     action[:5] = action[:5] + np.clip(delta, -0.045, 0.045)
     return torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
 
@@ -146,7 +154,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     object_spec = trial["resolved"]
     _move_object(scene[active_name], object_spec["position_m"], device)
     env.sim.step()
-    home_ee = ee_frame.data.target_pos_w[0, 0].detach().cpu().numpy().copy()
+    home_ee = _numpy(ee_frame.data.target_pos_w[0, 0]).copy()
     body_index = _body_index(robot)
     open_jaw = float(robot.data.joint_pos[0, 5].item())
     closed_jaw = float(np.deg2rad(-8.0))
@@ -181,14 +189,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         current = robot.data.joint_pos[0]
         action = _ik_action(robot, ee_frame, target, current, body_index, device)
         action[0, 5] = jaw
-        state = current.detach().cpu().numpy()
+        state = _numpy(current)
         front = _image(scene["front_camera"], device)
         wrist = _image(scene["wrist_camera"], device)
-        row = _write_frame(root, frame, state, action[0].detach().cpu().numpy(), front, wrist)
+        row = _write_frame(root, frame, state, _numpy(action[0]), front, wrist)
         row["phase"] = phase.value
         rows.append(row)
         obs = OracleObservation(
-            reached_target=float(np.linalg.norm(ee_frame.data.target_pos_w[0, 0].detach().cpu().numpy() - target)) < 0.012,
+            reached_target=float(np.linalg.norm(_numpy(ee_frame.data.target_pos_w[0, 0]) - target)) < 0.012,
             has_contact=_contact(contact),
             cube_lifted=float(scene[active_name].data.root_pos_w[0, 2].item()) > object_position[2] + 0.025,
             cube_in_target=float(torch.linalg.vector_norm(scene[active_name].data.root_pos_w[0, :2] - torch.tensor(target_position[:2], device=device)).item()) < 0.035,
