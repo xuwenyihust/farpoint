@@ -115,7 +115,9 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
     jacobian = _numpy(jacobians[0, body_index, :3, :5])
     delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
-    action[:5] = action[:5] + np.clip(delta, -0.01, 0.01)
+    # The SO-101 workshop articulation is authored with the arm's fixed-base
+    # Jacobian sign opposite to the joint-position target convention.
+    action[:5] = action[:5] - np.clip(delta, -0.01, 0.01)
     # Keep the generated target inside the pinned USD joint limits.  The
     # position action manager does not clamp targets when offset-free control
     # is enabled, and some PhysX articulations report wider soft limits.
