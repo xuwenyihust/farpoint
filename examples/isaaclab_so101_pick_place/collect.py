@@ -188,6 +188,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         initial_joints,
         torch.zeros((1, 6), dtype=torch.float32, device=device),
     )
+    robot.set_joint_position_target(initial_joints)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
     object_spec = trial["resolved"]
