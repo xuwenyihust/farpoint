@@ -184,6 +184,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         dtype=torch.float32,
         device=device,
     )
+    robot.write_root_pose_to_sim(
+        torch.tensor(
+            [[0.125, 0.092, 0.0, 0.70710678, 0.0, 0.0, 0.70710678]],
+            dtype=torch.float32,
+            device=device,
+        )
+    )
     robot.write_joint_state_to_sim(
         initial_joints,
         torch.zeros((1, 6), dtype=torch.float32, device=device),
