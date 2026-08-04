@@ -192,13 +192,26 @@ def estimate_dominant_color_yaw(
     center = np.median(points, axis=0)
     centered = points - center
     covariance = np.cov(centered, rowvar=False)
-    values, vectors = np.linalg.eigh(covariance)
-    principal = vectors[:, int(np.argmax(values))]
-    yaw = math.degrees(math.atan2(float(principal[1]), float(principal[0]))) % 90.0
-    major, minor = float(max(values)), float(min(values))
-    anisotropy = (major - minor) / max(major + minor, 1e-12)
+    # PCA cannot orient a square: its second moments are isotropic at every
+    # upright 90-degree rotation.  Instead, fit the orientation of the
+    # projected support's minimum-area bounding box.  This uses RGB-D pixels
+    # only and is intrinsically modulo 90 degrees, matching cube symmetry.
+    candidate_angles = np.arange(0.0, 90.0, 0.5)
+    areas = []
+    for angle in candidate_angles:
+        radians = math.radians(float(angle))
+        rotation = np.array([[math.cos(radians), math.sin(radians)], [-math.sin(radians), math.cos(radians)]])
+        rotated = centered @ rotation.T
+        spans = np.ptp(rotated, axis=0)
+        areas.append(float(spans[0] * spans[1]))
+    best_index = int(np.argmin(areas))
+    yaw = float(candidate_angles[best_index])
+    best_area = areas[best_index]
+    offset = max(1, int(10.0 / 0.5))
+    nearby = [areas[(best_index - offset) % len(areas)], areas[(best_index + offset) % len(areas)]]
+    orientation_separation = max(0.0, min(nearby) / max(best_area, 1e-12) - 1.0)
     pixel_support = min(1.0, len(points) / max(float(min_pixels) * 8.0, 1.0))
-    confidence = round(pixel_support * max(0.0, anisotropy), 4)
+    confidence = round(pixel_support * min(1.0, orientation_separation), 4)
     if confidence < float(min_confidence):
         raise PerceptionError(f"cube yaw confidence {confidence:.4f} is below {float(min_confidence):.4f}")
     return {
@@ -207,6 +220,7 @@ def estimate_dominant_color_yaw(
         "valid_pixels": int(len(points)),
         "confidence": confidence,
         "xy_covariance": covariance.tolist(),
+        "orientation_separation": round(float(orientation_separation), 6),
     }
 
 
