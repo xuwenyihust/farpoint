@@ -163,6 +163,17 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     inactive = [name for name in ("cube_small_red", "cube_small_blue", "cube_large_red", "cube_large_blue") if name != active_name]
     env.farpoint_active_cube = active_name
     env.reset()
+    # The workshop USD carries a non-zero default state and Isaac Lab 3.0 may
+    # apply it after manager reset.  Re-assert the documented neutral pose so
+    # every episode starts from the same physical configuration.
+    robot.write_joint_state_to_sim(
+        torch.tensor(
+            [[-0.2736, -0.6109, -0.0745, 1.5148, -1.6034, 1.7453]],
+            dtype=torch.float32,
+            device=device,
+        ),
+        torch.zeros((1, 6), dtype=torch.float32, device=device),
+    )
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
     object_spec = trial["resolved"]
