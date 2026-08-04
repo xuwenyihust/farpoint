@@ -19,7 +19,7 @@ scripts/run_so101_isaaclab.sh viewer \
 scripts/run_so101_isaaclab.sh headless \
   --plan artifacts/so101/variation_plan.json \
   --manifest artifacts/so101/collection_manifest.json \
-  --output artifacts/so101/episodes
+  --output-root artifacts/so101/episodes
 
 python scripts/export_lerobot_dataset.py \
   artifacts/so101/export_selection.json artifacts/so101/lerobot_v3
