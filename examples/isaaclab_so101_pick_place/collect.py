@@ -231,7 +231,13 @@ def main():
         manifest = load_manifest(args_cli.manifest, plan)
     else:
         manifest = create_manifest(plan, collection_id="so101_cube_pick_place_pilot", git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"))
-    env = gym.make("Farpoint-SO101-PickPlace-Cube-v0").unwrapped
+    # Isaac Lab 3.0 keeps the config entry point in the Gym registration, but
+    # Gymnasium does not instantiate that config automatically.  Construct it
+    # explicitly so this works both from the launcher and from Python callers.
+    from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
+
+    env_cfg = SO101CubePickPlaceEnvCfg()
+    env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
     try:
         for _ in range(args_cli.max_attempts_this_run):
             attempt = next_attempt(manifest, plan)
