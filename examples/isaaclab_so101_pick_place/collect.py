@@ -180,7 +180,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     # joint state are established by the scene reset; teleporting them again
     # after initialization can violate the articulation constraints.
     initial_joints = torch.tensor(
-        [[0.0, 0.0, 0.0, 0.0, 0.0, 1.7453]],
+        [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
         dtype=torch.float32,
         device=device,
     )

@@ -45,7 +45,7 @@ SO101_CFG = ArticulationCfg(
             "Elbow": 0.0,
             "Wrist_Pitch": 0.0,
             "Wrist_Roll": 0.0,
-            "Jaw": 1.7453,
+            "Jaw": 0.0,
         },
         # Mount the fixed base at the table edge and on the table surface.
         # Keeping z=0 would intersect the 4 cm table collider at reset.
