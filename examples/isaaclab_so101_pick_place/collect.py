@@ -123,11 +123,6 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
         _ik_action._jac_printed = True
     jacobian = _numpy(jacobians[0, jacobi_body_index, :3, :5])
     position_error = np.asarray(target) - ee
-    # Empirical sign convention of the workshop fixed-base actuator targets:
-    # lateral X is reversed, while the centered workspace keeps Y fixed during
-    # the approach.  Z remains in the published world direction.
-    position_error[0] *= -1.0
-    position_error[1] = 0.0
     delta = damped_least_squares(jacobian, position_error, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
     action[:5] = action[:5] + np.clip(delta, -0.02, 0.02)
@@ -191,7 +186,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     )
     robot.write_root_pose_to_sim(
         torch.tensor(
-            [[0.125, 0.171, 0.0, 0.70710678, 0.0, 0.0, 0.70710678]],
+            [[-0.05, 0.0, 0.032, 0.70710678, 0.0, 0.0, 0.70710678]],
             dtype=torch.float32,
             device=device,
         )

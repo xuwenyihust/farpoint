@@ -44,9 +44,9 @@ SO101_CFG = ArticulationCfg(
             "Wrist_Roll": -1.6034,
             "Jaw": 1.7453,
         },
-        # Place the fixed base at the rear edge of the workspace so the
-        # workshop arm's neutral gripper is over the configured table.
-        pos=(0.125, 0.171, 0.0),
+        # Mount the fixed base at the table edge and on the table surface.
+        # Keeping z=0 would intersect the 4 cm table collider at reset.
+        pos=(-0.05, 0.0, 0.032),
         rot=(0.70710678, 0.0, 0.0, 0.70710678),
     ),
     actuators={
