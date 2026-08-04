@@ -60,6 +60,23 @@
         "object": {"$ref": "#/$defs/object"},
         "target": {"$ref": "#/$defs/target"},
         "camera": {"$ref": "#/$defs/camera"},
+        "auxiliary_cameras": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "profile_id", "calibration_id", "parent_prim_path", "resolution"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "profile_id": {"type": "string", "minLength": 1},
+              "calibration_id": {"type": "string", "minLength": 1},
+              "parent_prim_path": {"type": "string", "minLength": 1},
+              "resolution": {"$ref": "#/$defs/vector2"},
+              "mount_position_m": {"$ref": "#/$defs/vector3"},
+              "mount_rotation_degrees": {"$ref": "#/$defs/vector3"}
+            }
+          }
+        },
         "lighting_profile_id": {"type": "string", "minLength": 1},
         "appearance_profile_id": {"type": "string", "minLength": 1}
       }
@@ -93,6 +110,7 @@
     }
   },
   "$defs": {
+    "vector2": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
     "vector3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
     "quaternion": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
     "pose": {

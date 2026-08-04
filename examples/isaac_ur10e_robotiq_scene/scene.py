@@ -667,11 +667,16 @@ def write_observation_artifacts(
     observation_index,
     rgb,
     depth,
+    camera_name="front",
 ):
     from PIL import Image
 
-    rgb_relative = Path("observations") / "rgb" / f"{observation_index:06d}.png"
-    depth_relative = Path("observations") / "depth" / f"{observation_index:06d}.npy"
+    # Keep the original flat paths for v0.0.0/v1 collection compatibility.
+    # Multi-camera collection v2 uses a camera-qualified layout so each RGB-D
+    # observation is unambiguous to the exporter.
+    directory = Path("observations") if camera_name == "front" else Path("observations") / camera_name
+    rgb_relative = directory / "rgb" / f"{observation_index:06d}.png"
+    depth_relative = directory / "depth" / f"{observation_index:06d}.npy"
     rgb_path = episode_dir / rgb_relative
     depth_path = episode_dir / depth_relative
     rgb_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1478,9 +1483,11 @@ def main():
 
         rgb_annotator = None
         depth_annotator = None
+        wrist_rgb_annotator = None
+        wrist_depth_annotator = None
         camera_intrinsics = None
         camera_to_world = None
-        camera_prim_path = None
+        wrist_camera_prim_path = None
         preview_writer = None
         if preview_enabled:
             preview_dir.mkdir(parents=True, exist_ok=True)
@@ -1498,12 +1505,37 @@ def main():
                     for prim in stage.Traverse()
                     if prim.IsA(UsdGeom.Camera)
                 ]
-                camera_prim_path = camera_paths[-1] if camera_paths else None
                 camera_intrinsics, camera_to_world = look_at_calibration(
                     camera_config["position"],
                     camera_config["target"],
                     camera_config["resolution"],
                 )
+                # The overhead view is the only perception/control source.
+                # The wrist view is recorded synchronously for first-person
+                # policies and local occlusion diagnostics, never for yaw
+                # control.  Parenting makes its pose follow the physical EE.
+                wrist_config = camera_config.get("wrist")
+                if wrist_config and end_effector_prim_path:
+                    before_paths = set(camera_paths)
+                    wrist_camera = rep.create.camera(
+                        parent=end_effector_prim_path,
+                        position=tuple(wrist_config["position"]),
+                        rotation=tuple(wrist_config["rotation_degrees"]),
+                    )
+                    wrist_render_product = rep.create.render_product(
+                        wrist_camera, tuple(wrist_config["resolution"])
+                    )
+                    wrist_rgb_annotator = rep.AnnotatorRegistry.get_annotator("rgb")
+                    wrist_depth_annotator = rep.AnnotatorRegistry.get_annotator(
+                        "distance_to_image_plane"
+                    )
+                    wrist_rgb_annotator.attach([wrist_render_product])
+                    wrist_depth_annotator.attach([wrist_render_product])
+                    wrist_paths = [
+                        str(prim.GetPath()) for prim in stage.Traverse()
+                        if prim.IsA(UsdGeom.Camera) and str(prim.GetPath()) not in before_paths
+                    ]
+                    wrist_camera_prim_path = wrist_paths[-1] if wrist_paths else None
             else:
                 preview_writer = rep.WriterRegistry.get("BasicWriter")
                 preview_writer.initialize(output_dir=str(preview_dir), rgb=True)
@@ -1516,6 +1548,8 @@ def main():
         latest_target_estimate = None
         latest_rgb = None
         latest_depth = None
+        latest_wrist_rgb = None
+        latest_wrist_depth = None
         perception_failures = []
         perception_updates = 0
         initial_object_yaw_estimate = None
@@ -1531,6 +1565,10 @@ def main():
                 rgb_annotator,
                 depth_annotator,
             )
+            if wrist_rgb_annotator is not None:
+                latest_wrist_rgb, latest_wrist_depth = capture_rgbd(
+                    wrist_rgb_annotator, wrist_depth_annotator
+                )
             object_half_height_for_perception = (
                 float(pick_object_config["scale"][2])
                 * float(pick_object_config["size"])
@@ -1565,6 +1603,10 @@ def main():
                     if len(yaw_estimates) < int(perception_config.get("yaw_lock_frames", 3)):
                         rep.orchestrator.step(rt_subframes=int(camera_config.get("rt_subframes", 1)))
                         latest_rgb, latest_depth = capture_rgbd(rgb_annotator, depth_annotator)
+                        if wrist_rgb_annotator is not None:
+                            latest_wrist_rgb, latest_wrist_depth = capture_rgbd(
+                                wrist_rgb_annotator, wrist_depth_annotator
+                            )
                 yaw_values = [row["yaw_degrees"] for row in yaw_estimates]
                 yaw_spread = max(yaw_values) - min(yaw_values)
                 if yaw_spread > float(perception_config.get("yaw_lock_max_spread_degrees", 5.0)):
@@ -3761,6 +3803,10 @@ def main():
                             rgb_annotator,
                             depth_annotator,
                         )
+                        if wrist_rgb_annotator is not None:
+                            latest_wrist_rgb, latest_wrist_depth = capture_rgbd(
+                                wrist_rgb_annotator, wrist_depth_annotator
+                            )
                         if should_update_perception:
                             latest_object_estimate = estimate_dominant_color_pose(
                                 latest_rgb,
@@ -5571,6 +5617,10 @@ def main():
                             rgb_annotator,
                             depth_annotator,
                         )
+                        if wrist_rgb_annotator is not None:
+                            latest_wrist_rgb, latest_wrist_depth = capture_rgbd(
+                                wrist_rgb_annotator, wrist_depth_annotator
+                            )
                         from PIL import Image
 
                         Image.fromarray(latest_rgb).save(
@@ -5755,7 +5805,17 @@ def main():
                         dataset_observation_count,
                         latest_rgb,
                         latest_depth,
+                        camera_name="overhead" if latest_wrist_rgb is not None else "front",
                     )
+                    wrist_rgb_relative = wrist_depth_relative = None
+                    if latest_wrist_rgb is not None and latest_wrist_depth is not None:
+                        wrist_rgb_relative, wrist_depth_relative = write_observation_artifacts(
+                            episode_dir,
+                            dataset_observation_count,
+                            latest_wrist_rgb,
+                            latest_wrist_depth,
+                            camera_name="wrist",
+                        )
                     joint_velocities = np.asarray(
                         robot.get_joint_velocities(),
                         dtype=np.float32,
@@ -5768,6 +5828,10 @@ def main():
                                 "phase": task_phase,
                                 "rgb_path": rgb_relative,
                                 "depth_path": depth_relative,
+                                "overhead_rgb_path": rgb_relative if latest_wrist_rgb is not None else None,
+                                "overhead_depth_path": depth_relative if latest_wrist_rgb is not None else None,
+                                "wrist_rgb_path": wrist_rgb_relative,
+                                "wrist_depth_path": wrist_depth_relative,
                                 "joint_names": dof_names,
                                 "joint_positions": measured,
                                 "joint_velocities": joint_velocities,
@@ -6790,6 +6854,7 @@ def main():
                 "extrinsics": np.asarray(camera_to_world, dtype=np.float64).tolist(),
                 "resolution": camera_config["resolution"],
             }
+            wrist_config = camera_config.get("wrist")
             object_position = list(ground_truth_pick_start_position)
             target_position = list(ground_truth_place_target_position)
             identity_orientation = [0.0, 0.0, 0.0, 1.0]
@@ -6855,7 +6920,7 @@ def main():
                         },
                         "camera": {
                             "profile_id": frozen["camera_profile_id"],
-                            "calibration_id": "front_rgbd_" + sha256_json(calibration_payload)[:16],
+                            "calibration_id": "overhead_rgbd_" + sha256_json(calibration_payload)[:16],
                             "intrinsics": {
                                 "fx": float(camera_intrinsics[0, 0]),
                                 "fy": float(camera_intrinsics[1, 1]),
@@ -6869,12 +6934,38 @@ def main():
                                 "coordinate_frame": "world",
                             },
                         },
+                        **(
+                            {
+                                "auxiliary_cameras": [
+                                    {
+                                        "name": "observation.images.wrist",
+                                        "profile_id": "wrist_rgbd_640x360_v1",
+                                        "calibration_id": "wrist_mount_" + sha256_json({
+                                            "parent": end_effector_prim_path,
+                                            "position": wrist_config["position"],
+                                            "rotation": wrist_config["rotation_degrees"],
+                                            "resolution": wrist_config["resolution"],
+                                        })[:16],
+                                        "parent_prim_path": wrist_camera_prim_path or end_effector_prim_path,
+                                        "resolution": wrist_config["resolution"],
+                                        "mount_position_m": wrist_config["position"],
+                                        "mount_rotation_degrees": wrist_config["rotation_degrees"],
+                                    }
+                                ]
+                            }
+                            if wrist_config and wrist_rgb_annotator is not None
+                            else {}
+                        ),
                         "lighting_profile_id": frozen["lighting_profile_id"],
                         "appearance_profile_id": frozen["appearance_profile_id"],
                     },
                     "recording": {
                         "fps": recording_fps,
-                        "cameras": ["observation.images.front"],
+                        "cameras": (
+                            ["observation.images.overhead", "observation.images.wrist"]
+                            if wrist_rgb_annotator is not None
+                            else ["observation.images.front"]
+                        ),
                         "image_width": int(camera_config["resolution"][0]),
                         "image_height": int(camera_config["resolution"][1]),
                         "frame_count": int(dataset_validation["observation_count"]),

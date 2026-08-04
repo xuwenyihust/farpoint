@@ -74,11 +74,13 @@ def build_dataset_sidecar(
     image_width: int,
     image_height: int,
     selected_names: list[str],
+    cameras: list[str] | None = None,
     source_contract: str = "benchmark",
     selection_policy: str | None = None,
 ) -> dict[str, Any]:
     if not records:
         raise ValueError("cannot build a dataset sidecar without episodes")
+    cameras = cameras or ["observation.images.front"]
     tasks = {}
     task_id_by_instruction = {}
     split_counts = Counter()
@@ -127,7 +129,7 @@ def build_dataset_sidecar(
         },
         "recording": {
             "fps": fps,
-            "cameras": ["observation.images.front"],
+            "cameras": cameras,
             "image_width": image_width,
             "image_height": image_height,
             "state_features": selected_names,
@@ -149,6 +151,17 @@ def build_dataset_sidecar(
     if errors:
         raise ValueError("invalid farpoint.dataset.v2 sidecar: " + "; ".join(errors))
     return sidecar
+
+
+def observation_rgb_path(row: dict[str, Any], camera: str) -> str:
+    """Return the recorded RGB artifact for a LeRobot camera feature."""
+    if camera == "observation.images.front":
+        return row["rgb_path"]
+    key = camera.removeprefix("observation.images.") + "_rgb_path"
+    path = row.get(key)
+    if not path:
+        raise ValueError(f"observation is missing {key} for {camera}")
+    return path
 
 
 def _write_split_ranges(output_dir: Path, split_counts: dict[str, int]) -> None:
@@ -188,6 +201,9 @@ def export_dataset(
     fps = infer_fps(first_rows)
     with Image.open(first_dir / first_rows[0]["rgb_path"]) as image:
         image_width, image_height = image.size
+    cameras = list((first_metadata.get("recording") or {}).get("cameras") or [])
+    if not cameras:
+        cameras = ["observation.images.front"]
 
     normalized_records = []
     for index, (entry, episode_dir, metadata, rows, metrics) in enumerate(loaded):
@@ -196,11 +212,17 @@ def export_dataset(
         with Image.open(episode_dir / rows[0]["rgb_path"]) as image:
             if image.size != (image_width, image_height):
                 raise ValueError(f"episode has a different camera resolution: {episode_dir}")
+        if list((metadata.get("recording") or {}).get("cameras") or ["observation.images.front"]) != cameras:
+            raise ValueError("episodes have different recording camera contracts")
+        for camera in cameras:
+            with Image.open(episode_dir / observation_rgb_path(rows[0], camera)) as image:
+                if image.size != (image_width, image_height):
+                    raise ValueError(f"episode camera has a different resolution: {episode_dir} ({camera})")
         enriched = dict(metadata)
         enriched["recording"] = {
             **metadata.get("recording", {}),
             "fps": fps,
-            "cameras": ["observation.images.front"],
+            "cameras": cameras,
             "image_width": image_width,
             "image_height": image_height,
             "frame_count": len(rows),
@@ -223,13 +245,16 @@ def export_dataset(
     features = {
         "observation.state": {"dtype": "float32", "shape": (7,), "names": selected_names},
         "action": {"dtype": "float32", "shape": (7,), "names": selected_names},
-        "observation.images.front": {
+        "next.done": {"dtype": "bool", "shape": (1,), "names": ["done"]},
+    }
+    features.update({
+        camera: {
             "dtype": "video",
             "shape": (image_height, image_width, 3),
             "names": ["height", "width", "channel"],
-        },
-        "next.done": {"dtype": "bool", "shape": (1,), "names": ["done"]},
-    }
+        }
+        for camera in cameras
+    })
     dataset = dataset_class.create(
         repo_id=manifest["dataset_id"],
         fps=fps,
@@ -245,21 +270,20 @@ def export_dataset(
         for (_, episode_dir, _, rows, _), record in zip(loaded, normalized_records):
             instruction = record["task"]["instruction"]
             for frame_index, row in enumerate(rows):
-                with Image.open(episode_dir / row["rgb_path"]) as image:
-                    rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
-                dataset.add_frame(
-                    {
+                frame = {
                         "observation.state": select_joint_values(
                             row, selected_names, "joint_positions"
                         ),
                         "action": select_joint_values(
                             row, selected_names, "action_joint_positions"
                         ),
-                        "observation.images.front": rgb,
                         "next.done": np.asarray([frame_index == len(rows) - 1], dtype=np.bool_),
                         "task": instruction,
                     }
-                )
+                for camera in cameras:
+                    with Image.open(episode_dir / observation_rgb_path(row, camera)) as image:
+                        frame[camera] = np.asarray(image.convert("RGB"), dtype=np.uint8)
+                dataset.add_frame(frame)
             dataset.save_episode(parallel_encoding=False)
         dataset.finalize()
     except Exception:
@@ -273,6 +297,7 @@ def export_dataset(
         image_width=image_width,
         image_height=image_height,
         selected_names=selected_names,
+        cameras=cameras,
         source_contract="collection" if manifest.get("collection_id") else "benchmark",
         selection_policy=manifest.get("selection_policy"),
     )
