@@ -112,6 +112,14 @@ def _body_index(robot) -> int:
 def _ik_action(robot, ee_frame, target, current, body_index, device):
     ee = _numpy(ee_frame.data.target_pos_w[0, 0])
     jacobians = robot.data.body_link_jacobian_w.torch
+    if not getattr(_ik_action, "_jac_printed", False):
+        print(
+            f"SO101_JAC_DEBUG body_index={body_index} shape={tuple(jacobians.shape)} "
+            f"max={float(torch.abs(jacobians).max().item())} "
+            f"body_norms={torch.linalg.vector_norm(jacobians[0, :, :3, :], dim=(1, 2)).detach().cpu().tolist()}",
+            flush=True,
+        )
+        _ik_action._jac_printed = True
     jacobian = _numpy(jacobians[0, body_index, :3, :5])
     delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
