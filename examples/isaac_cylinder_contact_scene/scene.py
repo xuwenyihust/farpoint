@@ -32,7 +32,7 @@ spec.loader.exec_module(shared_scene)
 
 shared_cartesian_target = shared_scene.cartesian_pick_and_place_target
 pregrasp_hover_height = None
-PREGRASP_HOVER_CLEARANCE_METERS = 0.46
+PREGRASP_HOVER_CLEARANCE_METERS = 0.25
 PREGRASP_RELEASE_DELAY_FRAMES = 140
 
 
