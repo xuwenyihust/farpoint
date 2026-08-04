@@ -176,25 +176,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     inactive = [name for name in ("cube_small_red", "cube_small_blue", "cube_large_red", "cube_large_blue") if name != active_name]
     env.farpoint_active_cube = active_name
     env.reset()
-    # Re-assert the pinned USD's authored zero drive pose so each episode
-    # starts from a stable, collision-free physical configuration.
+    # Hold the pinned USD's authored zero drive pose.  The fixed-base root and
+    # joint state are established by the scene reset; teleporting them again
+    # after initialization can violate the articulation constraints.
     initial_joints = torch.tensor(
         [[0.0, 0.0, 0.0, 0.0, 0.0, 1.7453]],
         dtype=torch.float32,
         device=device,
     )
-    robot.write_root_pose_to_sim(
-        torch.tensor(
-            [[-0.05, 0.0, 0.032, 0.70710678, 0.0, 0.0, 0.70710678]],
-            dtype=torch.float32,
-            device=device,
-        )
-    )
-    robot.write_joint_state_to_sim(
-        initial_joints,
-        torch.zeros((1, 6), dtype=torch.float32, device=device),
-    )
-    robot.set_joint_position_target(initial_joints)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
     object_spec = trial["resolved"]
