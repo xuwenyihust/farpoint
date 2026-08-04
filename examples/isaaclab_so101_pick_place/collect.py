@@ -121,7 +121,12 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
         )
         _ik_action._jac_printed = True
     jacobian = _numpy(jacobians[0, body_index, :3, :5])
-    delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
+    position_error = np.asarray(target) - ee
+    # The pinned workshop root is rotated 180° around its local Y convention;
+    # its published link Jacobian's lateral row therefore needs this one-axis
+    # frame correction to match world-frame FrameTransformer positions.
+    position_error[1] *= -1.0
+    delta = damped_least_squares(jacobian, position_error, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
     action[:5] = action[:5] + np.clip(delta, -0.01, 0.01)
     # Keep the generated target inside the pinned USD joint limits.  The
