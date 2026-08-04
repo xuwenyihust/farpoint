@@ -104,14 +104,15 @@ def _body_index(robot) -> int:
     indexes, _names = robot.find_bodies("gripper")
     if len(indexes) != 1:
         raise RuntimeError(f"expected one SO-101 gripper body, got {indexes}")
-    # The USD robot is fixed-base, so Isaac Lab's public Jacobian excludes the
-    # fixed root row (jacobi_body_idx == body_idx - 1).
-    return int(indexes[0]) - 1
+    return int(indexes[0])
 
 
 def _ik_action(robot, ee_frame, target, current, body_index, device):
-    ee = _numpy(ee_frame.data.target_pos_w[0, 0])
+    # Use the articulation's body-link pose and Jacobian from the same frame;
+    # FrameTransformer target offsets can lag one simulation tick on reset.
+    ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3])
     jacobians = robot.data.body_link_jacobian_w.torch
+    jacobi_body_index = body_index - 1  # fixed-base root row is excluded
     if not getattr(_ik_action, "_jac_printed", False) and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02:
         print(
             f"SO101_JAC_DEBUG body_index={body_index} shape={tuple(jacobians.shape)} "
@@ -120,12 +121,8 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
             flush=True,
         )
         _ik_action._jac_printed = True
-    jacobian = _numpy(jacobians[0, body_index, :3, :5])
+    jacobian = _numpy(jacobians[0, jacobi_body_index, :3, :5])
     position_error = np.asarray(target) - ee
-    # The pinned workshop root is rotated 180° around its local Y convention;
-    # its published link Jacobian's lateral row therefore needs this one-axis
-    # frame correction to match world-frame FrameTransformer positions.
-    position_error[1] *= -1.0
     delta = damped_least_squares(jacobian, position_error, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
     action[:5] = action[:5] + np.clip(delta, -0.01, 0.01)
@@ -210,8 +207,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     # Send the same explicit pose as the first manager action; using the stale
     # tensor cached before write_joint_state would restore the USD default.
     env.step(initial_joints)
-    home_ee = _numpy(ee_frame.data.target_pos_w[0, 0]).copy()
     body_index = _body_index(robot)
+    home_ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
     open_jaw = float(robot.data.joint_pos[0, 5].item())
     closed_jaw = float(np.deg2rad(-8.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
@@ -246,13 +243,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         if frame == 0:
             print(
                 f"SO101_ORACLE_START phase={phase.value} "
-                f"ee={_numpy(ee_frame.data.target_pos_w[0, 0]).tolist()} "
+                f"ee={_numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).tolist()} "
                 f"target={np.asarray(target).tolist()}",
                 flush=True,
             )
         if phase is OraclePhase.PREGRASP and machine.phase_steps == 0:
             print(
-                f"SO101_ORACLE_PREGRASP_START ee={_numpy(ee_frame.data.target_pos_w[0, 0]).tolist()} "
+                f"SO101_ORACLE_PREGRASP_START ee={_numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).tolist()} "
                 f"target={np.asarray(target).tolist()}",
                 flush=True,
             )
@@ -265,7 +262,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         row["phase"] = phase.value
         rows.append(row)
         obs = OracleObservation(
-            reached_target=float(np.linalg.norm(_numpy(ee_frame.data.target_pos_w[0, 0]) - target)) < 0.012,
+            reached_target=float(np.linalg.norm(_numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]) - target)) < 0.012,
             has_contact=_contact(contact),
             cube_lifted=float(scene[active_name].data.root_pos_w[0, 2].item()) > object_position[2] + 0.025,
             cube_in_target=float(torch.linalg.vector_norm(scene[active_name].data.root_pos_w[0, :2] - torch.tensor(target_position[:2], device=device)).item()) < 0.035,
@@ -281,7 +278,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         print(
             "SO101_ORACLE_DEBUG "
             f"phase={machine.phase.value} reason={machine.failure_reason} "
-            f"ee={_numpy(ee_frame.data.target_pos_w[0, 0]).tolist()} "
+            f"ee={_numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).tolist()} "
             f"target={np.asarray(target).tolist()} "
             f"joints={_numpy(robot.data.joint_pos[0]).tolist()}",
             flush=True,
