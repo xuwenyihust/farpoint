@@ -1,6 +1,6 @@
 {
   "config_revision": "1",
-  "config_sha256": "708bc11fb0f101277572fe6233060c7eb7a6df8059a9819253e235e6b951e544",
+  "config_sha256": "549c466522dbccb5adc4ccc5ca8d21ab18d652e6991a1dc9418e990afa57bc85",
   "frozen_factors": {
     "appearance_profile_id": "red_default_v1",
     "camera_profile_id": "front_rgbd_640x360_v1",
@@ -53,7 +53,7 @@
       "unilateral_force_backoff_radians": 0.002,
       "unilateral_force_limit_newtons": 5.0,
       "unilateral_recenter_enabled": true,
-      "unilateral_recenter_max_correction": 0.003,
+      "unilateral_recenter_max_correction": 0.008,
       "unilateral_recenter_persistence_frames": 12,
       "unilateral_recenter_step": 5e-05
     },
@@ -84,7 +84,7 @@
   },
   "language_instruction": "Use calibrated RGB-D observations to locate the cylinder and target, grasp the cylinder through Robotiq finger contact and friction only, and place it inside the target zone.",
   "plan_id": "farpoint_v0_0_1_cylinder_position",
-  "plan_sha256": "cbcd6f68f5bfcadc4df5b31ceca747c9bc5f8b5461ee2db9f4bba7675fed9810",
+  "plan_sha256": "98089ca3b065decf4a554bb651bd52da34ea30ae2b9541b8890747a706c5569f",
   "planner_revision": "shape-position-grid-v1",
   "planner_sha256": "8495ff9976f99843f10f24cb3eb20dbdf25783edc28577e5791b2ca7b6996684",
   "schema_version": "farpoint.position-plan.v1",
