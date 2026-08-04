@@ -78,7 +78,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "grasp_tracking_max_finger_z_skew": 0.015,
         "finger_close_stiffness": 50.0,
         "finger_close_damping": 15.0,
-        "tactile_close_step_radians": 0.0005,
+        "tactile_close_step_radians": 0.001,
         "unilateral_recenter_enabled": True,
         "unilateral_recenter_step": 0.00005,
         "unilateral_recenter_max_correction": 0.003,
