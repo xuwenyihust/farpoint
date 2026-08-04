@@ -48,11 +48,14 @@ SO101_CFG = ArticulationCfg(
         rot=(0.70710678, 0.0, 0.0, 0.70710678),
     ),
     actuators={
-        "rotation": ImplicitActuatorCfg(joint_names_expr=["Rotation"], effort_limit_sim=30, stiffness=55, damping=0.7),
-        "pitch": ImplicitActuatorCfg(joint_names_expr=["Pitch"], effort_limit_sim=30, stiffness=30, damping=0.8),
-        "elbow": ImplicitActuatorCfg(joint_names_expr=["Elbow"], effort_limit_sim=30, stiffness=25, damping=0.7),
-        "wrist_pitch": ImplicitActuatorCfg(joint_names_expr=["Wrist_Pitch"], effort_limit_sim=30, stiffness=12, damping=0.5),
-        "wrist_roll": ImplicitActuatorCfg(joint_names_expr=["Wrist_Roll"], effort_limit_sim=30, stiffness=7, damping=0.5),
-        "gripper": ImplicitActuatorCfg(joint_names_expr=["Jaw"], effort_limit_sim=30, stiffness=4, damping=0.3),
+        # The USD's real-robot gains are too under-damped for 30 Hz position
+        # targets in simulation; these preserve the joint limits while making
+        # the oracle's hold and release phases numerically stable.
+        "rotation": ImplicitActuatorCfg(joint_names_expr=["Rotation"], effort_limit_sim=30, stiffness=100, damping=10),
+        "pitch": ImplicitActuatorCfg(joint_names_expr=["Pitch"], effort_limit_sim=30, stiffness=80, damping=8),
+        "elbow": ImplicitActuatorCfg(joint_names_expr=["Elbow"], effort_limit_sim=30, stiffness=70, damping=7),
+        "wrist_pitch": ImplicitActuatorCfg(joint_names_expr=["Wrist_Pitch"], effort_limit_sim=30, stiffness=50, damping=5),
+        "wrist_roll": ImplicitActuatorCfg(joint_names_expr=["Wrist_Roll"], effort_limit_sim=30, stiffness=30, damping=3),
+        "gripper": ImplicitActuatorCfg(joint_names_expr=["Jaw"], effort_limit_sim=30, stiffness=20, damping=2),
     },
 )
