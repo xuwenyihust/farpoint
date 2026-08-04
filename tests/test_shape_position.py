@@ -71,7 +71,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "grasp_height_offset_meters": 0.07,
         "grasp_alignment_start_frame": 250,
         "grasp_hover_clearance": 0.25,
-        "grasp_aperture_bias_xy": [-0.0015, 0.005],
+        "grasp_aperture_bias_xy": [-0.0015, 0.003],
         "grasp_tracking_max_step": [0.01, 0.01, 0.0005],
         "grasp_tracking_max_xy_error": 0.006,
         "grasp_descent_max_xy_error": 0.006,
