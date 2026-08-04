@@ -97,13 +97,15 @@ def _body_index(robot) -> int:
     indexes, _names = robot.find_bodies("gripper")
     if len(indexes) != 1:
         raise RuntimeError(f"expected one SO-101 gripper body, got {indexes}")
-    return int(indexes[0]) - 1
+    # Isaac Lab's public body-link Jacobian includes the full articulation
+    # body index space (unlike the legacy PhysX view, which excluded the root).
+    return int(indexes[0])
 
 
 def _ik_action(robot, ee_frame, target, current, body_index, device):
     ee = _numpy(ee_frame.data.target_pos_w[0, 0])
-    jacobians = _numpy(robot.root_physx_view.get_jacobians())
-    jacobian = jacobians[0, body_index, :3, :5]
+    jacobians = robot.data.body_link_jacobian_w.torch
+    jacobian = _numpy(jacobians[0, body_index, :3, :5])
     delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
     action[:5] = action[:5] + np.clip(delta, -0.045, 0.045)
