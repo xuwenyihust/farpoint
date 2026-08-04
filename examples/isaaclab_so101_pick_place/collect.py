@@ -215,6 +215,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         if machine.phase in {OraclePhase.SUCCEEDED, OraclePhase.FAILED}:
             break
     success = machine.phase is OraclePhase.SUCCEEDED
+    if not success:
+        print(
+            "SO101_ORACLE_DEBUG "
+            f"phase={machine.phase.value} reason={machine.failure_reason} "
+            f"ee={_numpy(ee_frame.data.target_pos_w[0, 0]).tolist()} "
+            f"target={np.asarray(target).tolist()} "
+            f"joints={_numpy(robot.data.joint_pos[0]).tolist()}",
+            flush=True,
+        )
     metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": int(trial["attempt_seed"])},
