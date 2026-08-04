@@ -63,7 +63,7 @@ def _metadata(episode_id="episode-0000", split="train"):
 
 
 def _episode(root, metadata):
-    Image = pytest.importorskip("PIL.Image").Image
+    Image = pytest.importorskip("PIL.Image")
 
     root.mkdir()
     (root / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
