@@ -122,6 +122,9 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
     # position action manager does not clamp targets when offset-free control
     # is enabled, and some PhysX articulations report wider soft limits.
     action[:5] = np.clip(action[:5], SO101_JOINT_LIMITS[:, 0], SO101_JOINT_LIMITS[:, 1])
+    if not getattr(_ik_action, "_printed", False):
+        print(f"SO101_IK_DEBUG ee={ee.tolist()} delta={delta.tolist()} current={_numpy(current).tolist()} action={action.tolist()}", flush=True)
+        _ik_action._printed = True
     return torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
 
 
