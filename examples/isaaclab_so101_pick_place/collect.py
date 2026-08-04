@@ -191,6 +191,12 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     _move_object(scene[active_name], object_spec["position_m"], device)
     env.sim.step()
     print(f"SO101_RESET_DEBUG after_sim_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
+    for diagnostic_step in range(2, 5):
+        env.sim.step()
+        print(
+            f"SO101_RESET_DEBUG after_sim_step_{diagnostic_step}={_numpy(robot.data.joint_pos[0]).tolist()}",
+            flush=True,
+        )
     # Advance one manager step so FrameTransformer data reflects the reset
     # articulation before choosing the HOME waypoint.  Without this sync,
     # the first observation can be a stale pre-reset pose.
