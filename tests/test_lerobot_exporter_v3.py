@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from export_lerobot_dataset import export_dataset
-from farpoint.so101 import SIM_JOINT_NAMES
+from farpoint.so101 import SIM_JOINT_NAMES, radians_to_lerobot
 
 
 class FakeLeRobotDataset:
@@ -86,6 +86,9 @@ def test_export_so101_writes_six_dof_and_two_cameras(tmp_path):
     output = export_dataset(manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset)
     assert FakeLeRobotDataset.last_instance.saved == 1
     assert FakeLeRobotDataset.last_instance.frames[0]["observation.state"].shape == (6,)
-    assert np.allclose(FakeLeRobotDataset.last_instance.frames[0]["observation.state"], 0.0)
+    assert np.allclose(
+        FakeLeRobotDataset.last_instance.frames[0]["observation.state"],
+        radians_to_lerobot(np.zeros(6)),
+    )
     assert FakeLeRobotDataset.last_instance.frames[0]["observation.images.wrist"].shape == (6, 8, 3)
     assert json.loads((output / "meta/farpoint_v3.json").read_text())["robot"]["name"] == "so101"
