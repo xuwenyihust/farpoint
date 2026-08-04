@@ -102,7 +102,8 @@ def _body_index(robot) -> int:
 
 def _ik_action(robot, ee_frame, target, current, body_index, device):
     ee = _numpy(ee_frame.data.target_pos_w[0, 0])
-    jacobian = _numpy(robot.root_physx_view.get_jacobians()[0, body_index, :3, :5])
+    jacobians = _numpy(robot.root_physx_view.get_jacobians())
+    jacobian = jacobians[0, body_index, :3, :5]
     delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
     action[:5] = action[:5] + np.clip(delta, -0.045, 0.045)
