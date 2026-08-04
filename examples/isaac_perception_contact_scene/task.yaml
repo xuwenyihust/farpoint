@@ -205,6 +205,8 @@ perception:
   # Used only by the v0.0.1 yaw-aware plan. Existing position-only runs do not
   # invoke the yaw estimator.
   yaw_min_confidence: 0.15
+  yaw_lock_frames: 3
+  yaw_lock_max_spread_degrees: 5.0
   target_channel: "green"
   min_channel: 70
   min_dominance: 25

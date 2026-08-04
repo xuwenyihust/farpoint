@@ -82,7 +82,7 @@
         "episode": {"const": "farpoint.episode.v2"},
         "variation": {"const": "farpoint.variation.v2"},
         "benchmark": {"const": "farpoint.benchmark.v2"},
-        "collection": {"const": "farpoint.collection.v1"}
+        "collection": {"enum": ["farpoint.collection.v1", "farpoint.collection.v2"]}
       },
       "oneOf": [
         {"required": ["benchmark"], "not": {"required": ["collection"]}},

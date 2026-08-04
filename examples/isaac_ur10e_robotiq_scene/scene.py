@@ -1551,14 +1551,28 @@ def main():
                 ),
             )
             if position_plan and position_plan.get("schema_version") == "farpoint.yaw-variation.v1":
-                initial_object_yaw_estimate = estimate_dominant_color_yaw(
-                    latest_rgb, latest_depth, camera_intrinsics, camera_to_world,
-                    perception_config.get("object_channel", "red"),
-                    min_pixels=perception_config.get("min_pixels", 20),
-                    min_channel=perception_config.get("min_channel", 80),
-                    min_dominance=perception_config.get("min_dominance", 30),
-                    min_confidence=float(perception_config.get("yaw_min_confidence", 0.15)),
-                )
+                yaw_estimates = []
+                for _ in range(int(perception_config.get("yaw_lock_frames", 3))):
+                    estimate = estimate_dominant_color_yaw(
+                        latest_rgb, latest_depth, camera_intrinsics, camera_to_world,
+                        perception_config.get("object_channel", "red"),
+                        min_pixels=perception_config.get("min_pixels", 20),
+                        min_channel=perception_config.get("min_channel", 80),
+                        min_dominance=perception_config.get("min_dominance", 30),
+                        min_confidence=float(perception_config.get("yaw_min_confidence", 0.15)),
+                    )
+                    yaw_estimates.append(estimate)
+                    if len(yaw_estimates) < int(perception_config.get("yaw_lock_frames", 3)):
+                        rep.orchestrator.step(rt_subframes=int(camera_config.get("rt_subframes", 1)))
+                        latest_rgb, latest_depth = capture_rgbd(rgb_annotator, depth_annotator)
+                yaw_values = [row["yaw_degrees"] for row in yaw_estimates]
+                yaw_spread = max(yaw_values) - min(yaw_values)
+                if yaw_spread > float(perception_config.get("yaw_lock_max_spread_degrees", 5.0)):
+                    raise PerceptionError(f"cube yaw lock is unstable: spread={yaw_spread:.3f}")
+                initial_object_yaw_estimate = {
+                    **yaw_estimates[-1], "lock_sample_count": len(yaw_estimates),
+                    "lock_spread_degrees": round(yaw_spread, 6),
+                }
                 yaw_alignment_target_degrees = initial_object_yaw_estimate["yaw_degrees"]
                 orientation = list(pickup_config.get("end_effector_orientation_degrees", [180.0, 0.0, 0.0]))
                 orientation[2] += yaw_alignment_target_degrees
@@ -6679,6 +6693,8 @@ def main():
         metrics["position_plan_sha256"] = (
             position_trial["plan_sha256"] if position_trial else None
         )
+        metrics["variation_plan_id"] = position_trial["plan_id"] if position_trial else None
+        metrics["variation_plan_sha256"] = position_trial["plan_sha256"] if position_trial else None
         metrics["reserve_index"] = reserve_index if position_trial else None
         metrics["benchmark_id"] = benchmark_id
         metrics["benchmark_repeat"] = benchmark_repeat
@@ -6693,6 +6709,8 @@ def main():
                 "audit_error_degrees": cube_yaw_error_degrees(initial_object_yaw_estimate["yaw_degrees"], requested_yaw),
                 "alignment_target_degrees": yaw_alignment_target_degrees,
                 "alignment_stable": yaw_alignment_target_degrees is not None,
+                "alignment_lock_sample_count": initial_object_yaw_estimate["lock_sample_count"],
+                "alignment_lock_spread_degrees": initial_object_yaw_estimate["lock_spread_degrees"],
             }
 
         joint_smoothness = measured_joint_smoothness(joint_history)
@@ -6719,6 +6737,8 @@ def main():
             "position_plan_sha256": (
                 position_trial["plan_sha256"] if position_trial else None
             ),
+            "variation_plan_id": position_trial["plan_id"] if position_trial else None,
+            "variation_plan_sha256": position_trial["plan_sha256"] if position_trial else None,
             "reserve_index": reserve_index if position_trial else None,
             "benchmark_id": benchmark_id,
             "benchmark_repeat": benchmark_repeat,
