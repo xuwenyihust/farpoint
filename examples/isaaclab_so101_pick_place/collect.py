@@ -186,7 +186,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     )
     robot.write_root_pose_to_sim(
         torch.tensor(
-            [[0.125, 0.218, 0.0, 0.70710678, 0.0, 0.0, 0.70710678]],
+            [[0.125, 0.171, 0.0, 0.70710678, 0.0, 0.0, 0.70710678]],
             dtype=torch.float32,
             device=device,
         )
