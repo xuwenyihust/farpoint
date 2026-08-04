@@ -125,7 +125,7 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
     position_error = np.asarray(target) - ee
     delta = damped_least_squares(jacobian, position_error, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
-    action[:5] = action[:5] + np.clip(delta, -0.05, 0.05)
+    action[:5] = action[:5] + np.clip(delta, -0.02, 0.02)
     # Keep the generated target inside the pinned USD joint limits.  The
     # position action manager does not clamp targets when offset-free control
     # is enabled, and some PhysX articulations report wider soft limits.
@@ -213,7 +213,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     closed_jaw = float(np.deg2rad(-8.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     target_position = np.asarray([0.22, 0.10, 0.060], dtype=np.float32)
-    machine = OracleStateMachine()
+    machine = OracleStateMachine(phase_timeout_steps=360)
     rows = []
     root = output_root / f"episode_{trial['attempt_id']}"
     if root.exists():
