@@ -25,5 +25,12 @@ if [[ "${MODE}" == "viewer" ]]; then
   docker_args+=(-e DISPLAY="${DISPLAY:-:0}" -v /tmp/.X11-unix:/tmp/.X11-unix:rw)
 fi
 
+launcher_args=""
+if [[ "${MODE}" == "headless" ]]; then
+  # Isaac Lab 3.0 requires this explicit switch whenever a camera is spawned,
+  # including headless RGB capture.
+  launcher_args=" --enable_cameras"
+fi
+
 docker run "${docker_args[@]}" "${IMAGE}" \
-  "/workspace/IsaacLab/isaaclab.sh -p /workspace/project/examples/isaaclab_so101_pick_place/collect.py --mode ${MODE} $*"
+  "/workspace/IsaacLab/isaaclab.sh -p /workspace/project/examples/isaaclab_so101_pick_place/collect.py --mode ${MODE}${launcher_args} $*"
