@@ -168,12 +168,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     # The workshop USD carries a non-zero default state and Isaac Lab 3.0 may
     # apply it after manager reset.  Re-assert the documented neutral pose so
     # every episode starts from the same physical configuration.
+    initial_joints = torch.tensor(
+        [[-0.2736, -0.6109, -0.0745, 1.5148, -1.6034, 1.7453]],
+        dtype=torch.float32,
+        device=device,
+    )
     robot.write_joint_state_to_sim(
-        torch.tensor(
-            [[-0.2736, -0.6109, -0.0745, 1.5148, -1.6034, 1.7453]],
-            dtype=torch.float32,
-            device=device,
-        ),
+        initial_joints,
         torch.zeros((1, 6), dtype=torch.float32, device=device),
     )
     for index, name in enumerate(inactive):
@@ -184,7 +185,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     # Advance one manager step so FrameTransformer data reflects the reset
     # articulation before choosing the HOME waypoint.  Without this sync,
     # the first observation can be a stale pre-reset pose.
-    env.step(robot.data.joint_pos.torch.clone())
+    # Send the same explicit pose as the first manager action; using the stale
+    # tensor cached before write_joint_state would restore the USD default.
+    env.step(initial_joints)
     home_ee = _numpy(ee_frame.data.target_pos_w[0, 0]).copy()
     body_index = _body_index(robot)
     open_jaw = float(robot.data.joint_pos[0, 5].item())
