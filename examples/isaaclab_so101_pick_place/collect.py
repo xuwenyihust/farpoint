@@ -109,6 +109,10 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
     delta = damped_least_squares(jacobian, np.asarray(target) - ee, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
     action[:5] = action[:5] + np.clip(delta, -0.045, 0.045)
+    # Keep the generated target inside the USD joint limits.  The position
+    # action manager does not clamp targets when ``use_default_offset=False``.
+    limits = _numpy(robot.data.soft_joint_pos_limits[0, :5])
+    action[:5] = np.clip(action[:5], limits[:, 0], limits[:, 1])
     return torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
 
 
