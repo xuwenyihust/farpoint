@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xuwenyihust/farpoint/src/farpoint/schemas/farpoint_collection_v2.schema.json",
+  "title": "Farpoint Yaw-aware Collection Contract v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "collection_id", "task_id", "git_commit", "policy_id", "policy_sha256", "variation_plan_sha256", "config_sha256", "simulator_image_digest", "simulator_payload_sha256", "execution_status", "quality_status", "attempts", "acceptance"],
+  "properties": {
+    "schema_version": {"const": "farpoint.collection.v2"},
+    "collection_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "policy_id": {"type": "string", "minLength": 1},
+    "policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "variation_plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "simulator_image_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "simulator_payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "execution_status": {"enum": ["FINISHED", "ABORTED"]},
+    "quality_status": {"enum": ["PASS", "FAIL", "NOT_EVALUATED"]},
+    "failure_reason": {"type": ["string", "null"]},
+    "attempts": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/attempt"}},
+    "acceptance": {"$ref": "#/$defs/acceptance"}
+  },
+  "$defs": {
+    "splits": {"type": "object", "additionalProperties": false, "required": ["train", "validation", "test"], "properties": {"train": {"type": "integer", "minimum": 0}, "validation": {"type": "integer", "minimum": 0}, "test": {"type": "integer", "minimum": 0}}},
+    "attempt": {"type": "object", "additionalProperties": false, "required": ["attempt_id", "trial_id", "condition_id", "episode_id", "variation_id", "cell_id", "seed", "reserve_index", "object_position_xy_m", "object_yaw_degrees", "object_orientation_xyzw", "object_spec", "source_split", "outcome_success", "dataset_valid", "selected_for_dataset", "yaw_aware"], "properties": {"attempt_id": {"type": "string"}, "trial_id": {"type": "string"}, "condition_id": {"type": "string"}, "episode_id": {"type": "string"}, "variation_id": {"type": "string"}, "cell_id": {"type": "string"}, "seed": {"type": "integer", "minimum": 0}, "reserve_index": {"type": "integer", "minimum": 0, "maximum": 2}, "object_position_xy_m": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}, "object_yaw_degrees": {"type": "number"}, "object_orientation_xyzw": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}}, "object_spec": {"type": "object"}, "source_split": {"enum": ["train", "validation", "test"]}, "dataset_split": {"enum": ["train", "validation", "test"]}, "outcome_success": {"type": "boolean"}, "dataset_valid": {"type": "boolean"}, "selected_for_dataset": {"type": "boolean"}, "yaw_aware": {"type": "object"}, "failure_category": {"type": ["string", "null"]}, "failure_reason": {"type": ["string", "null"]}}},
+    "acceptance": {"type": "object", "additionalProperties": false, "required": ["accepted", "required_task_yield", "observed_task_yield", "maximum_task_attempts", "observed_task_attempts", "observed_task_successes", "required_selected_episodes", "observed_selected_episodes", "required_conditions", "observed_covered_conditions", "required_splits", "observed_splits"], "properties": {"accepted": {"type": "boolean"}, "required_task_yield": {"type": "number"}, "observed_task_yield": {"type": "number"}, "maximum_task_attempts": {"type": "integer"}, "observed_task_attempts": {"type": "integer"}, "observed_task_successes": {"type": "integer"}, "required_selected_episodes": {"type": "integer"}, "observed_selected_episodes": {"type": "integer"}, "required_conditions": {"type": "integer"}, "observed_covered_conditions": {"type": "integer"}, "required_splits": {"$ref": "#/$defs/splits"}, "observed_splits": {"$ref": "#/$defs/splits"}}}
+  }
+}

@@ -32,7 +32,6 @@ LEGACY_SIDECAR = "robotsim_v1.json"
 REQUIRED_FEATURES = {
     "observation.state",
     "action",
-    "observation.images.front",
     "timestamp",
     "frame_index",
     "episode_index",
@@ -80,12 +79,12 @@ def validate_v1_sidecar(sidecar: dict[str, Any], result: dict[str, Any], name: s
             add_error(result, f"sidecar recording.{key} must be positive")
 
 
-def validate_info(info: dict[str, Any], result: dict[str, Any]) -> None:
+def validate_info(info: dict[str, Any], result: dict[str, Any], cameras: list[str]) -> None:
     features = info.get("features") if isinstance(info, dict) else None
     if not isinstance(features, dict):
         add_error(result, "meta/info.json must contain a features object")
         return
-    missing = sorted(REQUIRED_FEATURES.difference(features))
+    missing = sorted((REQUIRED_FEATURES | set(cameras)).difference(features))
     for feature in missing:
         add_error(result, f"meta/info.json is missing feature: {feature}")
     result["checks"]["required_features"] = not missing
@@ -100,7 +99,7 @@ def validate_info(info: dict[str, Any], result: dict[str, Any]) -> None:
             add_error(result, f"feature is missing shape: {feature}")
 
 
-def validate_layout(root: Path, result: dict[str, Any], sidecar_name: str) -> None:
+def validate_layout(root: Path, result: dict[str, Any], sidecar_name: str, cameras: list[str]) -> None:
     meta = root / "meta"
     required_files = [meta / sidecar_name, meta / "info.json", meta / "stats.json"]
     for path in required_files:
@@ -112,8 +111,9 @@ def validate_layout(root: Path, result: dict[str, Any], sidecar_name: str) -> No
         add_error(result, "meta/episodes/ must contain at least one Parquet shard")
     if not (meta / "tasks.parquet").is_file() and not (meta / "tasks.jsonl").is_file():
         add_error(result, "meta/ must contain tasks.parquet or tasks.jsonl")
-    if not list((root / "videos" / "observation.images.front").rglob("*.mp4")):
-        add_error(result, "front camera directory must contain at least one MP4 shard")
+    for camera in cameras:
+        if not list((root / "videos" / camera).rglob("*.mp4")):
+            add_error(result, f"camera directory must contain at least one MP4 shard: {camera}")
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -312,22 +312,24 @@ def validate_v2_artifacts(
     if info.get("total_frames") is not None and info.get("total_frames") != len(data_rows):
         add_error(result, "meta/info.json total_frames does not match data Parquet")
 
-    video_frames = 0
-    for path in sorted((root / "videos" / "observation.images.front").rglob("*.mp4")):
-        relative = path.relative_to(root)
-        if path.stat().st_size == 0:
-            add_error(result, f"video is empty: {relative}")
-            continue
-        try:
-            decoded = _decode_video_frames(path)
-        except (OSError, ValueError, RuntimeError) as error:
-            add_error(result, f"cannot decode video {relative}: {error}")
-            continue
-        if decoded == 0:
-            add_error(result, f"video has no decodable frames: {relative}")
-        video_frames += decoded
-    if video_frames != len(data_rows):
-        add_error(result, "front camera decoded frame count does not match data Parquet")
+    cameras = list((episodes[0].get("recording") or {}).get("cameras") or [])
+    for camera in cameras:
+        video_frames = 0
+        for path in sorted((root / "videos" / camera).rglob("*.mp4")):
+            relative = path.relative_to(root)
+            if path.stat().st_size == 0:
+                add_error(result, f"video is empty: {relative}")
+                continue
+            try:
+                decoded = _decode_video_frames(path)
+            except (OSError, ValueError, RuntimeError) as error:
+                add_error(result, f"cannot decode video {relative}: {error}")
+                continue
+            if decoded == 0:
+                add_error(result, f"video has no decodable frames: {relative}")
+            video_frames += decoded
+        if video_frames != len(data_rows):
+            add_error(result, f"{camera} decoded frame count does not match data Parquet")
 
 
 def validate_v2_dataset(
@@ -492,8 +494,9 @@ def validate_dataset(root: Path, evidence_path: Path | None = None) -> dict[str,
         return result
     result["schema_version"] = sidecar.get("schema_version")
     result["dataset_id"] = sidecar.get("dataset_id")
-    validate_info(info, result)
-    validate_layout(root, result, sidecar_name)
+    cameras = list((sidecar.get("recording") or {}).get("cameras") or ["observation.images.front"])
+    validate_info(info, result, cameras)
+    validate_layout(root, result, sidecar_name, cameras)
     if sidecar_name == V2_SIDECAR:
         validate_v2_dataset(root, sidecar, info, result, evidence_path)
     else:

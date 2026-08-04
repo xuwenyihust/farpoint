@@ -58,5 +58,9 @@ def test_rgbd_yaw_estimator_reports_or_rejects_low_confidence():
     result = estimate_dominant_color_yaw(rgb, depth, intrinsics, world, "red", min_pixels=20)
     assert result["confidence"] >= 0.15
     assert cube_yaw_error_degrees(result["yaw_degrees"], 0.0) < 1.0
+    assert result["orientation_separation"] > 0.0
+    ambiguous = np.zeros_like(rgb)
+    rows, columns = np.ogrid[:80, :80]
+    ambiguous[(rows - 40) ** 2 + (columns - 40) ** 2 <= 14 ** 2, 0] = 255
     with pytest.raises(PerceptionError, match="confidence"):
-        estimate_dominant_color_yaw(np.pad(rgb[30:50, 30:50], ((30, 30), (30, 30), (0, 0))), depth, intrinsics, world, "red", min_pixels=20)
+        estimate_dominant_color_yaw(ambiguous, depth, intrinsics, world, "red", min_pixels=20)

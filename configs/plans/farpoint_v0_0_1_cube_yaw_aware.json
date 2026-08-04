@@ -1,14 +1,14 @@
 {
   "config_revision": "1",
-  "config_sha256": "809e4fd8e653487d866c11cce8d77fc8122e1dd45d7580af4771fd995baac773",
+  "config_sha256": "063582e93911cbc5ad878836eaf99edd1248aa0a4d37836c03f5bfdd555386ea",
   "frozen_factors": {
-    "camera_profile_id": "front_rgbd_640x360_v1",
-    "controller_profile_id": "hybrid_rmpflow_lula_ik_yaw_aware_v1",
+    "camera_profile_id": "overhead_wrist_rgbd_640x360_v1",
+    "controller_profile_id": "hybrid_rmpflow_lula_ik_yaw_aware_overhead_wrist_v1",
     "lighting_profile_id": "distant_1000_v1",
     "object_initial_z_m": 0.5,
     "object_mass_kg": 0.08,
     "physics_profile_id": "physx_contact_pickup_v1",
-    "recording_profile_id": "farpoint_multimodal_v1",
+    "recording_profile_id": "farpoint_multimodal_dual_rgbd_v1",
     "robot_pose_profile_id": "ur10e_tabletop_v1",
     "target_position_m": [
       0.96,
@@ -45,11 +45,11 @@
     "object_family": "rigid_prismatic",
     "object_shape": "cube",
     "object_variant_id": "cube_55mm_red_v1",
-    "perception_profile_id": "rgbd_cube_yaw_v1",
+    "perception_profile_id": "overhead_wrist_rgbd_cube_yaw_v1",
     "size_profile_id": "cube_55mm_v1"
   },
   "plan_id": "farpoint_v0_0_1_cube_yaw_aware",
-  "plan_sha256": "aa9713e26245c32bf14a79c9efeb1555f873c831b0c898ae18d0e9b625bb2390",
+  "plan_sha256": "68c20d5c47111234d2c58e6c05f15d9181965b2902586e80a4ac223d49d1a19f",
   "planner_revision": "cube-yaw-grid-v1",
   "planner_sha256": "68a470c93baa840bc39dae62e440f443a192aa3eeb48c2b52ee38b83c23d0cfa",
   "schema_version": "farpoint.yaw-variation.v1",

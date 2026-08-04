@@ -16,6 +16,7 @@ SCHEMA_FILES = {
     "farpoint.variation.v2": "farpoint_variation_v2.schema.json",
     "farpoint.benchmark.v2": "farpoint_benchmark_v2.schema.json",
     "farpoint.collection.v1": "farpoint_collection_v1.schema.json",
+    "farpoint.collection.v2": "farpoint_collection_v2.schema.json",
 }
 SPLITS = ("train", "validation", "test")
 SHAPE_TERMS = {
@@ -237,6 +238,49 @@ def validate_collection_semantics(collection: dict[str, Any]) -> list[str]:
         expected_release_accepted = covered == 25 and minimum == 2
         if release.get("accepted") is not expected_release_accepted:
             errors.append("coverage release accepted does not match coverage evidence")
+    return errors
+
+
+def validate_yaw_collection_semantics(collection: dict[str, Any]) -> list[str]:
+    """Validate the homogeneous 5x5-by-yaw collection contract."""
+    errors = []
+    attempts = collection.get("attempts") or []
+    acceptance = collection.get("acceptance") or {}
+    selected = [row for row in attempts if row.get("selected_for_dataset") is True]
+    successful = sum(row.get("outcome_success") is True for row in attempts)
+    conditions = [row.get("condition_id") for row in selected]
+    splits = Counter(row.get("dataset_split") for row in selected)
+    observed_yield = successful / len(attempts) if attempts else 0.0
+    if len(set(conditions)) != len(conditions):
+        errors.append("selected yaw condition ids must be unique")
+    expected = {
+        "observed_task_attempts": len(attempts),
+        "observed_task_successes": successful,
+        "observed_task_yield": observed_yield,
+        "observed_selected_episodes": len(selected),
+        "observed_covered_conditions": len(set(conditions)),
+        "observed_splits": {split: splits[split] for split in SPLITS},
+    }
+    for key, value in expected.items():
+        if acceptance.get(key) != value:
+            errors.append(f"collection {key} does not match attempts")
+    accepted = (
+        len(attempts) <= acceptance.get("maximum_task_attempts", 0)
+        and observed_yield >= acceptance.get("required_task_yield", 1.0)
+        and len(selected) == acceptance.get("required_selected_episodes")
+        and len(set(conditions)) == acceptance.get("required_conditions")
+        and expected["observed_splits"] == acceptance.get("required_splits")
+    )
+    if acceptance.get("accepted") is not accepted:
+        errors.append("collection accepted does not match collection evidence")
+    for row in selected:
+        yaw = row.get("yaw_aware") or {}
+        if not row.get("outcome_success") or not row.get("dataset_valid"):
+            errors.append(f"selected collection attempt is not eligible: {row.get('trial_id')}")
+        if yaw.get("control_source") != "rgbd_cube_yaw" or yaw.get("alignment_stable") is not True:
+            errors.append(f"selected collection attempt lacks yaw-aware control: {row.get('trial_id')}")
+        if float(yaw.get("audit_error_degrees", float("inf"))) > 10.0:
+            errors.append(f"selected collection attempt exceeds yaw audit error: {row.get('trial_id')}")
     return errors
 
 

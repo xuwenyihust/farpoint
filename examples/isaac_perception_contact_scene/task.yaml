@@ -193,9 +193,17 @@ robot:
   rotation_degrees: [0.0, 0.0, 0.0]
 camera:
   enabled: true
-  position: [1.60, 1.60, 2.10]
-  target: [0.76, 0.10, 0.42]
+  # Fixed global view: the sole source of object pose/yaw control estimates.
+  position: [0.97, 0.28, 1.80]
+  target: [0.97, 0.28, 0.42]
   resolution: [640, 360]
+  wrist:
+    # End-effector-local RGB-D is recorded for first-person policies and
+    # occlusion recovery analysis. It is intentionally excluded from yaw
+    # control, whose lock remains overhead-only.
+    position: [0.0, 0.0, 0.08]
+    rotation_degrees: [0.0, 90.0, 0.0]
+    resolution: [640, 360]
   preview_frames: [0, 180, 300, 360, 400, 440, 480, 520, 560, 600, 620, 800, 920, 1040, 1160, 1400, 1800, 2200, 2600, 3000, 3400, 3800, 4200, 4600, 5000, 5199]
   rt_subframes: 8
 perception:
@@ -205,6 +213,8 @@ perception:
   # Used only by the v0.0.1 yaw-aware plan. Existing position-only runs do not
   # invoke the yaw estimator.
   yaw_min_confidence: 0.15
+  yaw_lock_frames: 3
+  yaw_lock_max_spread_degrees: 5.0
   target_channel: "green"
   min_channel: 70
   min_dominance: 25
