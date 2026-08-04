@@ -6,7 +6,7 @@ HOST="${FARPOINT_DGX_HOST:-dgx-spark}"
 REMOTE_ROOT="${FARPOINT_DGX_ROOT:-/home/wenyixu/projects/farpoint}"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-rsync -az --delete \
+rsync -az \
   --exclude '.git' \
   --exclude '.cache' \
   --exclude '.pytest_cache' \
