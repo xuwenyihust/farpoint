@@ -57,7 +57,6 @@ from farpoint.perception import (
     estimate_dominant_color_pose,
     estimate_dominant_color_yaw,
     cube_yaw_error_degrees,
-    look_at_calibration,
     xy_error,
 )
 from farpoint.physics import enable_enhanced_determinism
@@ -1487,9 +1486,15 @@ def main():
         wrist_depth_annotator = None
         camera_intrinsics = None
         camera_to_world = None
+        overhead_camera_prim_path = None
         wrist_camera_prim_path = None
         preview_writer = None
         if preview_enabled:
+            existing_camera_paths = {
+                str(prim.GetPath())
+                for prim in stage.Traverse()
+                if prim.IsA(UsdGeom.Camera)
+            }
             preview_dir.mkdir(parents=True, exist_ok=True)
             camera = rep.create.camera(position=tuple(camera_config["position"]), look_at=tuple(camera_config["target"]))
             render_product = rep.create.render_product(camera, tuple(camera_config["resolution"]))
@@ -1504,11 +1509,17 @@ def main():
                     str(prim.GetPath())
                     for prim in stage.Traverse()
                     if prim.IsA(UsdGeom.Camera)
+                    and str(prim.GetPath()) not in existing_camera_paths
                 ]
-                camera_intrinsics, camera_to_world = look_at_calibration(
-                    camera_config["position"],
-                    camera_config["target"],
-                    camera_config["resolution"],
+                if not camera_paths:
+                    raise PerceptionError("overhead USD camera prim was not created")
+                overhead_camera_prim_path = camera_paths[-1]
+                # Back-project control RGB-D with the exact USD camera that
+                # produced the overhead render product.  A hand-derived
+                # look-at approximation can diverge in vertical aperture or
+                # transform convention and bias the cube-yaw support fit.
+                camera_intrinsics, camera_to_world = usd_camera_calibration(
+                    stage, overhead_camera_prim_path, camera_config["resolution"]
                 )
                 # The overhead view is the only perception/control source.
                 # The wrist view is recorded synchronously for first-person
@@ -1516,7 +1527,7 @@ def main():
                 # control.  Parenting makes its pose follow the physical EE.
                 wrist_config = camera_config.get("wrist")
                 if wrist_config and end_effector_prim_path:
-                    before_paths = set(camera_paths)
+                    before_paths = set(existing_camera_paths) | set(camera_paths)
                     wrist_camera = rep.create.camera(
                         parent=end_effector_prim_path,
                         position=tuple(wrist_config["position"]),
