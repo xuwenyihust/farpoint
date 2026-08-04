@@ -15,5 +15,5 @@ rsync -az \
   --exclude 'artifacts' \
   "${PROJECT_ROOT}/" "${HOST}:${REMOTE_ROOT}/"
 
-ssh "${HOST}" "cd '${REMOTE_ROOT}' && git status --short || true"
+ssh "${HOST}" "cd '${REMOTE_ROOT}' && if [[ -d .git ]]; then git status --short; fi"
 echo "Synced SO-101 source to ${HOST}:${REMOTE_ROOT}"
