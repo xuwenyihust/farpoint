@@ -125,7 +125,7 @@ def _ik_action(robot, ee_frame, target, current, body_index, device):
     position_error = np.asarray(target) - ee
     delta = damped_least_squares(jacobian, position_error, damping=0.06)
     action = _numpy(current).astype(np.float32).copy()
-    action[:5] = action[:5] + np.clip(delta, -0.01, 0.01)
+    action[:5] = action[:5] + np.clip(delta, -0.05, 0.05)
     # Keep the generated target inside the pinned USD joint limits.  The
     # position action manager does not clamp targets when offset-free control
     # is enabled, and some PhysX articulations report wider soft limits.
