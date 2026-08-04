@@ -83,7 +83,7 @@ def test_apply_trial_reuses_template_but_changes_task_identity_and_shape():
         "unilateral_recenter_step": 0.00005,
         "unilateral_recenter_max_correction": 0.003,
         "unilateral_recenter_persistence_frames": 12,
-        "bilateral_contact_min_finger_position_radians": -0.001,
+        "bilateral_contact_min_finger_position_radians": 0.02,
         "grasp_validation_frames": 1,
         "grasp_validation_min_support_frames": 1,
         "grasp_validation_terminal_stable_frames": 1,
