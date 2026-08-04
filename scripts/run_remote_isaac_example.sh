@@ -113,7 +113,10 @@ docker run --rm --user 0:0 --entrypoint bash \
   "${ISAAC_IMAGE}" \
   -lc '
     backup="/runtime/stale-locks/$1"
-    mkdir -p "${backup}"
+    # Create every bind-mounted child before the unprivileged container is
+    # started. Otherwise Docker creates a missing child as root (0755), which
+    # prevents Isaac from creating its Warp cache.
+    mkdir -p /runtime/{cache,compute,logs,config,data,pkg,hub} "${backup}"
     archive_lock() {
       source_path="$1"
       target_name="$2"

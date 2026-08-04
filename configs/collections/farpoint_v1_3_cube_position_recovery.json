@@ -8,7 +8,7 @@
   "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0",
   "simulator_image_digest": "sha256:68735a60b6c15c85e0dd0098570c6d2cc79e928f2d068ce2790aa43284ac165d",
   "simulator_payload": {
-    "sha256": "22c9c0ee7b5d2f58ee57560f5c3155d49ba1446a63fba4008be7828eef3b110c",
+    "sha256": "5b42d4a42ef88727414333ed261fd079f4596cee27d36402fc8dde098d29ddeb",
     "paths": [
       "configs/plans/farpoint_v1_3_cube_position_expanded_candidate.json",
       "configs/variations/farpoint_v1_3_cube_position_expanded.json",
