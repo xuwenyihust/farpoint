@@ -201,6 +201,19 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             jaw = open_jaw
 
         current = robot.data.joint_pos[0]
+        if frame == 0:
+            print(
+                f"SO101_ORACLE_START phase={phase.value} "
+                f"ee={_numpy(ee_frame.data.target_pos_w[0, 0]).tolist()} "
+                f"target={np.asarray(target).tolist()}",
+                flush=True,
+            )
+        if phase is OraclePhase.PREGRASP and machine.phase_steps == 0:
+            print(
+                f"SO101_ORACLE_PREGRASP_START ee={_numpy(ee_frame.data.target_pos_w[0, 0]).tolist()} "
+                f"target={np.asarray(target).tolist()}",
+                flush=True,
+            )
         action = _ik_action(robot, ee_frame, target, current, body_index, device)
         action[0, 5] = jaw
         state = _numpy(current)
