@@ -19,6 +19,8 @@ from isaaclab.app import AppLauncher
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from farpoint.so101_runtime import resolve_headless_mode  # noqa: E402
+
 # USD limits observed from the pinned SO-101 asset (radians), kept explicit so
 # controller targets cannot be normalized or extrapolated by a backend.
 SO101_JOINT_LIMITS = np.asarray(
@@ -86,7 +88,11 @@ def parse_args():
     )
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
-    args.headless = args.mode == "headless"
+    args.headless = resolve_headless_mode(
+        args.mode,
+        args.livestream,
+        livestream_env=os.environ.get("LIVESTREAM"),
+    )
     return args
 
 
