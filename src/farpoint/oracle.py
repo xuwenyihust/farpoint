@@ -40,6 +40,61 @@ PHASE_ORDER = (
 )
 
 
+def oriented_box_xy_half_extents(dimensions_m, orientation_xyzw) -> np.ndarray:
+    """Project an oriented 3D box onto the world XY axes."""
+    dimensions = np.asarray(dimensions_m, dtype=np.float64)
+    quaternion = np.asarray(orientation_xyzw, dtype=np.float64)
+    if dimensions.shape != (3,) or np.any(dimensions <= 0.0):
+        raise ValueError("box dimensions must be three positive values")
+    if quaternion.shape != (4,):
+        raise ValueError("orientation quaternion must have shape (4,)")
+    norm = float(np.linalg.norm(quaternion))
+    if norm <= 1e-12:
+        raise ValueError("orientation quaternion must be non-zero")
+    x, y, z, w = quaternion / norm
+    rotation = np.asarray(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
+    return (np.abs(rotation[:2, :]) @ (0.5 * dimensions)).astype(np.float32)
+
+
+def oriented_box_footprint_inside_target(
+    object_position_m,
+    object_dimensions_m,
+    object_orientation_xyzw,
+    target_position_m,
+    target_dimensions_m,
+    *,
+    margin_m: float = 0.0,
+) -> bool:
+    """Return whether the complete projected box footprint fits on a target."""
+    object_position = np.asarray(object_position_m, dtype=np.float64)
+    target_position = np.asarray(target_position_m, dtype=np.float64)
+    target_dimensions = np.asarray(target_dimensions_m, dtype=np.float64)
+    if object_position.shape != (3,) or target_position.shape != (3,):
+        raise ValueError("object and target positions must have shape (3,)")
+    if target_dimensions.shape != (3,) or np.any(target_dimensions <= 0.0):
+        raise ValueError("target dimensions must be three positive values")
+    if margin_m < 0.0:
+        raise ValueError("margin_m must be non-negative")
+    object_half_extent = oriented_box_xy_half_extents(
+        object_dimensions_m, object_orientation_xyzw
+    )
+    available_half_extent = 0.5 * target_dimensions[:2] - float(margin_m)
+    return bool(
+        np.all(
+            np.abs(object_position[:2] - target_position[:2])
+            + object_half_extent
+            <= available_half_extent
+        )
+    )
+
+
 @dataclass(frozen=True)
 class OracleObservation:
     reached_target: bool = False

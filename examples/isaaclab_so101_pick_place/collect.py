@@ -119,6 +119,7 @@ from farpoint.oracle import (  # noqa: E402
     OraclePhase,
     OracleStateMachine,
     damped_least_squares,
+    oriented_box_footprint_inside_target,
     quaternion_direction_error,
 )
 from farpoint.so101 import LEROBOT_JOINT_NAMES, SIM_JOINT_NAMES, mapping_metadata  # noqa: E402
@@ -1225,11 +1226,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     closed_jaw = float(np.deg2rad(-10.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     approach_jaw = 0.90 if float(object_spec["dimensions_m"][0]) <= 0.03 else 1.20
-    target_position = np.asarray([0.20, 0.02, 0.062], dtype=np.float32)
-    # Release above the tray instead of driving the fingertips down to the
-    # cube's resting height.  At the lower target the cube contacts the base
-    # first, slips in the grasp, and the fixed fingertip becomes mechanically
-    # wedged against the tray while the jaw tries to open.
+    target_position = np.asarray([0.20, 0.02, 0.037], dtype=np.float32)
+    target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
+    # Release above the raised target pad instead of driving the fingertips
+    # down to the cube's resting height. At the lower target the cube contacts
+    # the pad first and can slip while the jaw tries to open.
     release_position = np.asarray([0.20, 0.02, 0.080], dtype=np.float32)
     # Let both position actuators settle against the cube before commanding
     # any lift; two 30 Hz samples only prove an impact, not a stable grasp.
@@ -1662,17 +1663,19 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             )
             if transport_object_target is None:
                 commanded_joints = _numpy(current).astype(np.float32).copy()
-                # Move only as far into the tray as success requires.  The
+                # Move only as far onto the target pad as success requires. The
                 # SO-101 has five arm DoF and cannot retain this physical
-                # wrist posture at the old, unnecessarily high tray-centre
+                # wrist posture at an unnecessarily distant pad-centre
                 # waypoint. Preserve the already-proven lift height and pick
-                # the nearest point 10 mm inside the valid XY region.
+                # the nearest point 10 mm inside the valid XY region. Use the
+                # box half-diagonal so the footprint stays inside even if the
+                # cube changes which face is down during transport.
+                conservative_footprint_radius = 0.5 * float(
+                    np.linalg.norm(object_spec["dimensions_m"])
+                )
                 valid_half_extent = (
-                    np.asarray((0.08, 0.07), dtype=np.float32)
-                    - 0.5
-                    * np.asarray(
-                        object_spec["dimensions_m"][:2], dtype=np.float32
-                    )
+                    0.5 * target_dimensions[:2]
+                    - conservative_footprint_radius
                     - 0.005
                 )
                 interior_margin = np.minimum(
@@ -1688,11 +1691,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
                     ),
                     dtype=np.float32,
                 )
-            # The near tray wall tops out at z=0.0625 m.  A 40 mm cube must
-            # keep its centre above 0.0825 m to cross without collision. Use
-            # hysteresis so lateral transport pauses whenever load-induced
-            # sag erodes that clearance, then resumes only after recovering a
-            # comfortable margin.
+            # Preserve vertical clearance over the raised target pad. Use
+            # hysteresis so lateral transport pauses whenever load-induced sag
+            # erodes that clearance, then resumes after recovering margin.
             if object_world_position[2] < 0.086:
                 if not transport_recovering_height:
                     transport_recovery_xy = object_world_position[:2].copy()
@@ -2175,19 +2176,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             and orientation_ready
             and phase_motion_complete
         )
-        cube_in_target = bool(
-            np.all(
-                np.abs(
-                    _numpy(scene[active_name].data.root_pos_w[0, :2])
-                    - target_position[:2]
-                )
-                <= np.asarray((0.08, 0.07), dtype=np.float32)
-                - 0.5
-                * np.asarray(
-                    object_spec["dimensions_m"][:2], dtype=np.float32
-                )
-                - 0.005
-            )
+        cube_in_target = oriented_box_footprint_inside_target(
+            object_pose[:3],
+            object_spec["dimensions_m"],
+            object_pose[3:7],
+            target_position,
+            target_dimensions,
+            margin_m=0.005,
         )
         obs = OracleObservation(
             # An open two-finger gripper can surround the cube without either
@@ -2205,7 +2200,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
                 )
                 or (phase is OraclePhase.DESCEND and has_contact)
                 # Under load, the 5-DOF arm can retain a small Cartesian pose
-                # residual even after the cube has ample tray-wall clearance.
+                # residual even after the cube has ample target-pad clearance.
                 # Advance on the physical transport condition, not an
                 # unreachable unloaded end-effector target.
                 or (
@@ -2274,9 +2269,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
         "provenance": {"git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
-        "task": {"task_id": "so101_cube_pick_place", "instruction": "Pick up the cube and place it in the green tray.", "object_shape": "cube", "success_criteria_id": "contact_pick_place_v1"},
+        "task": {"task_id": "so101_cube_pick_place", "instruction": "Pick up the cube and place it on the green target pad.", "object_shape": "cube", "success_criteria_id": "contact_pick_place_footprint_v2"},
         "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
-        "scene": {"coordinate_frame": "isaac_world", "object": {"shape": "cube", "asset_id": object_spec["asset_id"], "dimensions_m": object_spec["dimensions_m"], "initial_pose": {"position_m": object_spec["position_m"], "orientation_xyzw": object_spec["orientation_xyzw"]}, "rgba": object_spec["rgba"], "mass_kg": object_spec["mass_kg"], "static_friction": object_spec["static_friction"], "dynamic_friction": object_spec["dynamic_friction"], "restitution": object_spec["restitution"]}, "target": {"target_id": "fixed_green_tray_v1", "position_m": target_position.tolist()}, "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
+        "scene": {"coordinate_frame": "isaac_world", "object": {"shape": "cube", "asset_id": object_spec["asset_id"], "dimensions_m": object_spec["dimensions_m"], "initial_pose": {"position_m": object_spec["position_m"], "orientation_xyzw": object_spec["orientation_xyzw"]}, "rgba": object_spec["rgba"], "mass_kg": object_spec["mass_kg"], "static_friction": object_spec["static_friction"], "dynamic_friction": object_spec["dynamic_friction"], "restitution": object_spec["restitution"]}, "target": {"target_id": "fixed_green_target_pad_v1", "type": "raised_rectangular_pad", "position_m": target_position.tolist(), "dimensions_m": target_dimensions.tolist(), "footprint_margin_m": 0.005}, "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
         "variation": {"schema_version": "farpoint.variation.v3", "variation_id": trial["variation_id"], "varied_axes": ["object.position_m.x", "object.position_m.y", "object.dimensions_m", "object.rgba"], "frozen_axes": ["object.shape", "object.orientation_xyzw", "object.mass_kg", "object.static_friction", "object.dynamic_friction"], "requested": trial["requested"], "resolved": object_spec, "split": trial["split"]},
         "recording": {"fps": schedule.recording_hz, "control_hz": schedule.control_hz, "recording_stride": schedule.recording_stride, "cameras": (["observation.images.front", "observation.images.wrist"] if args_cli.enable_wrist_camera else ["observation.images.front"]), "frame_count": len(rows), "state_features": list(LEROBOT_JOINT_NAMES), "action_features": list(LEROBOT_JOINT_NAMES), "state_unit": "radian", "action_unit": "radian", "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render"},
         "outcome": {"success": success, "dataset_valid": bool(rows), "failure_category": None if success else "oracle", "failure_reason": None if success else machine.failure_reason},

@@ -120,8 +120,8 @@ def test_workspace_matrix_requires_five_unique_in_bounds_positions():
         )
 
 
-def test_workspace_matrix_rejects_cube_footprint_overlapping_target_tray():
-    with pytest.raises(ValueError, match="overlaps the target tray"):
+def test_workspace_matrix_rejects_cube_footprint_overlapping_target_pad():
+    with pytest.raises(ValueError, match="overlaps the target pad"):
         build_cube_workspace_matrix_plan(
             _config(),
             gate_id="bad",

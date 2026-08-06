@@ -57,34 +57,14 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.265, 0.0, 0.012)),
     )
-    tray_base = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Tray/Base",
+    target_pad = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/TargetPad",
         spawn=sim_utils.CuboidCfg(
             size=(0.16, 0.14, 0.01),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.08, 0.70, 0.20)),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, 0.02, 0.037)),
-    )
-    tray_wall_x0 = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Tray/WallX0",
-        spawn=sim_utils.CuboidCfg(size=(0.01, 0.14, 0.025)),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.12, 0.02, 0.050)),
-    )
-    tray_wall_x1 = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Tray/WallX1",
-        spawn=sim_utils.CuboidCfg(size=(0.01, 0.14, 0.025)),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.28, 0.02, 0.050)),
-    )
-    tray_wall_y0 = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Tray/WallY0",
-        spawn=sim_utils.CuboidCfg(size=(0.16, 0.01, 0.025)),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, -0.05, 0.050)),
-    )
-    tray_wall_y1 = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Tray/WallY1",
-        spawn=sim_utils.CuboidCfg(size=(0.16, 0.01, 0.025)),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, 0.09, 0.050)),
     )
     cube_small_red = _cube("CubeSmallRed", 0.03, (0.85, 0.08, 0.06))
     cube_small_blue = _cube("CubeSmallBlue", 0.03, (0.04, 0.20, 0.85))

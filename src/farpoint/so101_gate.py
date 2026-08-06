@@ -126,8 +126,8 @@ def build_cube_workspace_matrix_plan(
     target_dimensions = variation_config["target"]["dimensions_m"]
     # A cube at arbitrary yaw fits inside a horizontal circle with radius
     # edge/sqrt(2).  Reject any center whose conservative footprint intersects
-    # the fixed tray, so the workspace gate never starts with the object on or
-    # under the placement target.
+    # the fixed target pad, so the workspace gate never starts with the object
+    # on or under the placement target.
     cube_half_extent = max(edge_sizes) / math.sqrt(2.0)
     target_x_min = float(target_position[0]) - float(target_dimensions[0]) / 2.0
     target_x_max = float(target_position[0]) + float(target_dimensions[0]) / 2.0
@@ -147,7 +147,7 @@ def build_cube_workspace_matrix_plan(
             and float(position[1]) - cube_half_extent < target_y_max
         )
         if overlaps_target:
-            raise ValueError("workspace matrix cube footprint overlaps the target tray")
+            raise ValueError("workspace matrix cube footprint overlaps the target pad")
 
     base_plan = generate_variation_plan(variation_config)
     templates = {

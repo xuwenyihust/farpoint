@@ -6,9 +6,36 @@ from farpoint.oracle import (
     OraclePhase,
     OracleStateMachine,
     damped_least_squares,
+    oriented_box_footprint_inside_target,
+    oriented_box_xy_half_extents,
     quaternion_direction_error,
     quaternion_rotation_vector_error,
 )
+
+
+def test_oriented_box_footprint_uses_rotation_not_only_center():
+    half_extents = oriented_box_xy_half_extents(
+        [0.04, 0.04, 0.04],
+        [0.0, 0.0, np.sin(np.deg2rad(45.0) / 2.0), np.cos(np.deg2rad(45.0) / 2.0)],
+    )
+    np.testing.assert_allclose(half_extents, [np.sqrt(2) * 0.02] * 2)
+
+    assert oriented_box_footprint_inside_target(
+        [0.20, 0.02, 0.062],
+        [0.04, 0.04, 0.04],
+        [0.0, 0.0, 0.0, 1.0],
+        [0.20, 0.02, 0.037],
+        [0.16, 0.14, 0.01],
+        margin_m=0.005,
+    )
+    assert not oriented_box_footprint_inside_target(
+        [0.1498970091, -0.0234679021, 0.062],
+        [0.04, 0.04, 0.04],
+        [-0.6008957028, -0.3727255464, 0.3727254272, 0.6008957624],
+        [0.20, 0.02, 0.037],
+        [0.16, 0.14, 0.01],
+        margin_m=0.005,
+    )
 
 
 def test_damped_least_squares_solves_identity_task():

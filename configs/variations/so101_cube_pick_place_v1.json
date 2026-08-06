@@ -26,7 +26,7 @@
     "restitution": 0.0
   },
   "target": {
-    "target_id": "fixed_green_tray_v1",
+    "target_id": "fixed_green_target_pad_v1",
     "position_m": [0.20, 0.02, 0.037],
     "dimensions_m": [0.16, 0.14, 0.01],
     "rgba": [0.08, 0.70, 0.20, 1.0]
