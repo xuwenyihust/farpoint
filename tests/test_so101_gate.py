@@ -121,9 +121,13 @@ def test_workspace_matrix_requires_five_unique_in_bounds_positions():
 
 
 def test_workspace_matrix_rejects_cube_footprint_overlapping_target_pad():
+    config = _config()
+    # Exercise the overlap guard with a deliberately adjacent target. The
+    # production v4 target is now outside the configured pickup workspace.
+    config["target"]["position_m"][1] = 0.02
     with pytest.raises(ValueError, match="overlaps the target pad"):
         build_cube_workspace_matrix_plan(
-            _config(),
+            config,
             gate_id="bad",
             positions_xy_m=[
                 (0.15, -0.11),

@@ -9,6 +9,8 @@ from collections import Counter
 from importlib.resources import files
 from typing import Any
 
+from farpoint.scene_entities import validate_scene_entities
+
 
 SCHEMA_FILES = {
     "farpoint.dataset.v3": "farpoint_dataset_v3.schema.json",
@@ -63,6 +65,14 @@ def task_definition(metadata: dict[str, Any]) -> dict[str, str]:
     shape = (
         task.get("object_shape")
         or (metadata.get("scene") or {}).get("object", {}).get("shape")
+        or next(
+            (
+                entity.get("entity_type")
+                for entity in (metadata.get("scene") or {}).get("entities", ())
+                if entity.get("role") == "manipulated_object"
+            ),
+            None,
+        )
         or variation.get("object_type")
     )
     task_id = task.get("task_id") or metadata.get("task_name")
@@ -103,6 +113,55 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
             errors.append("variation axes cannot be both varied and frozen")
         if variation.get("split") != identity.get("split"):
             errors.append("variation.split does not match identity.split")
+        entities = scene.get("entities")
+        if entities is not None:
+            try:
+                validate_scene_entities(entities)
+            except ValueError as error:
+                errors.append(str(error))
+            entity_index = {
+                entity.get("entity_id"): entity
+                for entity in entities
+                if isinstance(entity, dict) and entity.get("entity_id")
+            }
+            manipulated_id = task.get("manipulated_entity_id")
+            target_id = task.get("target_entity_id")
+            if manipulated_id and manipulated_id not in entity_index:
+                errors.append("task.manipulated_entity_id is missing from scene.entities")
+            if target_id and target_id not in entity_index:
+                errors.append("task.target_entity_id is missing from scene.entities")
+            if manipulated_id in entity_index:
+                entity = entity_index[manipulated_id]
+                if entity.get("role") != "manipulated_object":
+                    errors.append("task.manipulated_entity_id does not name a manipulated object")
+                if task.get("object_shape") != entity.get("entity_type"):
+                    errors.append(
+                        "task.object_shape does not match the manipulated entity type"
+                    )
+            if target_id in entity_index:
+                target_entity = entity_index[target_id]
+                if target_entity.get("role") != "placement_target":
+                    errors.append("task.target_entity_id does not name a placement target")
+                region_id = task.get("acceptance_region_id")
+                if region_id and region_id not in {
+                    region.get("region_id")
+                    for region in target_entity.get("regions", ())
+                    if isinstance(region, dict)
+                }:
+                    errors.append(
+                        "task.acceptance_region_id is missing from the target entity"
+                    )
+            resolved_entities = resolved.get("entities")
+            if resolved_entities is not None:
+                if not isinstance(resolved_entities, dict):
+                    errors.append("variation.resolved.entities must be an object")
+                else:
+                    for entity_id, entity in entity_index.items():
+                        if resolved_entities.get(entity_id) != entity:
+                            errors.append(
+                                f"variation.resolved.entities.{entity_id} does not "
+                                "match scene.entities"
+                            )
         return errors
     identity = record.get("identity") or {}
     task = record.get("task") or {}

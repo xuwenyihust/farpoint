@@ -23,7 +23,11 @@ from export_lerobot_v1_episode import (  # noqa: E402
     resolve_controlled_joint_names,
     select_joint_values,
 )
-from farpoint.contracts import SPLITS, validate_contract  # noqa: E402
+from farpoint.contracts import (  # noqa: E402
+    SPLITS,
+    validate_contract,
+    validate_episode_semantics,
+)
 from farpoint.episode_metadata import normalize_episode_metadata_v2  # noqa: E402
 from farpoint.so101 import LEROBOT_JOINT_NAMES, SIM_JOINT_NAMES, radians_to_lerobot  # noqa: E402
 
@@ -200,6 +204,35 @@ def _so101_sidecar(
 ) -> dict[str, Any]:
     first = records[0]
     tasks = {record["task"]["task_id"]: record["task"] for record in records}
+    episode_scene_metadata = []
+    for record in records:
+        task = record["task"]
+        variation = record["variation"]
+        entry = {
+            "dataset_episode_index": record["identity"]["dataset_episode_index"],
+            "episode_id": record["identity"]["episode_id"],
+            "variation_id": variation["variation_id"],
+            "split": record["identity"]["split"],
+            "task_id": task["task_id"],
+            "varied_axes": list(variation["varied_axes"]),
+            "frozen_axes": list(variation["frozen_axes"]),
+        }
+        for key in (
+            "manipulated_entity_id",
+            "target_entity_id",
+            "acceptance_region_id",
+        ):
+            if key in task:
+                entry[key] = task[key]
+        if "entities" in record["scene"]:
+            entry["entities"] = record["scene"]["entities"]
+        requested_entities = variation["requested"].get("entities")
+        resolved_entities = variation["resolved"].get("entities")
+        if requested_entities is not None:
+            entry["requested_entities"] = requested_entities
+        if resolved_entities is not None:
+            entry["resolved_entities"] = resolved_entities
+        episode_scene_metadata.append(entry)
     sidecar = {
         "schema_version": "farpoint.dataset.v3",
         "dataset_id": dataset_id,
@@ -228,6 +261,7 @@ def _so101_sidecar(
             "action_semantics": "joint_position_target_sent_at_control_step",
         },
         "joint_mapping": first["embodiment"]["joint_mapping"],
+        "episode_scene_metadata": episode_scene_metadata,
         "contracts": {"episode": "farpoint.episode.v3", "variation": "farpoint.variation.v3"},
     }
     if selection_policy:
@@ -255,6 +289,11 @@ def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
         errors = validate_contract(enriched)
         if errors:
             raise ValueError(f"invalid SO-101 episode metadata: {'; '.join(errors)}")
+        semantic_errors = validate_episode_semantics(enriched)
+        if semantic_errors:
+            raise ValueError(
+                "invalid SO-101 episode semantics: " + "; ".join(semantic_errors)
+            )
         records.append(enriched)
 
     cameras = _so101_cameras(records)

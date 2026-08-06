@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from farpoint.scene_entities import bind_scene_entities, placement_target_entity
+
 
 SCHEMA_VERSION = "farpoint.variation.v3"
 SPLITS = ("train", "validation", "test")
@@ -40,8 +42,8 @@ class ObjectSpec:
     restitution: float = 0.0
 
     def validate(self) -> None:
-        if self.shape not in {"cube", "cuboid", "cylinder", "mesh"}:
-            raise ValueError(f"unsupported object shape: {self.shape}")
+        if not isinstance(self.shape, str) or not self.shape:
+            raise ValueError("shape must be non-empty")
         if not self.asset_id:
             raise ValueError("asset_id must be non-empty")
         if len(self.dimensions_m) != 3 or any(value <= 0 for value in self.dimensions_m):
@@ -81,7 +83,15 @@ def load_variation_config(path: str | Path) -> dict[str, Any]:
 def validate_variation_config(config: dict[str, Any]) -> None:
     if config.get("schema_version") != SCHEMA_VERSION:
         raise ValueError(f"schema_version must be {SCHEMA_VERSION!r}")
-    for key in ("plan_id", "task_id", "config_revision", "workspace", "object"):
+    for key in (
+        "plan_id",
+        "task_id",
+        "config_revision",
+        "workspace",
+        "object",
+        "target",
+        "recording",
+    ):
         if key not in config:
             raise ValueError(f"variation config is missing {key}")
     workspace = config["workspace"]
@@ -91,19 +101,19 @@ def validate_variation_config(config: dict[str, Any]) -> None:
         bounds = workspace.get(key)
         if not isinstance(bounds, list) or len(bounds) != 2 or bounds[0] >= bounds[1]:
             raise ValueError(f"workspace.{key} must contain increasing bounds")
-    sizes = config["object"].get("edge_sizes_m")
+    base = config["object"]
+    dimensions = _dimension_profiles(base)
     colors = config["object"].get("colors")
-    if not isinstance(sizes, list) or len(sizes) != 2 or any(value <= 0 for value in sizes):
-        raise ValueError("object.edge_sizes_m must contain two positive sizes")
+    if len(dimensions) != 2:
+        raise ValueError("object must define exactly two dimension profiles")
     if not isinstance(colors, list) or len(colors) != 2:
         raise ValueError("object.colors must contain two color profiles")
-    base = config["object"]
     for color in colors:
         ObjectSpec(
-            shape="cube",
+            shape=str(base.get("shape") or "cube"),
             asset_id=str(base.get("asset_id", "procedural_cube")),
-            dimensions_m=(sizes[0],) * 3,
-            position_m=(0.0, 0.0, sizes[0] / 2),
+            dimensions_m=tuple(dimensions[0]),
+            position_m=(0.0, 0.0, dimensions[0][2] / 2),
             orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
             rgba=tuple(color["rgba"]),
             mass_kg=float(base["mass_kg"]),
@@ -111,6 +121,37 @@ def validate_variation_config(config: dict[str, Any]) -> None:
             dynamic_friction=float(base["dynamic_friction"]),
             restitution=float(base.get("restitution", 0.0)),
         ).validate()
+    placement_target_entity(
+        config["target"],
+        entity_type=str(config["target"].get("entity_type", "pad")),
+        relation=str(config["target"].get("relation", "on")),
+    )
+
+
+def _dimension_profiles(base: dict[str, Any]) -> list[list[float]]:
+    """Resolve generic XYZ profiles while retaining cube edge-size configs."""
+    profiles = base.get("dimension_profiles_m")
+    if profiles is None:
+        sizes = base.get("edge_sizes_m")
+        if not isinstance(sizes, list) or len(sizes) != 2:
+            raise ValueError(
+                "object.edge_sizes_m or object.dimension_profiles_m must define two sizes"
+            )
+        profiles = [[value, value, value] for value in sizes]
+    if not isinstance(profiles, list) or len(profiles) != 2:
+        raise ValueError("object.dimension_profiles_m must contain two XYZ profiles")
+    resolved = []
+    for profile in profiles:
+        if (
+            not isinstance(profile, list)
+            or len(profile) != 3
+            or any(not isinstance(value, (int, float)) or value <= 0 for value in profile)
+        ):
+            raise ValueError(
+                "object.dimension_profiles_m entries must contain three positive values"
+            )
+        resolved.append([float(value) for value in profile])
+    return resolved
 
 
 def _split_for(index: int) -> str:
@@ -140,12 +181,12 @@ def generate_variation_plan(config: dict[str, Any]) -> dict[str, Any]:
     validate_variation_config(config)
     trials = []
     base = config["object"]
-    sizes = [float(value) for value in base["edge_sizes_m"]]
+    dimensions = _dimension_profiles(base)
     colors = config["object"]["colors"]
     ordinal = 0
     for row in range(5):
         for column in range(5):
-            for size_index, size in enumerate(sizes):
+            for size_index, profile in enumerate(dimensions):
                 for color_index, color in enumerate(colors):
                     material = {
                         "schema_version": SCHEMA_VERSION,
@@ -158,10 +199,10 @@ def generate_variation_plan(config: dict[str, Any]) -> dict[str, Any]:
                     seed = int.from_bytes(hashlib.sha256(_canonical_json(material)).digest()[:8], "big")
                     xy = _position(config, row, column, seed)
                     requested = ObjectSpec(
-                        shape="cube",
+                        shape=str(base.get("shape") or "cube"),
                         asset_id=str(base.get("asset_id", "procedural_cube")),
-                        dimensions_m=(size, size, size),
-                        position_m=(xy[0], xy[1], float(config["workspace"]["table_z_m"]) + size / 2),
+                        dimensions_m=tuple(profile),
+                        position_m=(xy[0], xy[1], float(config["workspace"]["table_z_m"]) + profile[2] / 2),
                         orientation_xyzw=tuple(
                             float(value)
                             for value in base.get(
@@ -174,6 +215,7 @@ def generate_variation_plan(config: dict[str, Any]) -> dict[str, Any]:
                         dynamic_friction=float(base["dynamic_friction"]),
                         restitution=float(base.get("restitution", 0.0)),
                     ).to_dict()
+                    requested = bind_scene_entities(requested, config["target"])
                     trial_id = f"cube_r{row:02d}_c{column:02d}_s{size_index}_k{color_index}"
                     trials.append(
                         {
@@ -195,22 +237,25 @@ def generate_variation_plan(config: dict[str, Any]) -> dict[str, Any]:
         "config_revision": str(config["config_revision"]),
         "config_sha256": _sha256(config),
         "varied_axes": [
-            "object.position_m.x",
-            "object.position_m.y",
-            "object.dimensions_m",
-            "object.rgba",
+            "entities.pick_object.pose.position_m.x",
+            "entities.pick_object.pose.position_m.y",
+            "entities.pick_object.geometry.dimensions_m",
+            "entities.pick_object.appearance.rgba",
         ],
         "frozen_axes": [
-            "object.shape",
-            "object.mass_kg",
-            "object.static_friction",
-            "object.dynamic_friction",
-            "target.pose",
+            "entities.pick_object.entity_type",
+            "entities.pick_object.physics",
+            "entities.placement_target.pose",
+            "entities.placement_target.geometry",
             "lighting.profile",
         ],
         "dimensions": [
             {"name": "workspace_cell", "kind": "categorical", "values": 25},
-            {"name": "cube_edge_m", "kind": "categorical", "values": sizes},
+            {
+                "name": "object_dimensions_m",
+                "kind": "categorical",
+                "values": dimensions,
+            },
             {"name": "cube_color", "kind": "categorical", "values": [row["id"] for row in colors]},
         ],
         "target": copy.deepcopy(config["target"]),

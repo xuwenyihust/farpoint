@@ -31,7 +31,13 @@
     "task": {
       "type": "object", "additionalProperties": false,
       "required": ["task_id", "instruction", "object_shape", "success_criteria_id"],
-      "properties": {"task_id": {"type": "string"}, "instruction": {"type": "string"}, "object_shape": {"type": "string"}, "success_criteria_id": {"type": "string"}}
+      "properties": {
+        "task_id": {"type": "string"}, "instruction": {"type": "string"},
+        "object_shape": {"type": "string"}, "success_criteria_id": {"type": "string"},
+        "manipulated_entity_id": {"type": "string", "minLength": 1},
+        "target_entity_id": {"type": "string", "minLength": 1},
+        "acceptance_region_id": {"type": "string", "minLength": 1}
+      }
     },
     "embodiment": {
       "type": "object", "additionalProperties": true,
@@ -50,10 +56,72 @@
         "static_friction": {"type": "number", "minimum": 0}, "dynamic_friction": {"type": "number", "minimum": 0}, "restitution": {"type": "number", "minimum": 0, "maximum": 1}
       }
     },
+    "pose": {
+      "type": "object", "additionalProperties": true,
+      "required": ["frame_id", "position_m", "orientation_xyzw"],
+      "properties": {
+        "frame_id": {"type": "string", "minLength": 1},
+        "position_m": {"$ref": "#/$defs/vector3"},
+        "orientation_xyzw": {"$ref": "#/$defs/quaternion"}
+      }
+    },
+    "geometry": {
+      "type": "object", "additionalProperties": true,
+      "required": ["representation"],
+      "properties": {
+        "representation": {"type": "string", "minLength": 1},
+        "shape": {"type": "string", "minLength": 1},
+        "dimensions_m": {"$ref": "#/$defs/vector3"},
+        "scale_xyz": {"$ref": "#/$defs/vector3"},
+        "collision_geometry_id": {"type": ["string", "null"]}
+      }
+    },
+    "physics": {
+      "type": "object", "additionalProperties": true,
+      "required": ["body_type"],
+      "properties": {
+        "body_type": {"enum": ["dynamic", "kinematic", "static"]},
+        "mass_kg": {"type": "number", "exclusiveMinimum": 0},
+        "collision_enabled": {"type": "boolean"},
+        "material": {"type": "object"}
+      }
+    },
+    "region": {
+      "type": "object", "additionalProperties": true,
+      "required": ["region_id", "relation", "pose", "geometry"],
+      "properties": {
+        "region_id": {"type": "string", "minLength": 1},
+        "relation": {"type": "string", "minLength": 1},
+        "pose": {"$ref": "#/$defs/pose"},
+        "geometry": {"$ref": "#/$defs/geometry"},
+        "margin_m": {"type": "number", "minimum": 0}
+      }
+    },
+    "entity": {
+      "type": "object", "additionalProperties": true,
+      "required": ["schema_version", "entity_id", "role", "entity_type", "asset_id", "pose", "geometry", "physics"],
+      "properties": {
+        "schema_version": {"const": "farpoint.scene-entity.v1"},
+        "entity_id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["manipulated_object", "placement_target", "support_surface", "fixture", "distractor"]},
+        "entity_type": {"type": "string", "minLength": 1},
+        "asset_id": {"type": "string", "minLength": 1},
+        "pose": {"$ref": "#/$defs/pose"},
+        "geometry": {"$ref": "#/$defs/geometry"},
+        "physics": {"$ref": "#/$defs/physics"},
+        "appearance": {"type": "object"},
+        "regions": {"type": "array", "items": {"$ref": "#/$defs/region"}}
+      }
+    },
     "scene": {
       "type": "object", "additionalProperties": true,
       "required": ["coordinate_frame", "object", "target", "cameras", "lighting_profile_id"],
-      "properties": {"coordinate_frame": {"type": "string"}, "object": {"$ref": "#/$defs/object"}, "target": {"type": "object"}, "cameras": {"type": "array", "minItems": 1}, "lighting_profile_id": {"type": "string"}}
+      "properties": {
+        "coordinate_frame": {"type": "string"}, "object": {"$ref": "#/$defs/object"},
+        "target": {"type": "object"},
+        "entities": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/entity"}},
+        "cameras": {"type": "array", "minItems": 1}, "lighting_profile_id": {"type": "string"}
+      }
     },
     "variation": {
       "type": "object", "additionalProperties": true,

@@ -7,7 +7,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from export_lerobot_dataset import export_dataset
+from export_lerobot_dataset import _so101_sidecar, export_dataset
+from farpoint.scene_entities import bind_scene_entities
 from farpoint.so101 import SIM_JOINT_NAMES, radians_to_lerobot
 
 
@@ -37,7 +38,13 @@ class FakeLeRobotDataset:
         (meta / "info.json").write_text(json.dumps({"features": {}}), encoding="utf-8")
 
 
-def _metadata(episode_id="episode-0000", split="train", *, include_wrist=False):
+def _metadata(
+    episode_id="episode-0000",
+    split="train",
+    *,
+    include_wrist=False,
+    include_entities=False,
+):
     obj = {
         "shape": "cube",
         "asset_id": "procedural_cube",
@@ -49,7 +56,7 @@ def _metadata(episode_id="episode-0000", split="train", *, include_wrist=False):
         "dynamic_friction": 1.0,
         "restitution": 0.0,
     }
-    return {
+    metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": episode_id, "trial_id": episode_id.replace("episode", "trial"), "task_id": "pick_place_cube_v1", "split": split, "episode_seed": 7},
         "provenance": {"simulator": "Isaac Sim", "physics_engine": "PhysX"},
@@ -60,6 +67,42 @@ def _metadata(episode_id="episode-0000", split="train", *, include_wrist=False):
         "recording": {"fps": 30, "control_hz": 120, "recording_stride": 4, "cameras": ["observation.images.front", "observation.images.wrist"] if include_wrist else ["observation.images.front"], "frame_count": 2, "state_features": list(SIM_JOINT_NAMES), "action_features": list(SIM_JOINT_NAMES)},
         "outcome": {"success": True, "dataset_valid": True, "failure_category": None, "failure_reason": None},
     }
+    if include_entities:
+        object_state = {
+            **obj,
+            "position_m": obj["initial_pose"]["position_m"],
+            "orientation_xyzw": obj["initial_pose"]["orientation_xyzw"],
+        }
+        object_state.pop("initial_pose")
+        target = {
+            "target_id": "open_box_v1",
+            "asset_id": "custom_usd:open_box_v1",
+            "entity_type": "box",
+            "representation": "asset",
+            "shape": "open_box",
+            "position_m": [0.2, 0.1, 0.067],
+            "orientation_xyzw": [0, 0, 0, 1],
+            "dimensions_m": [0.18, 0.16, 0.07],
+            "region_dimensions_m": [0.15, 0.13, 0.055],
+            "relation": "inside",
+        }
+        state = bind_scene_entities(object_state, target)
+        metadata["task"].update(
+            {
+                "manipulated_entity_id": "pick_object",
+                "target_entity_id": "placement_target",
+                "acceptance_region_id": "placement_region",
+            }
+        )
+        metadata["scene"]["target"] = target
+        metadata["scene"]["entities"] = list(state["entities"].values())
+        metadata["variation"]["requested"] = state
+        metadata["variation"]["resolved"] = state
+        metadata["variation"]["varied_axes"] = [
+            "entities.placement_target.pose.position_m",
+            "entities.placement_target.geometry.dimensions_m",
+        ]
+    return metadata
 
 
 def _episode(root, metadata):
@@ -114,3 +157,64 @@ def test_export_so101_retains_dual_camera_compatibility(tmp_path):
 
     export_dataset(manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset)
     assert FakeLeRobotDataset.last_instance.frames[0]["observation.images.wrist"].shape == (6, 8, 3)
+
+
+def test_export_so101_indexes_generic_scene_entities_without_policy_features(tmp_path):
+    metadata = _metadata(include_entities=True)
+    source = tmp_path / "episode-0000"
+    _episode(source, metadata)
+    manifest = tmp_path / "selection.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "dataset_id": "so101-generic-scene-fixture",
+                "episodes": [
+                    {
+                        "episode_dir": str(source),
+                        "trial_id": "trial-0000",
+                        "split": "train",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = export_dataset(
+        manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset
+    )
+    sidecar = json.loads((output / "meta/farpoint_v3.json").read_text())
+    indexed = sidecar["episode_scene_metadata"][0]
+    assert indexed["target_entity_id"] == "placement_target"
+    assert indexed["acceptance_region_id"] == "placement_region"
+    assert indexed["resolved_entities"]["placement_target"]["entity_type"] == "box"
+    assert indexed["resolved_entities"]["placement_target"]["regions"][0][
+        "relation"
+    ] == "inside"
+    assert "entities.placement_target.geometry.dimensions_m" in indexed["varied_axes"]
+    assert "entities" not in FakeLeRobotDataset.last_instance.kwargs["features"]
+
+
+def test_so101_sidecar_indexes_entity_variations_without_image_dependencies():
+    metadata = _metadata(include_entities=True)
+    metadata["identity"]["dataset_episode_index"] = 0
+
+    sidecar = _so101_sidecar(
+        "so101-generic-scene-fixture",
+        [metadata],
+        30,
+        640,
+        480,
+        "one_success_per_stratified_variation",
+        ["observation.images.front"],
+    )
+
+    indexed = sidecar["episode_scene_metadata"][0]
+    assert indexed["entities"] == metadata["scene"]["entities"]
+    assert indexed["requested_entities"] == metadata["variation"]["requested"][
+        "entities"
+    ]
+    assert indexed["resolved_entities"] == metadata["variation"]["resolved"][
+        "entities"
+    ]

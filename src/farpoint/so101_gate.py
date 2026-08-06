@@ -9,6 +9,7 @@ import math
 from typing import Any
 
 from farpoint.object_variation import generate_variation_plan
+from farpoint.scene_entities import bind_scene_entities
 
 
 def _sha256(value: Any) -> str:
@@ -80,6 +81,9 @@ def build_fixed_cube_gate_plan(
         for key in ("requested", "resolved"):
             trial[key]["dimensions_m"] = [edge_m, edge_m, edge_m]
             trial[key]["position_m"] = position
+            trial[key] = bind_scene_entities(
+                trial[key], variation_config["target"]
+            )
         trials.append(trial)
 
     plan = {
@@ -198,6 +202,9 @@ def build_cube_workspace_matrix_plan(
             for key in ("requested", "resolved"):
                 trial[key]["dimensions_m"] = [edge_m, edge_m, edge_m]
                 trial[key]["position_m"] = position
+                trial[key] = bind_scene_entities(
+                    trial[key], variation_config["target"]
+                )
             trials.append(trial)
 
     required_successes = math.ceil(minimum_success_rate * len(trials))

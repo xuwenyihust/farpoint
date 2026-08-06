@@ -12,7 +12,7 @@ From the feature worktree:
 ```bash
 python scripts/create_so101_variation_plan.py \
   --config configs/variations/so101_cube_pick_place_v1.json \
-  --output artifacts/so101/variation_plan.json
+  artifacts/so101/variation_plan.json
 
 scripts/run_so101_isaaclab.sh viewer \
   --plan artifacts/so101/variation_plan.json
@@ -45,6 +45,29 @@ The collection manifest records every attempt, including failures. Only
 successful and `dataset_valid` episodes listed by the selection manifest are
 exported. Variation splits are fixed at 80 train, 10 validation, and 10 test;
 the collector does not rebalance them based on outcomes.
+
+## Extensible scene metadata
+
+New v3 episodes keep the legacy `scene.object` and `scene.target` fields for
+existing readers, and add canonical `scene.entities`. An entity has a stable
+identity and role plus open-ended `entity_type` and `asset_id` fields, a pose,
+physical geometry, appearance, and physics. Object types are not restricted to
+cube primitives; for example a cylinder or doll asset can use an arbitrary XYZ
+`dimension_profiles_m` entry in a future variation config.
+
+Placement targets separate their physical geometry from their acceptance
+regions. A flat pad can use an `on` region, while an open box can record its
+outer collision dimensions and a smaller, independently positioned `inside`
+region. This permits target position, size, shape, and success semantics to vary
+without changing policy features or the exporter.
+
+Every episode records requested and simulator-resolved entity values. The
+LeRobot dataset keeps the complete records in `meta/episode_metadata.jsonl` and
+adds an `episode_scene_metadata` index to `meta/farpoint_v3.json`. These values
+remain sidecar metadata rather than observations. The v0 Isaac scene adapter
+still spawns the four cube variants and one procedural pad; adding a cylinder,
+mesh/doll, or box requires a corresponding spawn adapter, but not another
+metadata contract version.
 
 ## Runtime gate
 

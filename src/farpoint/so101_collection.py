@@ -184,6 +184,8 @@ def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
             "attempt_id": attempt_id,
             "attempt_index": attempt_index,
             "attempt_seed": retry_seed,
+            "varied_axes": copy.deepcopy(plan["varied_axes"]),
+            "frozen_axes": copy.deepcopy(plan["frozen_axes"]),
         }
     )
     return trial

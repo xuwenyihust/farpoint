@@ -28,6 +28,8 @@ def test_collection_retries_failure_without_changing_split(tmp_path):
         variation_plan, collection_id="pilot_1", git_commit="a" * 40
     )
     first = next_attempt(manifest, variation_plan)
+    assert first["varied_axes"] == variation_plan["varied_axes"]
+    assert first["frozen_axes"] == variation_plan["frozen_axes"]
     record_attempt(
         manifest,
         variation_plan,

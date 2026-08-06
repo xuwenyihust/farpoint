@@ -16,6 +16,35 @@
     "robot": {"type": "object"},
     "simulation": {"type": "object"},
     "recording": {"type": "object"},
+    "episode_scene_metadata": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/episodeSceneMetadata"}
+    },
     "contracts": {"type": "object"}
+  },
+  "$defs": {
+    "episodeSceneMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "dataset_episode_index", "episode_id", "variation_id", "split",
+        "task_id", "varied_axes", "frozen_axes"
+      ],
+      "properties": {
+        "dataset_episode_index": {"type": "integer", "minimum": 0},
+        "episode_id": {"type": "string", "minLength": 1},
+        "variation_id": {"type": "string", "minLength": 1},
+        "split": {"enum": ["train", "validation", "test"]},
+        "task_id": {"type": "string", "minLength": 1},
+        "manipulated_entity_id": {"type": "string", "minLength": 1},
+        "target_entity_id": {"type": "string", "minLength": 1},
+        "acceptance_region_id": {"type": "string", "minLength": 1},
+        "varied_axes": {"type": "array", "items": {"type": "string"}},
+        "frozen_axes": {"type": "array", "items": {"type": "string"}},
+        "entities": {"type": "array", "items": {"type": "object"}},
+        "requested_entities": {"type": "object"},
+        "resolved_entities": {"type": "object"}
+      }
+    }
   }
 }

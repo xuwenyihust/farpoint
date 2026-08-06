@@ -64,7 +64,7 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.08, 0.70, 0.20)),
         ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, 0.02, 0.037)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, 0.10, 0.037)),
     )
     cube_small_red = _cube("CubeSmallRed", 0.03, (0.85, 0.08, 0.06))
     cube_small_blue = _cube("CubeSmallBlue", 0.03, (0.04, 0.20, 0.85))

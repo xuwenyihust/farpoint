@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -97,7 +98,7 @@ from farpoint_so101_env.mdp import (  # noqa: E402
     SO101_GRIPPER_RESTITUTION,
     SO101_GRIPPER_STATIC_FRICTION,
 )
-from farpoint.contracts import validate_contract  # noqa: E402
+from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
 from farpoint.control import (  # noqa: E402
     bounded_position_target,
     force_controlled_rotary_jaw_target,
@@ -122,6 +123,7 @@ from farpoint.oracle import (  # noqa: E402
     oriented_box_footprint_inside_target,
     quaternion_direction_error,
 )
+from farpoint.scene_entities import bind_scene_entities  # noqa: E402
 from farpoint.so101 import LEROBOT_JOINT_NAMES, SIM_JOINT_NAMES, mapping_metadata  # noqa: E402
 from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
@@ -1226,12 +1228,12 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     closed_jaw = float(np.deg2rad(-10.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     approach_jaw = 0.90 if float(object_spec["dimensions_m"][0]) <= 0.03 else 1.20
-    target_position = np.asarray([0.20, 0.02, 0.037], dtype=np.float32)
+    target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
     target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
-    release_position = np.asarray([0.20, 0.02, 0.080], dtype=np.float32)
+    release_position = np.asarray([0.20, 0.10, 0.080], dtype=np.float32)
     # Let both position actuators settle against the cube before commanding
     # any lift; two 30 Hz samples only prove an impact, not a stable grasp.
     # CLOSE performs its own three-frame bilateral-force confirmation before
@@ -2265,20 +2267,57 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             f"body_poses={json.dumps(body_poses, sort_keys=True)}",
             flush=True,
         )
+    scene_object = {
+        "shape": object_spec["shape"],
+        "asset_id": object_spec["asset_id"],
+        "dimensions_m": object_spec["dimensions_m"],
+        "initial_pose": {
+            "position_m": object_spec["position_m"],
+            "orientation_xyzw": object_spec["orientation_xyzw"],
+        },
+        "rgba": object_spec["rgba"],
+        "mass_kg": object_spec["mass_kg"],
+        "static_friction": object_spec["static_friction"],
+        "dynamic_friction": object_spec["dynamic_friction"],
+        "restitution": object_spec["restitution"],
+    }
+    scene_target = {
+        "target_id": "green_rectangular_pad_v1",
+        "asset_id": "green_rectangular_pad_v1",
+        "entity_type": "pad",
+        "representation": "procedural",
+        "shape": "cuboid",
+        "relation": "on",
+        "type": "raised_rectangular_pad",
+        "position_m": target_position.tolist(),
+        "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+        "dimensions_m": target_dimensions.tolist(),
+        "footprint_margin_m": 0.005,
+        "rgba": [0.08, 0.70, 0.20, 1.0],
+    }
+    requested_variation = copy.deepcopy(trial["requested"])
+    if "entities" not in requested_variation:
+        requested_variation = bind_scene_entities(requested_variation, scene_target)
+    resolved_variation = bind_scene_entities(object_spec, scene_target)
     metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
         "provenance": {"git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
-        "task": {"task_id": "so101_cube_pick_place", "instruction": "Pick up the cube and place it on the green target pad.", "object_shape": "cube", "success_criteria_id": "contact_pick_place_footprint_v2"},
+        "task": {"task_id": "so101_cube_pick_place", "instruction": f"Pick up the {object_spec['shape']} and place it on the green target pad.", "object_shape": object_spec["shape"], "success_criteria_id": "contact_pick_place_footprint_v2", "manipulated_entity_id": "pick_object", "target_entity_id": "placement_target", "acceptance_region_id": "placement_region"},
         "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
-        "scene": {"coordinate_frame": "isaac_world", "object": {"shape": "cube", "asset_id": object_spec["asset_id"], "dimensions_m": object_spec["dimensions_m"], "initial_pose": {"position_m": object_spec["position_m"], "orientation_xyzw": object_spec["orientation_xyzw"]}, "rgba": object_spec["rgba"], "mass_kg": object_spec["mass_kg"], "static_friction": object_spec["static_friction"], "dynamic_friction": object_spec["dynamic_friction"], "restitution": object_spec["restitution"]}, "target": {"target_id": "fixed_green_target_pad_v1", "type": "raised_rectangular_pad", "position_m": target_position.tolist(), "dimensions_m": target_dimensions.tolist(), "footprint_margin_m": 0.005}, "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
-        "variation": {"schema_version": "farpoint.variation.v3", "variation_id": trial["variation_id"], "varied_axes": ["object.position_m.x", "object.position_m.y", "object.dimensions_m", "object.rgba"], "frozen_axes": ["object.shape", "object.orientation_xyzw", "object.mass_kg", "object.static_friction", "object.dynamic_friction"], "requested": trial["requested"], "resolved": object_spec, "split": trial["split"]},
+        "scene": {"coordinate_frame": "isaac_world", "object": scene_object, "target": scene_target, "entities": list(resolved_variation["entities"].values()), "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
+        "variation": {"schema_version": "farpoint.variation.v3", "variation_id": trial["variation_id"], "varied_axes": copy.deepcopy(trial["varied_axes"]), "frozen_axes": copy.deepcopy(trial["frozen_axes"]), "requested": requested_variation, "resolved": resolved_variation, "split": trial["split"]},
         "recording": {"fps": schedule.recording_hz, "control_hz": schedule.control_hz, "recording_stride": schedule.recording_stride, "cameras": (["observation.images.front", "observation.images.wrist"] if args_cli.enable_wrist_camera else ["observation.images.front"]), "frame_count": len(rows), "state_features": list(LEROBOT_JOINT_NAMES), "action_features": list(LEROBOT_JOINT_NAMES), "state_unit": "radian", "action_unit": "radian", "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render"},
         "outcome": {"success": success, "dataset_valid": bool(rows), "failure_category": None if success else "oracle", "failure_reason": None if success else machine.failure_reason},
     }
     errors = validate_contract(metadata)
     if errors:
         raise ValueError("invalid SO-101 episode metadata: " + "; ".join(errors))
+    semantic_errors = validate_episode_semantics(metadata)
+    if semantic_errors:
+        raise ValueError(
+            "invalid SO-101 episode semantics: " + "; ".join(semantic_errors)
+        )
     _write_json(root / "metadata.json", metadata)
     (root / "observations.jsonl").write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
     _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows)})

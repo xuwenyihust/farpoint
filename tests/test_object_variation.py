@@ -34,6 +34,17 @@ def test_so101_plan_is_deterministic_stratified_and_valid():
         (0.03, 0.03, 0.03),
         (0.04, 0.04, 0.04),
     }
+    trial = first["trials"][0]
+    assert trial["resolved"]["entities"]["pick_object"]["entity_type"] == "cube"
+    assert trial["resolved"]["entities"]["placement_target"]["pose"][
+        "position_m"
+    ] == [0.20, 0.10, 0.037]
+    assert first["varied_axes"] == [
+        "entities.pick_object.pose.position_m.x",
+        "entities.pick_object.pose.position_m.y",
+        "entities.pick_object.geometry.dimensions_m",
+        "entities.pick_object.appearance.rgba",
+    ]
 
 
 def test_object_spec_rejects_invalid_physics():
@@ -57,3 +68,23 @@ def test_variation_config_rejects_invalid_mass():
     invalid["object"]["mass_kg"] = 0
     with pytest.raises(ValueError, match="mass_kg"):
         validate_variation_config(invalid)
+
+
+def test_generic_dimension_profiles_support_non_cube_assets():
+    config = load_variation_config(CONFIG)
+    config["object"].pop("edge_sizes_m")
+    config["object"].update(
+        {
+            "shape": "cylinder",
+            "asset_id": "procedural_cylinder_v1",
+            "dimension_profiles_m": [[0.03, 0.03, 0.06], [0.04, 0.04, 0.08]],
+        }
+    )
+
+    plan = generate_variation_plan(config)
+
+    assert plan["trials"][0]["resolved"]["shape"] == "cylinder"
+    assert plan["trials"][0]["resolved"]["dimensions_m"] == [0.03, 0.03, 0.06]
+    assert plan["trials"][0]["resolved"]["entities"]["pick_object"][
+        "entity_type"
+    ] == "cylinder"

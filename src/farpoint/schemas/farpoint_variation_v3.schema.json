@@ -34,7 +34,7 @@
       "additionalProperties": false,
       "required": ["shape", "asset_id", "dimensions_m", "position_m", "orientation_xyzw", "rgba", "mass_kg", "static_friction", "dynamic_friction", "restitution"],
       "properties": {
-        "shape": {"enum": ["cube", "cuboid", "cylinder", "mesh"]},
+        "shape": {"type": "string", "minLength": 1},
         "asset_id": {"type": "string", "minLength": 1},
         "dimensions_m": {"$ref": "#/$defs/vector3"},
         "position_m": {"$ref": "#/$defs/vector3"},
@@ -57,8 +57,30 @@
         "split": {"enum": ["train", "validation", "test"]},
         "seed": {"type": "integer", "minimum": 0},
         "seed_material": {"type": "object"},
-        "requested": {"$ref": "#/$defs/object"},
-        "resolved": {"$ref": "#/$defs/object"}
+        "requested": {"$ref": "#/$defs/variationState"},
+        "resolved": {"$ref": "#/$defs/variationState"}
+      }
+    },
+    "variationState": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true,
+      "properties": {
+        "shape": {"type": "string", "minLength": 1},
+        "asset_id": {"type": "string", "minLength": 1},
+        "dimensions_m": {"$ref": "#/$defs/vector3"},
+        "position_m": {"$ref": "#/$defs/vector3"},
+        "orientation_xyzw": {"$ref": "#/$defs/quaternion"},
+        "rgba": {"$ref": "#/$defs/rgba"},
+        "mass_kg": {"type": "number", "exclusiveMinimum": 0},
+        "static_friction": {"type": "number", "minimum": 0},
+        "dynamic_friction": {"type": "number", "minimum": 0},
+        "restitution": {"type": "number", "minimum": 0, "maximum": 1},
+        "entities": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "object"}
+        }
       }
     }
   }
