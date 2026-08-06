@@ -53,10 +53,16 @@ def parse_args():
     parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "outputs/so101_collection/manifest.json")
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "outputs/episodes")
     parser.add_argument("--max-attempts-this-run", type=int, default=150)
-    parser.add_argument(
+    collection_mode = parser.add_mutually_exclusive_group()
+    collection_mode.add_argument(
         "--gate-plan",
         action="store_true",
         help="Use a frozen repeatability-gate plan instead of the 100-trial collection.",
+    )
+    collection_mode.add_argument(
+        "--pilot-plan",
+        action="store_true",
+        help="Use a frozen 10-success/15-attempt code-review pilot plan.",
     )
     parser.add_argument("--diagnose-jacobian", action="store_true")
     parser.add_argument("--diagnose-grasp-postures", action="store_true")
@@ -139,6 +145,7 @@ from farpoint.so101_collection import (  # noqa: E402
     build_export_selection,
     create_gate_manifest,
     create_manifest,
+    create_pilot_manifest,
     load_manifest,
     next_attempt,
     record_attempt,
@@ -2378,6 +2385,12 @@ def main():
     else:
         if args_cli.gate_plan:
             manifest = create_gate_manifest(
+                plan,
+                collection_id=plan["plan_id"],
+                git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+            )
+        elif args_cli.pilot_plan:
+            manifest = create_pilot_manifest(
                 plan,
                 collection_id=plan["plan_id"],
                 git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),

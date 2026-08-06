@@ -13,7 +13,7 @@ from farpoint.so101_episode_analysis import (
 )
 
 
-def _evidence_errors(
+def so101_episode_evidence_errors(
     analysis: dict[str, Any],
     expected_episode_count: int,
     *,
@@ -90,7 +90,7 @@ def build_so101_gate_report(
     )
     gate = plan.get("gate") or {}
     fixed_repeatability_gate = gate.get("kind") == "fixed_cube_repeatability"
-    evidence_errors = _evidence_errors(
+    evidence_errors = so101_episode_evidence_errors(
         analysis,
         len(episode_attempts),
         allow_duplicate_observations=fixed_repeatability_gate,

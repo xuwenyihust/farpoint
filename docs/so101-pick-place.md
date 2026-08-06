@@ -21,6 +21,23 @@ scripts/run_so101_isaaclab.sh headless \
   --manifest artifacts/so101/collection_manifest.json \
   --output-root artifacts/so101/episodes
 
+# Code-review pilot: ten distinct successes from at most fifteen frozen trials.
+python scripts/create_so101_pilot_plan.py \
+  artifacts/so101/pilot_plan.json \
+  --pilot-id so101_cube_pick_place_pilot_v1
+scripts/run_so101_isaaclab.sh headless \
+  --pilot-plan \
+  --plan artifacts/so101/pilot_plan.json \
+  --manifest artifacts/so101/pilot_manifest.json \
+  --output-root artifacts/so101/pilot_episodes \
+  --max-attempts-this-run 15
+python scripts/report_so101_pilot.py \
+  --plan artifacts/so101/pilot_plan.json \
+  --manifest artifacts/so101/pilot_manifest.json \
+  --episodes-root artifacts/so101/pilot_episodes \
+  --json-output artifacts/so101/pilot_report.json \
+  --markdown-output artifacts/so101/pilot_report.md
+
 python scripts/export_lerobot_dataset.py \
   artifacts/so101/export_selection.json artifacts/so101/lerobot_v3
 python scripts/validate_lerobot_dataset.py artifacts/so101/lerobot_v3
@@ -45,6 +62,13 @@ The collection manifest records every attempt, including failures. Only
 successful and `dataset_valid` episodes listed by the selection manifest are
 exported. Variation splits are fixed at 80 train, 10 validation, and 10 test;
 the collector does not rebalance them based on outcomes.
+
+The code-review pilot is deliberately separate from the workspace gate and
+formal 100-episode collection. Its frozen ordering starts with ten trials that
+cover the workspace, both cube sizes, both colors, and an 8/1/1 train,
+validation, and test mix. Five frozen fallback variations provide a strict
+15-attempt ceiling; collection stops immediately after ten distinct successful
+variations. Failed attempts remain in the pilot manifest and raw episode root.
 
 ## Extensible scene metadata
 

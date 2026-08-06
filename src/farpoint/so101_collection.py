@@ -73,6 +73,37 @@ def create_manifest(
     )
 
 
+def create_pilot_manifest(
+    plan: dict[str, Any], *, collection_id: str, git_commit: str
+) -> dict[str, Any]:
+    """Create a bounded 10-success manifest from a frozen stratified plan."""
+    trials = plan.get("trials") or []
+    pilot = plan.get("pilot") or {}
+    required_successes = int(pilot.get("required_successes", 0))
+    maximum_attempts = int(pilot.get("maximum_attempts", 0))
+    primary_ids = pilot.get("primary_trial_ids") or []
+    fallback_ids = pilot.get("fallback_trial_ids") or []
+    if len(trials) != 100:
+        raise ValueError("SO-101 pilot plan must retain all 100 variations")
+    if pilot.get("kind") != "stratified_success_pilot":
+        raise ValueError("unsupported SO-101 pilot kind")
+    if required_successes != 10 or len(primary_ids) != required_successes:
+        raise ValueError("SO-101 pilot must freeze exactly 10 primary successes")
+    if maximum_attempts != 15 or len(primary_ids) + len(fallback_ids) != maximum_attempts:
+        raise ValueError("SO-101 pilot must freeze exactly 15 maximum attempts")
+    frozen_ids = list(primary_ids) + list(fallback_ids)
+    if [trial["trial_id"] for trial in trials[:maximum_attempts]] != frozen_ids:
+        raise ValueError("SO-101 pilot trial ordering does not match its frozen ids")
+    return _new_manifest(
+        plan,
+        collection_id=collection_id,
+        git_commit=git_commit,
+        required_successes=required_successes,
+        maximum_attempts=maximum_attempts,
+        release_status="PILOT",
+    )
+
+
 def create_gate_manifest(
     plan: dict[str, Any], *, collection_id: str, git_commit: str
 ) -> dict[str, Any]:
