@@ -63,6 +63,14 @@ The launcher downloads the pinned NVIDIA workshop USD into the ignored
 Isaac Sim 6.0 container. `viewer` and `headless` use the same collector; the
 latter keeps one simulator process alive while it resets episodes.
 
+`viewer` defaults to WebRTC livestream mode 2 at 1280×720 and selects Isaac
+Lab's Kit visualizer. The matching renderer/stream resolution avoids rejected
+frames, while Kit pumps application updates during sensor synchronization so a
+remote inspection run does not wait 30 seconds per control step. Explicit
+`--livestream`, `--visualizer`, or `--kit_args` values override these defaults;
+`--livestream=0` retains the local-window path. Launcher arguments containing
+spaces are preserved as one collector argument across the Docker boundary.
+
 The collection manifest records every attempt, including failures. Only
 successful and `dataset_valid` episodes listed by the selection manifest are
 exported. Variation splits are fixed at 80 train, 10 validation, and 10 test;
