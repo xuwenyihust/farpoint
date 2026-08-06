@@ -2068,6 +2068,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             commanded_joints = _numpy(current).astype(np.float32).copy()
             if grasp_hold_pose is not None:
                 grasp_hold_pose = gripper_pose[:3].copy()
+        if grasp_decision.rebase_relative_tracking:
+            # The first weak bilateral sample can occur while slow-close is
+            # still moving the cube.  Rigidity must be measured from the exact
+            # physical capture that entered BILATERAL_SETTLE, not from that
+            # earlier transient; otherwise a settled grasp can never reduce
+            # its historical translation error and only exits by timeout.
+            grasp_relative_reference = object_in_gripper.copy()
+            previous_object_in_gripper = object_in_gripper.copy()
         if (
             grasp_decision.entered_phase
             and grasp_decision.phase is GraspPhase.BILATERAL_SETTLE

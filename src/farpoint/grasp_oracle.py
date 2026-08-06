@@ -184,6 +184,11 @@ class GraspDecision:
     hold_cartesian_pose: bool
     failure_reason: str | None
 
+    @property
+    def rebase_relative_tracking(self) -> bool:
+        """Return whether object-in-gripper tracking must start from this capture."""
+        return self.entered_phase and self.phase is GraspPhase.BILATERAL_SETTLE
+
 
 @dataclass
 class ContactAwareGraspStateMachine:

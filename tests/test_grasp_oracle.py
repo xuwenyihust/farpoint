@@ -154,6 +154,7 @@ def test_grasp_requires_each_named_quasi_static_stage():
     decision = machine.step(_evidence())
     assert decision.phase is GraspPhase.BILATERAL_SETTLE
     assert decision.rebase_joint_command
+    assert decision.rebase_relative_tracking
     for expected in (
         GraspPhase.BILATERAL_SETTLE,
         GraspPhase.STATIC_HOLD,
@@ -163,6 +164,21 @@ def test_grasp_requires_each_named_quasi_static_stage():
         GraspPhase.VALIDATED,
     ):
         assert machine.step(_evidence()).phase is expected
+
+
+def test_relative_tracking_rebases_only_at_bilateral_capture():
+    machine = ContactAwareGraspStateMachine(control_hz=10)
+
+    first = machine.step(_evidence(right_force_n=0.0))
+    assert first.phase is GraspPhase.FIRST_CONTACT
+    assert first.rebase_joint_command
+    assert not first.rebase_relative_tracking
+
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    capture = machine.step(_evidence())
+    assert capture.rebase_relative_tracking
+    assert not machine.step(_evidence()).rebase_relative_tracking
 
 
 def test_transient_bilateral_force_cannot_validate_grasp():

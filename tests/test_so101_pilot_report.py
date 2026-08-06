@@ -6,6 +6,7 @@ from farpoint.object_variation import load_variation_config
 from farpoint.so101_collection import create_pilot_manifest, next_attempt, record_attempt
 from farpoint.so101_pilot import build_so101_pilot_plan
 from farpoint.so101_pilot_report import (
+    _pilot_status,
     build_so101_pilot_report,
     render_so101_pilot_report_markdown,
 )
@@ -123,4 +124,13 @@ def test_pilot_report_passes_ten_independent_physical_front_only_episodes(tmp_pa
     assert report["minimum_selected_proof_lift_m"] == 0.006
     assert report["minimum_selected_settle_frames"] == 15
     assert report["evidence_errors"] == []
+    assert report["acceptance_errors"] == []
     assert "Pilot status: **PASS**" in render_so101_pilot_report_markdown(report)
+
+
+def test_pilot_gate_failure_is_not_invalid_evidence():
+    assert _pilot_status("FINISHED", "FAIL", 9, 10, []) == "FAIL"
+    assert (
+        _pilot_status("FINISHED", "FAIL", 9, 10, ["missing_episode"])
+        == "INVALID_EVIDENCE"
+    )

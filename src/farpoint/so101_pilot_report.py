@@ -11,6 +11,23 @@ from farpoint.so101_episode_analysis import analyze_so101_episodes, classify_so1
 from farpoint.so101_gate_report import so101_episode_evidence_errors
 
 
+def _pilot_status(
+    execution_status: str,
+    quality_status: str,
+    selected_count: int,
+    required_successes: int,
+    evidence_errors: list[str],
+) -> str:
+    """Keep evidence integrity separate from an ordinary pilot gate failure."""
+    if evidence_errors:
+        return "INVALID_EVIDENCE"
+    if execution_status != "FINISHED":
+        return "INCOMPLETE"
+    if quality_status == "PASS" and selected_count == required_successes:
+        return "PASS"
+    return "FAIL"
+
+
 def build_so101_pilot_report(
     plan: dict[str, Any], manifest: dict[str, Any], episodes_root: str | Path
 ) -> dict[str, Any]:
@@ -71,15 +88,18 @@ def build_so101_pilot_report(
         errors.append("attempt_seeds_not_unique")
     if variation_seed_count != len(attempts):
         errors.append("variation_seeds_not_unique")
+    acceptance_errors = []
     if len(selected) != int(manifest["required_successes"]):
-        errors.append("selected_success_count_mismatch")
-    completed = (
-        manifest.get("execution_status") == "FINISHED"
-        and manifest.get("quality_status") == "PASS"
-        and len(selected) == int(manifest["required_successes"])
-        and len(attempts) <= int(manifest["maximum_attempts"])
+        acceptance_errors.append("selected_success_count_mismatch")
+    if len(attempts) > int(manifest["maximum_attempts"]):
+        acceptance_errors.append("attempt_budget_exceeded")
+    status = _pilot_status(
+        str(manifest.get("execution_status")),
+        str(manifest.get("quality_status")),
+        len(selected),
+        int(manifest["required_successes"]),
+        errors,
     )
-    status = "INVALID_EVIDENCE" if errors else "PASS" if completed else "INCOMPLETE"
     failures = Counter(
         classify_so101_failure(attempt.get("failure_reason"), attempt.get("failure_category"))
         for attempt in attempts
@@ -103,6 +123,7 @@ def build_so101_pilot_report(
         ),
         "failure_class_counts": dict(sorted(failures.items())),
         "evidence_errors": sorted(set(errors)),
+        "acceptance_errors": sorted(set(acceptance_errors)),
         "minimum_selected_proof_lift_m": min(
             episode["proof_lift_tracking"]["actual_max_m"]
             for episode in selected_evidence
@@ -141,4 +162,9 @@ def render_so101_pilot_report_markdown(report: dict[str, Any]) -> str:
         lines.extend(f"- {error}" for error in report["evidence_errors"])
     else:
         lines.append("Selected physics and front-only episode artifacts passed.")
+    if report.get("acceptance_errors"):
+        lines.extend(
+            ["", "## Acceptance gate", ""]
+            + [f"- {error}" for error in report["acceptance_errors"]]
+        )
     return "\n".join(lines) + "\n"
