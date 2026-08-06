@@ -82,6 +82,12 @@ platform or packaged as a static application. It consumes generated episode
 and benchmark reports without coupling the UI to a specific machine or GPU
 host.
 
+Use repeatable `--episode-root` arguments when the Dashboard should index
+read-only Farpoint episode trees stored outside its managed outputs directory.
+This includes Farpoint episode v3 collections whose front-camera frames are
+stored as `rgb/front_*.png`; see `dashboard/README.md` for the command and safety
+model.
+
 ## Documentation
 
 Start with [docs/README.md](docs/README.md). Machine-specific operations,

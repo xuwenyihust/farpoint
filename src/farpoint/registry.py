@@ -9,7 +9,7 @@ from pathlib import Path
 from farpoint.display_names import load_display_names
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 TERMINAL_STATUSES = {"PASS", "FAIL"}
 BENCHMARK_ALIASES = {
     "robotsim_v1_release_candidate": "farpoint_v1_release_candidate",
@@ -145,6 +145,13 @@ CREATE TABLE IF NOT EXISTS episodes (
     pinned INTEGER NOT NULL DEFAULT 0,
     protected_reason TEXT,
     run_id TEXT,
+    schema_version TEXT,
+    variation_id TEXT,
+    split TEXT,
+    collection_id TEXT,
+    source_root TEXT,
+    managed INTEGER NOT NULL DEFAULT 1,
+    cameras_json TEXT NOT NULL DEFAULT '[]',
     diagnostic_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS episodes_filter_idx
@@ -178,11 +185,26 @@ CREATE TABLE IF NOT EXISTS storage_snapshots (
 """
 
 
+@dataclass(frozen=True)
+class EpisodeLocation:
+    path: Path
+    source_root: Path
+    managed: bool
+
+
 class EpisodeRegistry:
-    def __init__(self, outputs_root, incomplete_timeout_seconds=1800):
+    def __init__(
+        self,
+        outputs_root,
+        incomplete_timeout_seconds=1800,
+        episode_roots=None,
+    ):
         self.layout = DataLayout(Path(outputs_root).resolve())
         self.incomplete_timeout_seconds = int(incomplete_timeout_seconds)
         self.layout.ensure()
+        roots = [self.layout.episodes]
+        roots.extend(Path(path).resolve() for path in (episode_roots or []))
+        self.episode_roots = tuple(dict.fromkeys(roots))
 
     def connect(self):
         connection = sqlite3.connect(self.layout.database)
@@ -206,6 +228,23 @@ class EpisodeRegistry:
     @staticmethod
     def _initialize(connection):
         connection.executescript(SCHEMA)
+        episode_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(episodes)")
+        }
+        episode_migrations = {
+            "schema_version": "TEXT",
+            "variation_id": "TEXT",
+            "split": "TEXT",
+            "collection_id": "TEXT",
+            "source_root": "TEXT",
+            "managed": "INTEGER NOT NULL DEFAULT 1",
+            "cameras_json": "TEXT NOT NULL DEFAULT '[]'",
+        }
+        for column, declaration in episode_migrations.items():
+            if column not in episode_columns:
+                connection.execute(
+                    f"ALTER TABLE episodes ADD COLUMN {column} {declaration}"
+                )
         benchmark_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(benchmarks)")
         }
@@ -238,10 +277,16 @@ class EpisodeRegistry:
                     "SELECT episode_id, status, size_bytes FROM episodes"
                 )
             }
-        episode_rows = [
-            self._episode_row(path, now, cached.get(path.name))
-            for path in self._episode_dirs()
-        ]
+        episode_rows = []
+        seen = set()
+        for location in self._episode_dirs():
+            episode_id = location.path.name
+            if episode_id in seen:
+                continue
+            seen.add(episode_id)
+            episode_rows.append(
+                self._episode_row(location, now, cached.get(episode_id))
+            )
         episode_rows.extend(self._active_run_rows(now, episode_rows))
         benchmark_paths = []
         for directory in sorted(self.layout.benchmarks.iterdir()):
@@ -274,13 +319,67 @@ class EpisodeRegistry:
         }
 
     def _episode_dirs(self):
+        locations = []
+        for source_root in self.episode_roots:
+            if not source_root.is_dir():
+                continue
+            managed = source_root == self.layout.episodes
+            if managed:
+                paths = (
+                    path
+                    for path in source_root.glob("episode_*")
+                    if path.is_dir()
+                )
+            else:
+                paths = self._discover_external_episodes(source_root)
+            locations.extend(
+                EpisodeLocation(path.resolve(), source_root, managed)
+                for path in paths
+            )
         return sorted(
-            path
-            for path in self.layout.episodes.glob("episode_*")
-            if path.is_dir()
+            locations,
+            key=lambda item: (not item.managed, str(item.source_root), str(item.path)),
         )
 
-    def _episode_row(self, path, now, cached=None):
+    @staticmethod
+    def _discover_external_episodes(source_root):
+        for directory, child_names, file_names in os.walk(source_root):
+            path = Path(directory)
+            if path.name.startswith("episode_"):
+                child_names[:] = []
+                if "metadata.json" in file_names or "metrics.json" in file_names:
+                    yield path
+
+    @staticmethod
+    def _first(*values):
+        return next((value for value in values if value not in (None, "")), None)
+
+    def _collection_id(self, path, source_root):
+        current = path.parent
+        while current != source_root and source_root in current.parents:
+            for name in ("manifest.json", "run-state.json", "plan.json"):
+                candidate = current / name
+                if not candidate.is_file():
+                    continue
+                try:
+                    record = read_json(candidate)
+                except (OSError, ValueError):
+                    continue
+                value = self._first(
+                    record.get("collection_id"),
+                    record.get("gate_id"),
+                    record.get("benchmark_id"),
+                    record.get("plan_id"),
+                )
+                if value:
+                    return str(value)
+            if current.name == "episodes":
+                return current.parent.name
+            current = current.parent
+        return None
+
+    def _episode_row(self, location, now, cached=None):
+        path = location.path
         metadata_path = path / "metadata.json"
         metrics_path = path / "metrics.json"
         metadata = {}
@@ -301,7 +400,16 @@ class EpisodeRegistry:
 
         updated = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
         age_seconds = max(0.0, (now - updated).total_seconds())
-        episode_id = metadata.get("episode_id") if metadata_valid else None
+        schema_version = metadata.get("schema_version") if metadata_valid else None
+        identity = metadata.get("identity", {}) if schema_version == "farpoint.episode.v3" else {}
+        outcome = metadata.get("outcome", {}) if schema_version == "farpoint.episode.v3" else {}
+        recording = metadata.get("recording", {}) if schema_version == "farpoint.episode.v3" else {}
+        variation = metadata.get("variation", {}) if schema_version == "farpoint.episode.v3" else {}
+        task = metadata.get("task", {}) if schema_version == "farpoint.episode.v3" else {}
+        provenance = metadata.get("provenance", {}) if schema_version == "farpoint.episode.v3" else {}
+        episode_id = self._first(
+            metadata.get("episode_id"), identity.get("episode_id")
+        ) if metadata_valid else None
         health = "OK"
         if not metadata_valid:
             health = "ORPHANED" if not metadata_path.exists() else "CORRUPT"
@@ -311,8 +419,9 @@ class EpisodeRegistry:
         elif not metrics_valid and metrics_path.exists():
             health = "CORRUPT"
 
+        success = self._first(outcome.get("success"), metrics.get("success"))
         if metadata_valid and metrics_valid:
-            status = "PASS" if metrics.get("success") is True else "FAIL"
+            status = "PASS" if success is True else "FAIL"
         elif age_seconds <= self.incomplete_timeout_seconds:
             status = "RUNNING"
         else:
@@ -327,7 +436,11 @@ class EpisodeRegistry:
             protected_reason = "pinned"
         elif benchmark_id:
             protected_reason = "benchmark"
+        elif not location.managed:
+            protected_reason = "external-read-only"
         preview = next(iter(sorted((path / "preview").glob("*.png"))), None)
+        if preview is None:
+            preview = next(iter(sorted((path / "rgb").glob("front_*.png"))), None)
         report = self.layout.reports / path.name / "index.html"
         size_bytes = (
             cached["size_bytes"]
@@ -339,31 +452,64 @@ class EpisodeRegistry:
         return {
             "episode_id": path.name,
             "artifact_path": str(path),
-            "task_name": metadata.get("task_name") or metrics.get("task_name"),
-            "task_type": metadata.get("task_type") or metrics.get("task_type"),
+            "task_name": self._first(
+                metadata.get("task_name"), metrics.get("task_name"),
+                identity.get("task_id"), task.get("task_id"),
+            ),
+            "task_type": self._first(
+                metadata.get("task_type"), metrics.get("task_type"), task.get("task_id")
+            ),
             "status": status,
             "health": health,
-            "seed": self._integer(metadata.get("episode_seed", metrics.get("episode_seed"))),
+            "seed": self._integer(self._first(
+                metadata.get("episode_seed"), metrics.get("episode_seed"),
+                identity.get("episode_seed"),
+            )),
             "benchmark_id": benchmark_id,
             "benchmark_repeat": self._integer(
                 metadata.get("benchmark_repeat", metrics.get("benchmark_repeat"))
             ),
-            "started_at": metadata.get("started_at"),
-            "finished_at": metadata.get("finished_at"),
+            "started_at": self._first(
+                metadata.get("started_at"), provenance.get("started_at"),
+                provenance.get("created_at"),
+            ),
+            "finished_at": self._first(
+                metadata.get("finished_at"), provenance.get("finished_at")
+            ),
             "updated_at": updated.isoformat(),
             "elapsed_seconds": metrics.get("elapsed_seconds"),
-            "failure_category": metrics.get("failure_category"),
-            "failure_reason": metrics.get("failure_reason"),
-            "dataset_valid": self._boolean(metrics.get("dataset_valid")),
-            "observation_count": self._integer(metrics.get("dataset_observation_count")),
+            "failure_category": self._first(
+                outcome.get("failure_category"), metrics.get("failure_category")
+            ),
+            "failure_reason": self._first(
+                outcome.get("failure_reason"), metrics.get("failure_reason")
+            ),
+            "dataset_valid": self._boolean(self._first(
+                outcome.get("dataset_valid"), metrics.get("dataset_valid")
+            )),
+            "observation_count": self._integer(self._first(
+                recording.get("frame_count"), metrics.get("dataset_observation_count"),
+                metrics.get("observation_count"),
+            )),
             "size_bytes": size_bytes,
             "preview_path": str(preview) if preview else None,
             "report_path": str(report) if report.exists() else None,
             "pinned": int(pinned),
             "protected_reason": protected_reason,
             "run_id": metadata.get("run_id"),
+            "schema_version": schema_version,
+            "variation_id": variation.get("variation_id"),
+            "split": self._first(identity.get("split"), variation.get("split")),
+            "collection_id": self._collection_id(path, location.source_root),
+            "source_root": str(location.source_root),
+            "managed": int(location.managed),
+            "cameras_json": json.dumps(recording.get("cameras") or []),
             "diagnostic_json": json.dumps(
-                {"problems": problems, "age_seconds": round(age_seconds, 3)},
+                {
+                    "problems": problems,
+                    "age_seconds": round(age_seconds, 3),
+                    "source_path": str(path),
+                },
                 sort_keys=True,
             ),
         }
@@ -416,6 +562,13 @@ class EpisodeRegistry:
                     "pinned": 0,
                     "protected_reason": "benchmark" if run.get("benchmark_id") else None,
                     "run_id": run_id,
+                    "schema_version": None,
+                    "variation_id": None,
+                    "split": None,
+                    "collection_id": None,
+                    "source_root": str(self.layout.episodes),
+                    "managed": 1,
+                    "cameras_json": "[]",
                     "diagnostic_json": json.dumps({"run_state_path": str(path)}),
                 }
             )
@@ -587,6 +740,9 @@ class EpisodeRegistry:
             "benchmark": "benchmark_id",
             "seed": "seed",
             "health": "health",
+            "collection": "collection_id",
+            "variation": "variation_id",
+            "split": "split",
         }
         for key, column in supported.items():
             value = filters.get(key)
@@ -610,6 +766,13 @@ class EpisodeRegistry:
                 (*values, int(limit), int(offset)),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_episode(self, episode_id):
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM episodes WHERE episode_id = ?", (str(episode_id),)
+            ).fetchone()
+        return dict(row) if row else None
 
     def list_benchmarks(self):
         with self.connect() as connection:

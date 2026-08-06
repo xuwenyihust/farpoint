@@ -43,7 +43,116 @@ def make_episode(root, episode_id, success=None, benchmark_id=None, run_id=None)
     return episode
 
 
+def make_v3_episode(root, collection_id, episode_id, success=True, metrics=True):
+    collection = root / "gates" / collection_id
+    write_json(
+        collection / "manifest.json",
+        {"schema_version": "farpoint.so101-gate-manifest.v1", "gate_id": collection_id},
+    )
+    episode = collection / "episodes" / episode_id
+    write_json(
+        episode / "metadata.json",
+        {
+            "schema_version": "farpoint.episode.v3",
+            "identity": {
+                "episode_id": episode_id,
+                "trial_id": "trial_001",
+                "task_id": "so101_cube_pick_place",
+                "split": "validation",
+                "episode_seed": 42,
+            },
+            "provenance": {"created_at": "2026-08-06T00:00:00+00:00"},
+            "task": {"task_id": "so101_cube_pick_place"},
+            "variation": {"variation_id": "cube_30mm_position_01", "split": "validation"},
+            "recording": {
+                "frame_count": 2,
+                "cameras": ["observation.images.front"],
+            },
+            "outcome": {
+                "success": success,
+                "dataset_valid": success,
+                "failure_category": None if success else "grasp",
+                "failure_reason": None if success else "bilateral contact not established",
+            },
+        },
+    )
+    if metrics:
+        write_json(
+            episode / "metrics.json",
+            {
+                "success": success,
+                "dataset_valid": success,
+                "observation_count": 2,
+                "failure_category": None if success else "grasp",
+                "failure_reason": None if success else "bilateral contact not established",
+            },
+        )
+    rgb = episode / "rgb"
+    rgb.mkdir()
+    (rgb / "front_000000.png").write_bytes(b"png")
+    (rgb / "front_000001.png").write_bytes(b"png")
+    return episode
+
+
 class EpisodeRegistryTests(unittest.TestCase):
+    def test_scans_external_v3_episode_with_collection_and_front_camera(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outputs = root / "outputs"
+            external = root / "farpoint-so101"
+            episode = make_v3_episode(
+                external,
+                "so101_30mm_gate",
+                "episode_so101_30mm_001",
+            )
+
+            registry = EpisodeRegistry(outputs, episode_roots=[external])
+            registry.scan()
+            row = registry.get_episode("episode_so101_30mm_001")
+
+            self.assertEqual(row["status"], "PASS")
+            self.assertEqual(row["health"], "OK")
+            self.assertEqual(row["task_name"], "so101_cube_pick_place")
+            self.assertEqual(row["schema_version"], "farpoint.episode.v3")
+            self.assertEqual(row["variation_id"], "cube_30mm_position_01")
+            self.assertEqual(row["split"], "validation")
+            self.assertEqual(row["collection_id"], "so101_30mm_gate")
+            self.assertEqual(row["managed"], 0)
+            self.assertEqual(row["protected_reason"], "external-read-only")
+            self.assertEqual(Path(row["artifact_path"]), episode.resolve())
+            self.assertEqual(
+                Path(row["preview_path"]).name,
+                "front_000000.png",
+            )
+            self.assertEqual(row["observation_count"], 2)
+
+    def test_external_scan_discovers_new_and_old_incomplete_v3_episodes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outputs = root / "outputs"
+            external = root / "farpoint-so101"
+            registry = EpisodeRegistry(
+                outputs,
+                incomplete_timeout_seconds=60,
+                episode_roots=[external],
+            )
+            registry.scan()
+            self.assertEqual(registry.list_episodes(), [])
+
+            complete = make_v3_episode(
+                external, "pilot", "episode_new_success", success=True
+            )
+            incomplete = make_v3_episode(
+                external, "pilot", "episode_old_incomplete", metrics=False
+            )
+            old = datetime.now().timestamp() - 3600
+            os.utime(incomplete, (old, old))
+            registry.scan()
+            rows = {row["episode_id"]: row for row in registry.list_episodes()}
+
+            self.assertEqual(rows[complete.name]["status"], "PASS")
+            self.assertEqual(rows[incomplete.name]["status"], "INCOMPLETE")
+
     def test_scans_running_benchmark_state_before_final_manifest_exists(self):
         with tempfile.TemporaryDirectory() as directory:
             outputs = Path(directory) / "outputs"
@@ -190,6 +299,33 @@ class EpisodeRegistryTests(unittest.TestCase):
 
 
 class RetentionManagerTests(unittest.TestCase):
+    def test_external_episode_is_never_a_retention_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outputs = root / "outputs"
+            external = root / "external"
+            episode = make_v3_episode(
+                external, "failed_gate", "episode_external_fail", success=False
+            )
+            old = datetime.now().timestamp() - 172800
+            os.utime(episode, (old, old))
+            registry = EpisodeRegistry(outputs, episode_roots=[external])
+            registry.scan()
+            manager = RetentionManager(registry)
+
+            policy = manager.load_policy()
+            policy["minimum_age_hours"] = 0
+            preview = manager.preview(policy)
+            result = manager.quarantine([episode.name])
+
+            self.assertEqual(preview["candidate_count"], 0)
+            retained = next(
+                item for item in preview["retained"] if item["episode_id"] == episode.name
+            )
+            self.assertIn("external-read-only", retained["reasons"])
+            self.assertEqual(result[0]["status"], "RETAINED")
+            self.assertTrue(episode.exists())
+
     def test_preview_protects_benchmark_and_pin_then_quarantines_and_restores(self):
         with tempfile.TemporaryDirectory() as directory:
             outputs = Path(directory) / "outputs"

@@ -29,6 +29,26 @@ def write_json(path, payload):
     temporary.replace(path)
 
 
+def supports_legacy_episode_report(artifact_path):
+    artifact_path = Path(artifact_path)
+    required = (
+        artifact_path / "metadata.json",
+        artifact_path / "metrics.json",
+        artifact_path / "trajectory.jsonl",
+        artifact_path / "phase_events.jsonl",
+    )
+    if not all(path.is_file() for path in required):
+        return False
+    try:
+        metadata = json.loads(required[0].read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return (
+        metadata.get("schema_version") != "farpoint.episode.v3"
+        and any((artifact_path / "preview").glob("*.png"))
+    )
+
+
 def build_reports(registry):
     built_episodes = 0
     built_benchmarks = 0
@@ -37,6 +57,8 @@ def build_reports(registry):
         if row["status"] not in {"PASS", "FAIL"} or not artifact:
             continue
         artifact_path = Path(artifact)
+        if not supports_legacy_episode_report(artifact_path):
+            continue
         output = registry.layout.reports / row["episode_id"] / "index.html"
         newest_input = max(
             (
@@ -106,6 +128,13 @@ def main():
         type=int,
         default=int(os.environ.get("FARPOINT_INCOMPLETE_TIMEOUT_SECONDS", "1800")),
     )
+    parser.add_argument(
+        "--episode-root",
+        action="append",
+        default=[],
+        type=Path,
+        help="Read-only episode tree to scan recursively; may be repeated.",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("scan")
     subparsers.add_parser("rebuild")
@@ -146,9 +175,15 @@ def main():
     unpin.add_argument("episode_id")
 
     args = parser.parse_args()
+    environment_roots = [
+        Path(value)
+        for value in os.environ.get("FARPOINT_EPISODE_ROOTS", "").split(os.pathsep)
+        if value
+    ]
     registry = EpisodeRegistry(
         args.outputs_root,
         incomplete_timeout_seconds=args.incomplete_timeout_seconds,
+        episode_roots=[*environment_roots, *args.episode_root],
     )
     manager = RetentionManager(registry)
 

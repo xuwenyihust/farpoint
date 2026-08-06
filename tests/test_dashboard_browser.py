@@ -116,6 +116,70 @@ def dashboard(tmp_path):
     os.utime(episode_report, (future, future))
     os.utime(benchmark_report, (future, future))
 
+    external_root = tmp_path / "external-so101"
+    collection_id = "so101_dashboard_gate"
+    collection = external_root / "gates" / collection_id
+    write_json(
+        collection / "manifest.json",
+        {"schema_version": "farpoint.so101-gate-manifest.v1", "gate_id": collection_id},
+    )
+
+    def make_so101_episode(episode_id, success, include_metrics=True):
+        external_episode = collection / "episodes" / episode_id
+        write_json(
+            external_episode / "metadata.json",
+            {
+                "schema_version": "farpoint.episode.v3",
+                "identity": {
+                    "episode_id": episode_id,
+                    "trial_id": f"trial_{episode_id}",
+                    "task_id": "so101_cube_pick_place",
+                    "split": "validation",
+                    "episode_seed": 99,
+                },
+                "provenance": {"created_at": "2026-08-06T00:00:00+00:00"},
+                "task": {"task_id": "so101_cube_pick_place"},
+                "variation": {
+                    "variation_id": "cube_30mm_position_01",
+                    "split": "validation",
+                },
+                "recording": {
+                    "frame_count": 2,
+                    "cameras": ["observation.images.front"],
+                },
+                "outcome": {
+                    "success": success,
+                    "dataset_valid": success,
+                    "failure_category": None if success else "grasp",
+                    "failure_reason": None if success else "contact not established",
+                },
+            },
+        )
+        if include_metrics:
+            write_json(
+                external_episode / "metrics.json",
+                {
+                    "success": success,
+                    "dataset_valid": success,
+                    "observation_count": 2,
+                    "failure_category": None if success else "grasp",
+                    "failure_reason": None if success else "contact not established",
+                },
+            )
+        rgb = external_episode / "rgb"
+        rgb.mkdir()
+        (rgb / "front_000000.png").write_bytes(PNG)
+        (rgb / "front_000001.png").write_bytes(PNG)
+        return external_episode
+
+    so101_success = make_so101_episode("episode_so101_success", True)
+    so101_failure = make_so101_episode("episode_so101_failure", False)
+    so101_incomplete = make_so101_episode(
+        "episode_so101_incomplete", False, include_metrics=False
+    )
+    old = time.time() - 3600
+    os.utime(so101_incomplete, (old, old))
+
     port = free_port()
     url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
@@ -130,6 +194,10 @@ def dashboard(tmp_path):
             str(port),
             "--scan-interval",
             "3600",
+            "--incomplete-timeout",
+            "60",
+            "--episode-root",
+            str(external_root),
         ],
         cwd=PROJECT_ROOT,
         stdout=subprocess.PIPE,
@@ -143,6 +211,10 @@ def dashboard(tmp_path):
             "episode_id": episode_id,
             "benchmark_id": benchmark_id,
             "display_name": display_name,
+            "so101_success": so101_success.name,
+            "so101_failure": so101_failure.name,
+            "so101_incomplete": so101_incomplete.name,
+            "collection_id": collection_id,
         }
     finally:
         process.terminate()
@@ -175,6 +247,30 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         assert page.locator("#playerImage").evaluate("image => image.naturalWidth") == 1
         page.get_by_role("button", name="Close playback").click()
 
+        page.get_by_placeholder("Search episode or task").fill("episode_so101")
+        page.get_by_text(dashboard["so101_success"], exact=True).wait_for()
+        page.get_by_text(dashboard["so101_failure"], exact=True).wait_for()
+        page.get_by_text(dashboard["so101_incomplete"], exact=True).wait_for()
+        page.get_by_role(
+            "button", name=f"Play preview for {dashboard['so101_success']}"
+        ).click()
+        page.get_by_text("2 preview frames").wait_for()
+        assert "/rgb/front_000000.png" in page.locator("#playerImage").get_attribute("src")
+        page.get_by_role("button", name="Close playback").click()
+
+        page.locator("#collectionFilter").fill(dashboard["collection_id"])
+        page.locator("#splitFilter").select_option("validation")
+        assert page.locator("#episodeRows tr").count() == 3
+        failure_row = page.locator(
+            "#episodeRows tr", has_text=dashboard["so101_failure"]
+        )
+        incomplete_row = page.locator(
+            "#episodeRows tr", has_text=dashboard["so101_incomplete"]
+        )
+        assert failure_row.get_by_text("FAIL", exact=True).count() == 1
+        assert failure_row.get_by_text("grasp", exact=True).count() == 1
+        assert incomplete_row.get_by_text("INCOMPLETE", exact=True).count() == 1
+
         page.get_by_role("button", name="Benchmarks").click()
         benchmark = page.get_by_role("link", name=dashboard["display_name"])
         benchmark.wait_for()
@@ -182,7 +278,11 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
             f"/reports/benchmarks/{dashboard['benchmark_id']}/index.html"
         )
         page.go_back(wait_until="networkidle")
-        assert page.get_by_placeholder("Search episode or task").input_value() == "dashboard_qa"
+        assert page.get_by_placeholder("Search episode or task").input_value() == (
+            "episode_so101"
+        )
+        assert page.locator("#collectionFilter").input_value() == dashboard["collection_id"]
+        assert page.locator("#splitFilter").input_value() == "validation"
 
         page.set_viewport_size({"width": 390, "height": 844})
         assert page.evaluate(

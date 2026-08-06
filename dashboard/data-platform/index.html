@@ -197,6 +197,12 @@
               <option>RUNNING</option><option>PASS</option><option>FAIL</option><option>INCOMPLETE</option>
             </select>
             <input id="benchmarkFilter" placeholder="Benchmark">
+            <input id="collectionFilter" placeholder="Collection">
+            <input id="variationFilter" placeholder="Variation">
+            <select id="splitFilter" aria-label="Dataset split">
+              <option value="">All splits</option>
+              <option>train</option><option>validation</option><option>test</option>
+            </select>
             <input id="seedFilter" type="number" placeholder="Seed">
             <input id="dateFilter" type="date" aria-label="Start date">
             <select id="sortFilter" aria-label="Sort episodes">
@@ -212,7 +218,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Preview</th><th>Episode</th><th>Status</th><th>Task</th><th>Seed</th><th>Benchmark</th><th>Started</th><th>Size</th><th>Health</th><th>Manage</th></tr></thead>
+              <thead><tr><th>Preview</th><th>Episode</th><th>Status</th><th>Task</th><th>Seed</th><th>Collection</th><th>Variation</th><th>Split</th><th>Outcome</th><th>Started</th><th>Size</th><th>Health</th><th>Manage</th></tr></thead>
               <tbody id="episodeRows"></tbody>
             </table>
           </div>
@@ -376,6 +382,9 @@
         task: params.get("task") || "",
         status: params.get("status") || "",
         benchmark: params.get("benchmark") || "",
+        collection: params.get("collection") || "",
+        variation: params.get("variation") || "",
+        split: params.get("split") || "",
         seed: params.get("seed") || "",
         date: params.get("date") || "",
         sort: params.get("sort") || "started_at",
@@ -386,7 +395,7 @@
       const params = new URLSearchParams();
       const view = document.querySelector("nav button.active")?.dataset.view || "overview";
       params.set("view", view);
-      [["search", "search"], ["task", "taskFilter"], ["status", "statusFilter"], ["benchmark", "benchmarkFilter"], ["seed", "seedFilter"], ["date", "dateFilter"], ["sort", "sortFilter"], ["dir", "directionFilter"]].forEach(([key, id]) => {
+      [["search", "search"], ["task", "taskFilter"], ["status", "statusFilter"], ["benchmark", "benchmarkFilter"], ["collection", "collectionFilter"], ["variation", "variationFilter"], ["split", "splitFilter"], ["seed", "seedFilter"], ["date", "dateFilter"], ["sort", "sortFilter"], ["dir", "directionFilter"]].forEach(([key, id]) => {
         const value = $(id).value;
         if (value) params.set(key, value);
       });
@@ -407,6 +416,9 @@
       $("taskFilter").value = params.task;
       $("statusFilter").value = params.status;
       $("benchmarkFilter").value = params.benchmark;
+      $("collectionFilter").value = params.collection;
+      $("variationFilter").value = params.variation;
+      $("splitFilter").value = params.split;
       $("seedFilter").value = params.seed;
       $("dateFilter").value = params.date;
       $("sortFilter").value = params.sort;
@@ -430,15 +442,21 @@
       const task = $("taskFilter").value;
       const status = $("statusFilter").value;
       const benchmark = $("benchmarkFilter").value.toLowerCase();
+      const collection = $("collectionFilter").value.toLowerCase();
+      const variation = $("variationFilter").value.toLowerCase();
+      const split = $("splitFilter").value;
       const seed = $("seedFilter").value;
       const start = $("dateFilter").value;
       const sortKey = $("sortFilter").value;
       const direction = $("directionFilter").value === "asc" ? 1 : -1;
       const rows = state.episodes.filter(row =>
-        (!search || `${row.episode_id} ${row.task_name || ""}`.toLowerCase().includes(search)) &&
+        (!search || `${row.episode_id} ${row.task_name || ""} ${row.failure_category || ""} ${row.failure_reason || ""}`.toLowerCase().includes(search)) &&
         (!task || row.task_name === task) &&
         (!status || row.status === status) &&
         (!benchmark || (row.benchmark_id || "").toLowerCase().includes(benchmark)) &&
+        (!collection || (row.collection_id || "").toLowerCase().includes(collection)) &&
+        (!variation || (row.variation_id || "").toLowerCase().includes(variation)) &&
+        (!split || row.split === split) &&
         (!seed || String(row.seed) === seed) &&
         (!start || (row.started_at || row.updated_at || "") >= start)
       ).sort((left, right) => {
@@ -463,14 +481,18 @@
           ? `<button class="preview-button" type="button" title="Play episode preview" aria-label="Play preview for ${esc(row.episode_id)}" onclick="openPreview('${esc(row.episode_id)}')"><img class="preview" src="${esc(row.preview_url)}" loading="lazy" decoding="async" alt=""><span class="preview-play">Play</span></button>`
           : '<div class="preview-button"></div>';
         const healthClass = row.health === "OK" ? "PASS" : row.health;
+        const outcome = row.failure_category || row.failure_reason
+          ? `<span title="${esc(row.failure_reason || "")}">${esc(row.failure_category || row.failure_reason)}</span>`
+          : (row.dataset_valid ? "dataset valid" : "-");
         return `<tr>
           <td>${preview}</td><td>${link}</td><td><span class="status ${row.status}">${row.status}</span></td>
-          <td>${esc(row.task_name || "-")}</td><td>${row.seed ?? "-"}</td><td>${esc(row.benchmark_id || "-")}</td>
+          <td>${esc(row.task_name || "-")}</td><td>${row.seed ?? "-"}</td><td>${esc(row.collection_id || row.benchmark_id || "-")}</td>
+          <td>${esc(row.variation_id || "-")}</td><td>${esc(row.split || "-")}</td><td>${outcome}</td>
           <td>${date(row.started_at || row.updated_at)}</td><td>${bytes(row.size_bytes)}</td>
           <td><span class="status ${healthClass}">${esc(row.health)}</span></td>
           <td><div class="row-actions">
-            <button class="icon-button" title="${row.pinned ? "Unpin" : "Pin"}" onclick="togglePin('${esc(row.episode_id)}', ${row.pinned ? "true" : "false"})">${row.pinned ? "U" : "P"}</button>
-            <button class="icon-button" title="Move to quarantine" onclick="quarantineEpisode('${esc(row.episode_id)}')" ${row.status === "RUNNING" || row.pinned || row.benchmark_id ? "disabled" : ""}>Q</button>
+            <button class="icon-button" title="${row.managed ? (row.pinned ? "Unpin" : "Pin") : "External read-only episode"}" onclick="togglePin('${esc(row.episode_id)}', ${row.pinned ? "true" : "false"})" ${row.managed ? "" : "disabled"}>${row.pinned ? "U" : "P"}</button>
+            <button class="icon-button" title="${row.managed ? "Move to quarantine" : "External read-only episode"}" onclick="quarantineEpisode('${esc(row.episode_id)}')" ${row.status === "RUNNING" || row.pinned || row.benchmark_id || !row.managed ? "disabled" : ""}>Q</button>
           </div></td>
         </tr>`;
       }).join("");
@@ -602,7 +624,7 @@
       $("playerImage").removeAttribute("src");
     }
     document.querySelectorAll("nav button").forEach(button => button.addEventListener("click", () => activateView(button.dataset.view, true)));
-    ["search","taskFilter","statusFilter","benchmarkFilter","seedFilter","dateFilter","sortFilter","directionFilter"].forEach(id => $(id).addEventListener("input", () => { renderEpisodes(); syncUrl(); }));
+    ["search","taskFilter","statusFilter","benchmarkFilter","collectionFilter","variationFilter","splitFilter","seedFilter","dateFilter","sortFilter","directionFilter"].forEach(id => $(id).addEventListener("input", () => { renderEpisodes(); syncUrl(); }));
     window.addEventListener("popstate", restoreUrlState);
     $("refresh").addEventListener("click", loadAll);
     $("scan").addEventListener("click", async () => { await api("/api/refresh", {method:"POST", body:"{}"}); toast("Artifacts scanned."); await loadAll(); });

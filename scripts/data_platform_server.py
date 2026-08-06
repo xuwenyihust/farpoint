@@ -38,25 +38,60 @@ def valid_basic_auth(header, expected_token):
     )
 
 
-def build_preview_manifest(episodes_root, episode_id):
+def metadata_episode_id(metadata):
+    identity = metadata.get("identity") if isinstance(metadata, dict) else None
+    return metadata.get("episode_id") or (
+        identity.get("episode_id") if isinstance(identity, dict) else None
+    )
+
+
+def resolve_registered_episode_asset(episode_dir, episode_id, relative):
+    episode_dir = Path(episode_dir).resolve()
+    relative_path = Path(unquote(str(relative)))
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise ValueError("invalid episode asset path")
+    try:
+        metadata = json.loads((episode_dir / "metadata.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError("episode asset root is not valid") from error
+    if metadata_episode_id(metadata) != episode_id or episode_dir.name != episode_id:
+        raise ValueError("episode asset root identity mismatch")
+    target = (episode_dir / relative_path).resolve()
+    if target != episode_dir and episode_dir not in target.parents:
+        raise ValueError("episode asset path escapes its episode root")
+    return target
+
+
+def build_preview_manifest(episodes_root, episode_id, episode_dir=None):
     episode_id = unquote(str(episode_id))
     if not episode_id or "/" in episode_id or "\\" in episode_id:
         raise ValueError("invalid episode id")
-    try:
-        episode_dir = resolve_episode_asset(
-            episodes_root, f"{episode_id}/metadata.json"
-        ).parent
-    except ValueError as error:
-        raise FileNotFoundError(episode_id) from error
+    if episode_dir is None:
+        try:
+            episode_dir = resolve_episode_asset(
+                episodes_root, f"{episode_id}/metadata.json"
+            ).parent
+        except ValueError as error:
+            raise FileNotFoundError(episode_id) from error
+    else:
+        try:
+            episode_dir = resolve_registered_episode_asset(
+                episode_dir, episode_id, "metadata.json"
+            ).parent
+        except ValueError as error:
+            raise FileNotFoundError(episode_id) from error
     if not episode_dir.is_dir():
         raise FileNotFoundError(episode_id)
     frames = sorted((episode_dir / "preview").glob("*.png"))
+    if not frames:
+        frames = sorted((episode_dir / "rgb").glob("front_*.png"))
     encoded_episode = quote(episode_id, safe="")
     return {
         "episode_id": episode_id,
         "frame_count": len(frames),
         "frames": [
-            f"/files/episodes/{encoded_episode}/preview/{quote(frame.name, safe='')}"
+            f"/files/episodes/{encoded_episode}/"
+            f"{quote(frame.relative_to(episode_dir).as_posix(), safe='/')}"
             for frame in frames
         ],
     }
@@ -75,7 +110,7 @@ def resolve_episode_asset(episodes_root, relative):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise ValueError("episode asset root is not valid") from error
-    if metadata.get("episode_id") != episode_id:
+    if metadata_episode_id(metadata) != episode_id:
         raise ValueError("episode asset root identity mismatch")
     target = (episodes_root / relative_path).resolve()
     if target != episode_root and episode_root not in target.parents:
@@ -84,8 +119,18 @@ def resolve_episode_asset(episodes_root, relative):
 
 
 class PlatformState:
-    def __init__(self, outputs_root, scan_interval, incomplete_timeout):
-        self.registry = EpisodeRegistry(outputs_root, incomplete_timeout)
+    def __init__(
+        self,
+        outputs_root,
+        scan_interval,
+        incomplete_timeout,
+        episode_roots=None,
+    ):
+        self.registry = EpisodeRegistry(
+            outputs_root,
+            incomplete_timeout,
+            episode_roots=episode_roots,
+        )
         self.retention = RetentionManager(self.registry)
         self.scan_interval = scan_interval
         self.lock = threading.Lock()
@@ -144,6 +189,10 @@ class PlatformHandler(BaseHTTPRequestHandler):
                 offset=max(int(query.get("offset", 0)), 0),
             )
             for row in rows:
+                try:
+                    row["cameras"] = json.loads(row.get("cameras_json") or "[]")
+                except (TypeError, ValueError):
+                    row["cameras"] = []
                 row["preview_url"] = self._artifact_url(row.get("preview_path"), row)
                 row["report_url"] = (
                     f"/reports/{row['episode_id']}/index.html"
@@ -159,10 +208,14 @@ class PlatformHandler(BaseHTTPRequestHandler):
                 "/preview"
             )
             try:
+                row = self.state.registry.get_episode(episode_id)
+                if not row or not row.get("artifact_path"):
+                    raise FileNotFoundError(episode_id)
                 self._json(
                     build_preview_manifest(
                         self.state.registry.layout.episodes,
                         episode_id,
+                        episode_dir=row["artifact_path"],
                     )
                 )
             except FileNotFoundError:
@@ -300,8 +353,14 @@ class PlatformHandler(BaseHTTPRequestHandler):
 
     def _serve_episode_asset(self, relative):
         try:
-            target = resolve_episode_asset(self.state.registry.layout.episodes, relative)
-        except ValueError:
+            episode_id, asset_relative = unquote(relative).split("/", 1)
+            row = self.state.registry.get_episode(episode_id)
+            if not row or not row.get("artifact_path"):
+                raise ValueError("episode is not registered")
+            target = resolve_registered_episode_asset(
+                row["artifact_path"], episode_id, asset_relative
+            )
+        except (ValueError, OSError):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
         self._serve_file(target)
@@ -319,7 +378,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
         self.send_header(
             "Cache-Control",
             "public, max-age=86400, immutable"
-            if "/observations/" in str(path) or "/preview/" in str(path)
+            if any(part in path.parts for part in ("observations", "preview", "rgb"))
             else "no-cache",
         )
         self.end_headers()
@@ -340,12 +399,13 @@ class PlatformHandler(BaseHTTPRequestHandler):
         if not path or not row.get("artifact_path"):
             return None
         try:
-            relative = Path(path).resolve().relative_to(
-                self.state.registry.layout.episodes.resolve()
-            )
+            relative = Path(path).resolve().relative_to(Path(row["artifact_path"]).resolve())
         except ValueError:
             return None
-        return f"/files/episodes/{relative.as_posix()}"
+        return (
+            f"/files/episodes/{quote(row['episode_id'], safe='')}/"
+            f"{quote(relative.as_posix(), safe='/')}"
+        )
 
     def _audit_events(self):
         path = self.state.registry.layout.audit_log
@@ -411,11 +471,27 @@ def main():
             )
         ),
     )
+    parser.add_argument(
+        "--episode-root",
+        action="append",
+        default=[],
+        type=Path,
+        help=(
+            "Read-only root recursively containing Farpoint episodes. "
+            "May be specified more than once."
+        ),
+    )
     args = parser.parse_args()
+    environment_roots = [
+        Path(value)
+        for value in os.environ.get("FARPOINT_EPISODE_ROOTS", "").split(os.pathsep)
+        if value
+    ]
     state = PlatformState(
         args.outputs_root,
         max(args.scan_interval, 5),
         max(args.incomplete_timeout, 60),
+        episode_roots=[*environment_roots, *args.episode_root],
     )
     state.refresh(reports=True)
     watcher = threading.Thread(target=state.watch, daemon=True)
