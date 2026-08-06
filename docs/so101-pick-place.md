@@ -5,6 +5,11 @@ This pilot adds the manager-based Isaac Lab environment
 exporting successful demonstrations to LeRobot v3. It is simulation-only; no
 real arm, policy training, or Hugging Face upload is required.
 
+The v0.0.0 policy interface is intentionally front-camera-only. The wrist
+camera is not spawned, rendered, recorded, or exported. Historical dual-camera
+episodes remain readable, but new SO-101 v0.0.0 collections advertise only
+`observation.images.front`.
+
 ## Reproducible workflow
 
 From the feature worktree:
@@ -69,6 +74,25 @@ cover the workspace, both cube sizes, both colors, and an 8/1/1 train,
 validation, and test mix. Five frozen fallback variations provide a strict
 15-attempt ceiling; collection stops immediately after ten distinct successful
 variations. Failed attempts remain in the pilot manifest and raw episode root.
+The selected-success split can differ from 8/1/1 if a validation or test trial
+fails and a fallback reaches the success target first. Report that as a pilot
+coverage limitation; do not relabel or rebalance episodes after collection.
+
+## Dashboard lifecycle
+
+Episode IDs include the collection ID as well as the attempt ID, so two
+collections can reuse one frozen variation without colliding in the registry.
+The collector writes a small `farpoint.episode-run.v1` `run-state.json` before
+recording the first frame and updates it when the attempt finishes or the runner
+fails. This lets the Dashboard expose RUNNING, FAIL, and incomplete attempts
+with their existing front-frame preview before final `metadata.json` exists.
+
+The Dashboard indexes the original episode directory in place. It does not copy
+the RGB sequence or mutate the episode. Once final v3 metadata exists, that
+metadata remains authoritative. The detail view includes outcome, failure
+reason, `dataset_valid`, variation, split, collection provenance, and requested
+and resolved scene entities. Old episodes without run-state sidecars continue
+to use the existing v1/v2/v3 discovery path.
 
 ## Extensible scene metadata
 
@@ -96,10 +120,15 @@ metadata contract version.
 ## Runtime gate
 
 The repository tests validate the contracts, deterministic variation plan,
-oracle state machine, resume logic, and six-dimensional/two-camera exporter.
+oracle state machine, resume logic, six-dimensional front-only exporter, and
+historical dual-camera read compatibility. A runtime gate must additionally
+prove bilateral contact, lift, transport, release, stable placement, and
+retreat from recorded evidence; a success flag alone is insufficient.
 Isaac runtime checks require an ARM64 DGX Spark with Isaac Lab 3.0 beta2 and
-Isaac Sim 6.0. If the `dgx-spark` SSH alias is unavailable, treat the Isaac
-viewer/headless checks as pending rather than claiming a successful collection.
+Isaac Sim 6.0. Run Viewer and headless evidence separately. If Viewer streaming
+connects but RTX frame completion stalls, retain the diagnostic run as
+incomplete and do not claim the close-up collision/joint-direction inspection
+from the connection state alone.
 
 The robot asset is not committed to Git. Source and pinned commit are kept in
 `examples/isaaclab_so101_pick_place/farpoint_so101_env/assets.py`; the Docker
