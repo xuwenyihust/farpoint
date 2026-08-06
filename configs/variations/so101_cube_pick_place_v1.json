@@ -1,0 +1,46 @@
+{
+  "schema_version": "farpoint.variation.v3",
+  "plan_id": "so101_cube_pick_place_v1",
+  "task_id": "so101_cube_pick_place",
+  "config_revision": "4",
+  "workspace": {
+    "x_bounds_m": [0.14, 0.26],
+    "y_bounds_m": [-0.12, -0.02],
+    "table_z_m": 0.032,
+    "rows": 5,
+    "columns": 5,
+    "interior_fraction": [0.2, 0.8]
+  },
+  "object": {
+    "shape": "cube",
+    "asset_id": "procedural_cube_v1",
+    "orientation_xyzw": [0.0, 0.0, 0.3826834324, 0.9238795325],
+    "edge_sizes_m": [0.03, 0.04],
+    "colors": [
+      {"id": "red", "rgba": [0.85, 0.08, 0.06, 1.0]},
+      {"id": "blue", "rgba": [0.04, 0.20, 0.85, 1.0]}
+    ],
+    "mass_kg": 0.04,
+    "static_friction": 1.2,
+    "dynamic_friction": 1.0,
+    "restitution": 0.0
+  },
+  "target": {
+    "target_id": "green_rectangular_pad_v1",
+    "entity_type": "pad",
+    "representation": "procedural",
+    "shape": "cuboid",
+    "relation": "on",
+    "position_m": [0.20, 0.10, 0.037],
+    "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+    "dimensions_m": [0.16, 0.14, 0.01],
+    "footprint_margin_m": 0.005,
+    "rgba": [0.08, 0.70, 0.20, 1.0]
+  },
+  "recording": {
+    "fps": 30,
+    "cameras": ["observation.images.front"],
+    "image_width": 640,
+    "image_height": 480
+  }
+}

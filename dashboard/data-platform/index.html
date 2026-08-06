@@ -110,6 +110,14 @@
     .player-controls .button { min-width: 42px; box-shadow: none; }
     .player-controls input { padding: 0; }
     .player-speed { width: 88px; }
+    .details-body { display: grid; gap: 14px; padding: 16px; }
+    .details-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .details-card { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 5px; background: #f8fafb; }
+    .details-card h3 { margin: 0 0 9px; font-size: 13px; }
+    .details-card dl { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 6px 9px; margin: 0; }
+    .details-card dt { color: var(--muted); }
+    .details-card dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+    .details-json { margin: 0; max-height: 300px; overflow: auto; padding: 11px; border-radius: 4px; background: #10181c; color: #dce8ea; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
     @media (max-width: 980px) {
       .shell { grid-template-columns: 1fr; }
       aside { padding: 12px; }
@@ -133,6 +141,7 @@
       .player-stage img { max-height: calc(100vh - 250px); }
       .player-controls { grid-template-columns: auto auto auto 1fr; }
       .player-speed, #playerCounter { grid-column: span 2; }
+      .details-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -197,6 +206,12 @@
               <option>RUNNING</option><option>PASS</option><option>FAIL</option><option>INCOMPLETE</option>
             </select>
             <input id="benchmarkFilter" placeholder="Benchmark">
+            <input id="collectionFilter" placeholder="Collection">
+            <input id="variationFilter" placeholder="Variation">
+            <select id="splitFilter" aria-label="Dataset split">
+              <option value="">All splits</option>
+              <option>train</option><option>validation</option><option>test</option>
+            </select>
             <input id="seedFilter" type="number" placeholder="Seed">
             <input id="dateFilter" type="date" aria-label="Start date">
             <select id="sortFilter" aria-label="Sort episodes">
@@ -212,7 +227,7 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Preview</th><th>Episode</th><th>Status</th><th>Task</th><th>Seed</th><th>Benchmark</th><th>Started</th><th>Size</th><th>Health</th><th>Manage</th></tr></thead>
+              <thead><tr><th>Preview</th><th>Episode</th><th>Status</th><th>Task</th><th>Seed</th><th>Collection</th><th>Variation</th><th>Split</th><th>Outcome</th><th>Started</th><th>Size</th><th>Health</th><th>Manage</th></tr></thead>
               <tbody id="episodeRows"></tbody>
             </table>
           </div>
@@ -306,6 +321,18 @@
       </div>
     </div>
   </div>
+  <div class="player-backdrop" id="detailsBackdrop" role="dialog" aria-modal="true" aria-labelledby="detailsEpisode">
+    <div class="player-dialog">
+      <div class="player-head">
+        <div class="player-title">
+          <strong id="detailsEpisode">Episode metadata</strong>
+          <span id="detailsStatus">Loading metadata</span>
+        </div>
+        <button class="player-close" id="detailsClose" type="button" title="Close metadata" aria-label="Close metadata">&times;</button>
+      </div>
+      <div class="details-body" id="detailsBody"></div>
+    </div>
+  </div>
   <div class="toast" id="toast"></div>
   <script>
     const state = {
@@ -376,6 +403,9 @@
         task: params.get("task") || "",
         status: params.get("status") || "",
         benchmark: params.get("benchmark") || "",
+        collection: params.get("collection") || "",
+        variation: params.get("variation") || "",
+        split: params.get("split") || "",
         seed: params.get("seed") || "",
         date: params.get("date") || "",
         sort: params.get("sort") || "started_at",
@@ -386,7 +416,7 @@
       const params = new URLSearchParams();
       const view = document.querySelector("nav button.active")?.dataset.view || "overview";
       params.set("view", view);
-      [["search", "search"], ["task", "taskFilter"], ["status", "statusFilter"], ["benchmark", "benchmarkFilter"], ["seed", "seedFilter"], ["date", "dateFilter"], ["sort", "sortFilter"], ["dir", "directionFilter"]].forEach(([key, id]) => {
+      [["search", "search"], ["task", "taskFilter"], ["status", "statusFilter"], ["benchmark", "benchmarkFilter"], ["collection", "collectionFilter"], ["variation", "variationFilter"], ["split", "splitFilter"], ["seed", "seedFilter"], ["date", "dateFilter"], ["sort", "sortFilter"], ["dir", "directionFilter"]].forEach(([key, id]) => {
         const value = $(id).value;
         if (value) params.set(key, value);
       });
@@ -407,6 +437,9 @@
       $("taskFilter").value = params.task;
       $("statusFilter").value = params.status;
       $("benchmarkFilter").value = params.benchmark;
+      $("collectionFilter").value = params.collection;
+      $("variationFilter").value = params.variation;
+      $("splitFilter").value = params.split;
       $("seedFilter").value = params.seed;
       $("dateFilter").value = params.date;
       $("sortFilter").value = params.sort;
@@ -430,15 +463,21 @@
       const task = $("taskFilter").value;
       const status = $("statusFilter").value;
       const benchmark = $("benchmarkFilter").value.toLowerCase();
+      const collection = $("collectionFilter").value.toLowerCase();
+      const variation = $("variationFilter").value.toLowerCase();
+      const split = $("splitFilter").value;
       const seed = $("seedFilter").value;
       const start = $("dateFilter").value;
       const sortKey = $("sortFilter").value;
       const direction = $("directionFilter").value === "asc" ? 1 : -1;
       const rows = state.episodes.filter(row =>
-        (!search || `${row.episode_id} ${row.task_name || ""}`.toLowerCase().includes(search)) &&
+        (!search || `${row.episode_id} ${row.task_name || ""} ${row.failure_category || ""} ${row.failure_reason || ""}`.toLowerCase().includes(search)) &&
         (!task || row.task_name === task) &&
         (!status || row.status === status) &&
         (!benchmark || (row.benchmark_id || "").toLowerCase().includes(benchmark)) &&
+        (!collection || (row.collection_id || "").toLowerCase().includes(collection)) &&
+        (!variation || (row.variation_id || "").toLowerCase().includes(variation)) &&
+        (!split || row.split === split) &&
         (!seed || String(row.seed) === seed) &&
         (!start || (row.started_at || row.updated_at || "") >= start)
       ).sort((left, right) => {
@@ -463,14 +502,19 @@
           ? `<button class="preview-button" type="button" title="Play episode preview" aria-label="Play preview for ${esc(row.episode_id)}" onclick="openPreview('${esc(row.episode_id)}')"><img class="preview" src="${esc(row.preview_url)}" loading="lazy" decoding="async" alt=""><span class="preview-play">Play</span></button>`
           : '<div class="preview-button"></div>';
         const healthClass = row.health === "OK" ? "PASS" : row.health;
+        const outcome = row.failure_category || row.failure_reason
+          ? `<span title="${esc(row.failure_reason || "")}">${esc(row.failure_category || row.failure_reason)}</span>`
+          : (row.dataset_valid ? "dataset valid" : "-");
         return `<tr>
           <td>${preview}</td><td>${link}</td><td><span class="status ${row.status}">${row.status}</span></td>
-          <td>${esc(row.task_name || "-")}</td><td>${row.seed ?? "-"}</td><td>${esc(row.benchmark_id || "-")}</td>
+          <td>${esc(row.task_name || "-")}</td><td>${row.seed ?? "-"}</td><td>${esc(row.collection_id || row.benchmark_id || "-")}</td>
+          <td>${esc(row.variation_id || "-")}</td><td>${esc(row.split || "-")}</td><td>${outcome}</td>
           <td>${date(row.started_at || row.updated_at)}</td><td>${bytes(row.size_bytes)}</td>
           <td><span class="status ${healthClass}">${esc(row.health)}</span></td>
           <td><div class="row-actions">
-            <button class="icon-button" title="${row.pinned ? "Unpin" : "Pin"}" onclick="togglePin('${esc(row.episode_id)}', ${row.pinned ? "true" : "false"})">${row.pinned ? "U" : "P"}</button>
-            <button class="icon-button" title="Move to quarantine" onclick="quarantineEpisode('${esc(row.episode_id)}')" ${row.status === "RUNNING" || row.pinned || row.benchmark_id ? "disabled" : ""}>Q</button>
+            <button class="icon-button" title="View entity metadata" aria-label="View metadata for ${esc(row.episode_id)}" onclick="openDetails('${esc(row.episode_id)}')">D</button>
+            <button class="icon-button" title="${row.managed ? (row.pinned ? "Unpin" : "Pin") : "External read-only episode"}" onclick="togglePin('${esc(row.episode_id)}', ${row.pinned ? "true" : "false"})" ${row.managed ? "" : "disabled"}>${row.pinned ? "U" : "P"}</button>
+            <button class="icon-button" title="${row.managed ? "Move to quarantine" : "External read-only episode"}" onclick="quarantineEpisode('${esc(row.episode_id)}')" ${row.status === "RUNNING" || row.pinned || row.benchmark_id || !row.managed ? "disabled" : ""}>Q</button>
           </div></td>
         </tr>`;
       }).join("");
@@ -601,15 +645,57 @@
       document.body.style.overflow = "";
       $("playerImage").removeAttribute("src");
     }
+    const entityById = (entities, id) => Array.isArray(entities) ? entities.find(entity => entity.entity_id === id) : null;
+    const value = item => item == null ? "-" : Array.isArray(item) ? item.join(", ") : String(item);
+    function entityCard(title, entity) {
+      if (!entity) return `<div class="details-card"><h3>${esc(title)}</h3><span class="subtle">Not recorded</span></div>`;
+      const region = (entity.regions || [])[0];
+      return `<div class="details-card"><h3>${esc(title)}</h3><dl>
+        <dt>Type</dt><dd>${esc(entity.entity_type || "-")}</dd>
+        <dt>Asset</dt><dd>${esc(entity.asset_id || "-")}</dd>
+        <dt>Position (m)</dt><dd>${esc(value(entity.pose?.position_m))}</dd>
+        <dt>Dimensions (m)</dt><dd>${esc(value(entity.geometry?.dimensions_m))}</dd>
+        <dt>Body / mass</dt><dd>${esc(value(entity.physics?.body_type))} / ${esc(value(entity.physics?.mass_kg))}</dd>
+        <dt>Region</dt><dd>${esc(region ? `${region.relation}: ${value(region.geometry?.dimensions_m)} m` : "-")}</dd>
+      </dl></div>`;
+    }
+    async function openDetails(episodeId) {
+      $("detailsEpisode").textContent = episodeId;
+      $("detailsStatus").textContent = "Loading metadata";
+      $("detailsBody").innerHTML = "";
+      $("detailsBackdrop").classList.add("open");
+      document.body.style.overflow = "hidden";
+      try {
+        const result = await api(`/api/episodes/${encodeURIComponent(episodeId)}`);
+        const manipulated = entityById(result.scene_entities, result.task.manipulated_entity_id) || result.scene_entities.find?.(entity => entity.role === "manipulated_object");
+        const target = entityById(result.scene_entities, result.task.target_entity_id) || result.scene_entities.find?.(entity => entity.role === "placement_target");
+        $("detailsStatus").textContent = `${result.schema_version || "legacy"} · ${result.source.collection_id || "unassigned"} · ${result.variation.split || "no split"}`;
+        $("detailsBody").innerHTML = `<div class="details-grid">${entityCard("Manipulated object", manipulated)}${entityCard("Placement target", target)}</div>
+          <div class="details-card"><h3>Variation axes</h3><div>${esc(result.variation.varied_axes.join(", ") || "-")}</div></div>
+          <div class="details-grid"><div><h3>Requested entities</h3><pre class="details-json">${esc(JSON.stringify(result.requested_entities, null, 2))}</pre></div>
+          <div><h3>Resolved entities</h3><pre class="details-json">${esc(JSON.stringify(result.resolved_entities, null, 2))}</pre></div></div>`;
+      } catch (error) {
+        $("detailsStatus").textContent = "Metadata unavailable";
+        $("detailsBody").innerHTML = `<div class="empty">${esc(error.message)}</div>`;
+      }
+    }
+    function closeDetails() {
+      $("detailsBackdrop").classList.remove("open");
+      document.body.style.overflow = "";
+    }
     document.querySelectorAll("nav button").forEach(button => button.addEventListener("click", () => activateView(button.dataset.view, true)));
-    ["search","taskFilter","statusFilter","benchmarkFilter","seedFilter","dateFilter","sortFilter","directionFilter"].forEach(id => $(id).addEventListener("input", () => { renderEpisodes(); syncUrl(); }));
+    ["search","taskFilter","statusFilter","benchmarkFilter","collectionFilter","variationFilter","splitFilter","seedFilter","dateFilter","sortFilter","directionFilter"].forEach(id => $(id).addEventListener("input", () => { renderEpisodes(); syncUrl(); }));
     window.addEventListener("popstate", restoreUrlState);
     $("refresh").addEventListener("click", loadAll);
     $("scan").addEventListener("click", async () => { await api("/api/refresh", {method:"POST", body:"{}"}); toast("Artifacts scanned."); await loadAll(); });
     $("previewRetention").addEventListener("click", renderRetention);
     $("playerClose").addEventListener("click", closePreview);
+    $("detailsClose").addEventListener("click", closeDetails);
     $("playerBackdrop").addEventListener("click", event => {
       if (event.target === $("playerBackdrop")) closePreview();
+    });
+    $("detailsBackdrop").addEventListener("click", event => {
+      if (event.target === $("detailsBackdrop")) closeDetails();
     });
     $("playerToggle").addEventListener("click", () => state.player.playing ? stopPreview() : startPreview());
     $("playerFirst").addEventListener("click", () => { stopPreview(); renderPreviewFrame(0); });
@@ -618,6 +704,7 @@
     $("playerSpeed").addEventListener("change", () => state.player.playing && startPreview());
     document.addEventListener("keydown", event => {
       if (event.key === "Escape" && $("playerBackdrop").classList.contains("open")) closePreview();
+      if (event.key === "Escape" && $("detailsBackdrop").classList.contains("open")) closeDetails();
       if (event.key === " " && $("playerBackdrop").classList.contains("open")) {
         event.preventDefault();
         state.player.playing ? stopPreview() : startPreview();

@@ -74,6 +74,8 @@ class RetentionManager:
                 reasons.append("pinned")
             if policy.get("protect_benchmarks", True) and row.get("benchmark_id"):
                 reasons.append("benchmark")
+            if not row.get("managed", 1):
+                reasons.append("external-read-only")
             if not row.get("artifact_path"):
                 reasons.append("no_artifact")
             item = {
@@ -236,6 +238,8 @@ class RetentionManager:
         return payload
 
     def _protection_reason(self, row):
+        if not row.get("managed", 1):
+            return "external read-only episodes cannot be quarantined"
         if row["status"] == "RUNNING":
             return "running episodes cannot be quarantined"
         if row.get("pinned"):
@@ -270,4 +274,3 @@ class RetentionManager:
                 **payload,
             },
         )
-

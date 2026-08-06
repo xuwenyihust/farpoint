@@ -9,8 +9,13 @@ from collections import Counter
 from importlib.resources import files
 from typing import Any
 
+from farpoint.scene_entities import validate_scene_entities
+
 
 SCHEMA_FILES = {
+    "farpoint.dataset.v3": "farpoint_dataset_v3.schema.json",
+    "farpoint.episode.v3": "farpoint_episode_v3.schema.json",
+    "farpoint.variation.v3": "farpoint_variation_v3.schema.json",
     "farpoint.dataset.v2": "farpoint_dataset_v2.schema.json",
     "farpoint.episode.v2": "farpoint_episode_v2.schema.json",
     "farpoint.variation.v2": "farpoint_variation_v2.schema.json",
@@ -60,6 +65,14 @@ def task_definition(metadata: dict[str, Any]) -> dict[str, str]:
     shape = (
         task.get("object_shape")
         or (metadata.get("scene") or {}).get("object", {}).get("shape")
+        or next(
+            (
+                entity.get("entity_type")
+                for entity in (metadata.get("scene") or {}).get("entities", ())
+                if entity.get("role") == "manipulated_object"
+            ),
+            None,
+        )
         or variation.get("object_type")
     )
     task_id = task.get("task_id") or metadata.get("task_name")
@@ -80,6 +93,76 @@ def task_definition(metadata: dict[str, Any]) -> dict[str, str]:
 def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
     """Check relationships that JSON Schema cannot express across nested fields."""
     errors = []
+    if record.get("schema_version") == "farpoint.episode.v3":
+        identity = record.get("identity") or {}
+        task = record.get("task") or {}
+        scene = record.get("scene") or {}
+        obj = scene.get("object") or {}
+        variation = record.get("variation") or {}
+        resolved = variation.get("resolved") or {}
+        pose = obj.get("initial_pose") or {}
+        if identity.get("task_id") != task.get("task_id"):
+            errors.append("identity.task_id does not match task.task_id")
+        if task.get("object_shape") != obj.get("shape"):
+            errors.append("task.object_shape does not match scene.object.shape")
+        for field, scene_field in (("shape", "shape"), ("dimensions_m", "dimensions_m"), ("position_m", None), ("rgba", "rgba"), ("mass_kg", "mass_kg"), ("static_friction", "static_friction"), ("dynamic_friction", "dynamic_friction")):
+            expected = pose.get("position_m") if field == "position_m" else obj.get(scene_field)
+            if resolved.get(field) != expected:
+                errors.append(f"variation.resolved.{field} does not match the scene object")
+        if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
+            errors.append("variation axes cannot be both varied and frozen")
+        if variation.get("split") != identity.get("split"):
+            errors.append("variation.split does not match identity.split")
+        entities = scene.get("entities")
+        if entities is not None:
+            try:
+                validate_scene_entities(entities)
+            except ValueError as error:
+                errors.append(str(error))
+            entity_index = {
+                entity.get("entity_id"): entity
+                for entity in entities
+                if isinstance(entity, dict) and entity.get("entity_id")
+            }
+            manipulated_id = task.get("manipulated_entity_id")
+            target_id = task.get("target_entity_id")
+            if manipulated_id and manipulated_id not in entity_index:
+                errors.append("task.manipulated_entity_id is missing from scene.entities")
+            if target_id and target_id not in entity_index:
+                errors.append("task.target_entity_id is missing from scene.entities")
+            if manipulated_id in entity_index:
+                entity = entity_index[manipulated_id]
+                if entity.get("role") != "manipulated_object":
+                    errors.append("task.manipulated_entity_id does not name a manipulated object")
+                if task.get("object_shape") != entity.get("entity_type"):
+                    errors.append(
+                        "task.object_shape does not match the manipulated entity type"
+                    )
+            if target_id in entity_index:
+                target_entity = entity_index[target_id]
+                if target_entity.get("role") != "placement_target":
+                    errors.append("task.target_entity_id does not name a placement target")
+                region_id = task.get("acceptance_region_id")
+                if region_id and region_id not in {
+                    region.get("region_id")
+                    for region in target_entity.get("regions", ())
+                    if isinstance(region, dict)
+                }:
+                    errors.append(
+                        "task.acceptance_region_id is missing from the target entity"
+                    )
+            resolved_entities = resolved.get("entities")
+            if resolved_entities is not None:
+                if not isinstance(resolved_entities, dict):
+                    errors.append("variation.resolved.entities must be an object")
+                else:
+                    for entity_id, entity in entity_index.items():
+                        if resolved_entities.get(entity_id) != entity:
+                            errors.append(
+                                f"variation.resolved.entities.{entity_id} does not "
+                                "match scene.entities"
+                            )
+        return errors
     identity = record.get("identity") or {}
     task = record.get("task") or {}
     scene = record.get("scene") or {}
@@ -97,6 +180,10 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
         errors.append("variation.resolved.object_position_m does not match the scene object pose")
     if resolved.get("object_dimensions_m") != obj.get("dimensions_m"):
         errors.append("variation.resolved.object_dimensions_m does not match the scene object")
+    if resolved.get("mass_kg") is not None and resolved.get("mass_kg") != obj.get("mass_kg"):
+        errors.append("variation.resolved.mass_kg does not match the scene object")
+    if resolved.get("rgba") is not None and resolved.get("rgba") != obj.get("rgba"):
+        errors.append("variation.resolved.rgba does not match the scene object")
     if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
         errors.append("variation axes cannot be both varied and frozen")
     if variation.get("split") is not None and variation.get("split") != identity.get("split"):

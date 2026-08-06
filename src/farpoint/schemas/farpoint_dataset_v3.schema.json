@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xuwenyihust/farpoint/src/farpoint/schemas/farpoint_dataset_v3.schema.json",
+  "title": "Farpoint LeRobot Dataset Sidecar v3",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "dataset_id", "format", "format_version", "demonstration_policy", "splits", "tasks", "robot", "simulation", "recording", "contracts"],
+  "properties": {
+    "schema_version": {"const": "farpoint.dataset.v3"},
+    "dataset_id": {"type": "string", "minLength": 1},
+    "format": {"const": "lerobot"},
+    "format_version": {"const": "v3"},
+    "demonstration_policy": {"const": "successful_only"},
+    "splits": {"type": "object"},
+    "tasks": {"type": "array", "minItems": 1},
+    "robot": {"type": "object"},
+    "simulation": {"type": "object"},
+    "recording": {"type": "object"},
+    "episode_scene_metadata": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/episodeSceneMetadata"}
+    },
+    "contracts": {"type": "object"}
+  },
+  "$defs": {
+    "episodeSceneMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "dataset_episode_index", "episode_id", "variation_id", "split",
+        "task_id", "varied_axes", "frozen_axes"
+      ],
+      "properties": {
+        "dataset_episode_index": {"type": "integer", "minimum": 0},
+        "episode_id": {"type": "string", "minLength": 1},
+        "variation_id": {"type": "string", "minLength": 1},
+        "split": {"enum": ["train", "validation", "test"]},
+        "task_id": {"type": "string", "minLength": 1},
+        "manipulated_entity_id": {"type": "string", "minLength": 1},
+        "target_entity_id": {"type": "string", "minLength": 1},
+        "acceptance_region_id": {"type": "string", "minLength": 1},
+        "varied_axes": {"type": "array", "items": {"type": "string"}},
+        "frozen_axes": {"type": "array", "items": {"type": "string"}},
+        "entities": {"type": "array", "items": {"type": "object"}},
+        "requested_entities": {"type": "object"},
+        "resolved_entities": {"type": "object"}
+      }
+    }
+  }
+}

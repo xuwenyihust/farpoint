@@ -1,0 +1,10 @@
+SO-ARM101 USD asset
+
+Source: NVIDIA Isaac Sim Sim-to-Real SO-101 Workshop
+Repository: https://github.com/isaac-sim/Sim-to-Real-SO-101-Workshop
+Pinned commit: ce807d99724cb65671abec01f908a2fcb4a6eab7
+Original USD SHA256: 11f5f0bb5f2fae3eefebbcd07dfafc6b14602f6c4e5dae8f21a4a46892991006
+
+The asset is obtained at runtime by scripts/fetch_so101_assets.py and is not
+redistributed in this repository. Refer to the upstream repository's
+Apache-2.0 license and notices for the asset's applicable terms.
