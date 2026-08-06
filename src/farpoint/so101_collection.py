@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,10 +14,26 @@ from typing import Any
 
 
 SCHEMA_VERSION = "farpoint.collection.v2"
+_IDENTIFIER_PATTERN = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def episode_id_for_attempt(collection_id: str, attempt_id: str) -> str:
+    """Return a collection-scoped, path-safe episode identifier.
+
+    Attempt identifiers repeat when a frozen plan is rerun.  Including the
+    collection identifier keeps those independent runs distinct in the raw
+    episode store and in registries whose primary key is ``episode_id``.
+    """
+    for label, value in (("collection_id", collection_id), ("attempt_id", attempt_id)):
+        if not value or _IDENTIFIER_PATTERN.fullmatch(value) is None:
+            raise ValueError(
+                f"{label} must contain only letters, numbers, '.', '_' or '-'"
+            )
+    return f"episode_{collection_id}__{attempt_id}"
 
 
 def _new_manifest(

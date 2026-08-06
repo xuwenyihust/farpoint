@@ -6,6 +6,7 @@ from farpoint.object_variation import generate_variation_plan, load_variation_co
 from farpoint.so101_collection import (
     build_export_selection,
     create_manifest,
+    episode_id_for_attempt,
     load_manifest,
     next_attempt,
     record_attempt,
@@ -14,6 +15,24 @@ from farpoint.so101_collection import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_episode_id_is_namespaced_by_collection():
+    first = episode_id_for_attempt("pilot_v1", "cube_r00_c00__attempt00")
+    second = episode_id_for_attempt("pilot_v2", "cube_r00_c00__attempt00")
+
+    assert first == "episode_pilot_v1__cube_r00_c00__attempt00"
+    assert second == "episode_pilot_v2__cube_r00_c00__attempt00"
+    assert first != second
+
+
+@pytest.mark.parametrize(
+    ("collection_id", "attempt_id"),
+    [("../pilot", "attempt00"), ("pilot", "attempt/00"), ("", "attempt00")],
+)
+def test_episode_id_rejects_unsafe_identifiers(collection_id, attempt_id):
+    with pytest.raises(ValueError, match="must contain only"):
+        episode_id_for_attempt(collection_id, attempt_id)
 
 
 def plan():

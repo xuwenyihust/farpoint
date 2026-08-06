@@ -7,6 +7,7 @@ from pathlib import Path
 
 from farpoint.registry import EpisodeRegistry
 from farpoint.retention import RetentionManager
+from farpoint.so101_collection import episode_id_for_attempt
 
 
 def write_json(path, payload):
@@ -95,6 +96,25 @@ def make_v3_episode(root, collection_id, episode_id, success=True, metrics=True)
 
 
 class EpisodeRegistryTests(unittest.TestCase):
+    def test_collection_scoped_episode_ids_keep_repeated_attempts_distinct(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outputs = root / "outputs"
+            external = root / "farpoint-so101"
+            attempt_id = "cube_r00_c00_s0_k0__attempt00"
+            first_id = episode_id_for_attempt("pilot_v1", attempt_id)
+            second_id = episode_id_for_attempt("pilot_v2", attempt_id)
+            make_v3_episode(external, "pilot_v1", first_id)
+            make_v3_episode(external, "pilot_v2", second_id)
+
+            registry = EpisodeRegistry(outputs, episode_roots=[external])
+            registry.scan()
+            rows = {row["episode_id"]: row for row in registry.list_episodes()}
+
+            self.assertEqual(rows[first_id]["collection_id"], "pilot_v1")
+            self.assertEqual(rows[second_id]["collection_id"], "pilot_v2")
+            self.assertEqual(len(rows), 2)
+
     def test_scans_external_v3_episode_with_collection_and_front_camera(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

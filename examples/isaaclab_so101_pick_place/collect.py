@@ -146,6 +146,7 @@ from farpoint.so101_collection import (  # noqa: E402
     create_gate_manifest,
     create_manifest,
     create_pilot_manifest,
+    episode_id_for_attempt,
     load_manifest,
     next_attempt,
     record_attempt,
@@ -1184,7 +1185,7 @@ def run_grasp_grid_diagnostic(env, output_root: Path) -> None:
     _write_json(destination / "results.json", {"candidates": results})
 
 
-def run_attempt(env, trial, output_root: Path, git_commit: str):
+def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: str):
     device = env.device
     scene = env.scene
     robot = scene["robot"]
@@ -1300,7 +1301,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
     rows = []
-    root = output_root / f"episode_{trial['attempt_id']}"
+    root = output_root / episode_id_for_attempt(collection_id, trial["attempt_id"])
     if root.exists():
         raise FileExistsError(f"episode output already exists: {root}")
     for control_step in range(schedule.steps_for_seconds(120.0)):
@@ -2359,7 +2360,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
-        "provenance": {"git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
+        "provenance": {"collection_id": collection_id, "git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
         "task": {"task_id": "so101_cube_pick_place", "instruction": f"Pick up the {object_spec['shape']} and place it on the green target pad.", "object_shape": object_spec["shape"], "success_criteria_id": "contact_pick_place_footprint_v2", "manipulated_entity_id": "pick_object", "target_entity_id": "placement_target", "acceptance_region_id": "placement_region"},
         "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
         "scene": {"coordinate_frame": "isaac_world", "object": scene_object, "target": scene_target, "entities": list(resolved_variation["entities"].values()), "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
@@ -2459,7 +2460,13 @@ def main():
             if attempt is None:
                 break
             try:
-                episode_id, success, valid, category, reason = run_attempt(env, attempt, args_cli.output_root, os.environ.get("FARPOINT_GIT_COMMIT", "unknown"))
+                episode_id, success, valid, category, reason = run_attempt(
+                    env,
+                    attempt,
+                    args_cli.output_root,
+                    os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+                    manifest["collection_id"],
+                )
             except Exception as error:
                 details = traceback.format_exc()
                 print(
