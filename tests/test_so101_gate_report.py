@@ -137,6 +137,45 @@ def test_gate_report_passes_only_with_complete_independent_front_evidence(tmp_pa
     assert "Gate status: **PASS**" in render_so101_gate_report_markdown(report)
 
 
+def test_fixed_repeatability_gate_allows_deterministic_duplicate_observations(
+    tmp_path,
+):
+    plan = _gate()
+    manifest = create_gate_manifest(
+        plan, collection_id="deterministic_run", git_commit="d" * 40
+    )
+    episode_dirs = []
+    for index in range(2):
+        attempt = next_attempt(manifest, plan)
+        episode_id = f"episode_{index}"
+        episode_dir = tmp_path / episode_id
+        _write_episode(episode_dir, attempt["variation_id"])
+        episode_dirs.append(episode_dir)
+        record_attempt(
+            manifest,
+            plan,
+            attempt,
+            episode_id=episode_id,
+            success=True,
+            dataset_valid=True,
+        )
+    # Deterministic PhysX with identical resolved scene factors can produce
+    # byte-identical observation streams. Episode identity remains independent
+    # through the distinct metadata, attempt seed, and variation seed.
+    (episode_dirs[1] / "observations.jsonl").write_bytes(
+        (episode_dirs[0] / "observations.jsonl").read_bytes()
+    )
+
+    report = build_so101_gate_report(plan, manifest, tmp_path)
+
+    assert report["gate_status"] == "PASS"
+    assert report["deterministic_observation_duplicates_allowed"] is True
+    assert report["episode_evidence"]["independent_observation_artifact_count"] == 1
+    assert report["independent_episode_identity_count"] == 2
+    assert report["attempt_seed_count"] == 2
+    assert report["variation_seed_count"] == 2
+
+
 def test_gate_report_classifies_physical_failure(tmp_path):
     plan = _gate(repetitions=1)
     manifest = create_gate_manifest(

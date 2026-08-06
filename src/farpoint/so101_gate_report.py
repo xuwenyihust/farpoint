@@ -13,12 +13,21 @@ from farpoint.so101_episode_analysis import (
 )
 
 
-def _evidence_errors(analysis: dict[str, Any], expected_episode_count: int) -> list[str]:
+def _evidence_errors(
+    analysis: dict[str, Any],
+    expected_episode_count: int,
+    *,
+    allow_duplicate_observations: bool = False,
+) -> list[str]:
     errors: list[str] = []
     if analysis["episode_count"] != expected_episode_count:
         errors.append("episode_artifact_count_mismatch")
-    if analysis["duplicate_observation_groups"]:
+    if analysis["duplicate_observation_groups"] and not allow_duplicate_observations:
         errors.append("duplicate_observation_artifacts")
+    if len({episode["metadata_sha256"] for episode in analysis["episodes"]}) != len(
+        analysis["episodes"]
+    ):
+        errors.append("duplicate_episode_identity_artifacts")
     for episode in analysis["episodes"]:
         name = Path(episode["episode_dir"]).name
         if episode["camera_frame_counts"] != {
@@ -79,7 +88,13 @@ def build_so101_gate_report(
             "episodes": [],
         }
     )
-    evidence_errors = _evidence_errors(analysis, len(episode_attempts))
+    gate = plan.get("gate") or {}
+    fixed_repeatability_gate = gate.get("kind") == "fixed_cube_repeatability"
+    evidence_errors = _evidence_errors(
+        analysis,
+        len(episode_attempts),
+        allow_duplicate_observations=fixed_repeatability_gate,
+    )
     evidence_errors.extend(f"missing_episode:{value}" for value in missing_episode_ids)
 
     episode_by_name = {
@@ -102,6 +117,19 @@ def build_so101_gate_report(
         bool(row["success"] and row["dataset_valid"]) for row in attempts
     )
     attempted_count = len(attempts)
+    attempt_seed_count = len({row["attempt_seed"] for row in attempts})
+    attempted_variation_ids = {row["variation_id"] for row in attempts}
+    variation_seed_count = len(
+        {
+            trial["seed"]
+            for trial in plan["trials"]
+            if trial["variation_id"] in attempted_variation_ids
+        }
+    )
+    if attempt_seed_count != attempted_count:
+        evidence_errors.append("attempt_seeds_not_unique")
+    if variation_seed_count != attempted_count:
+        evidence_errors.append("variation_seeds_not_unique")
     maximum_attempts = int(manifest["maximum_attempts"])
     required_successes = int(manifest["required_successes"])
     execution_complete = (
@@ -130,7 +158,6 @@ def build_so101_gate_report(
         for row in attempts
         if not row.get("success")
     )
-    gate = plan.get("gate") or {}
     return {
         "schema_version": "farpoint.so101-gate-report.v1",
         "gate_id": plan["plan_id"],
@@ -145,14 +172,11 @@ def build_so101_gate_report(
         "success_count": success_count,
         "required_successes": required_successes,
         "success_rate": success_count / maximum_attempts if maximum_attempts else 0.0,
-        "attempt_seed_count": len({row["attempt_seed"] for row in attempts}),
-        "variation_seed_count": len(
-            {
-                trial["seed"]
-                for trial in plan["trials"]
-                if trial["variation_id"]
-                in {row["variation_id"] for row in attempts}
-            }
+        "attempt_seed_count": attempt_seed_count,
+        "variation_seed_count": variation_seed_count,
+        "deterministic_observation_duplicates_allowed": fixed_repeatability_gate,
+        "independent_episode_identity_count": len(
+            {episode["metadata_sha256"] for episode in analysis["episodes"]}
         ),
         "failure_reason_counts": dict(sorted(failure_reasons.items())),
         "failure_class_counts": dict(sorted(failure_classes.items())),
@@ -171,7 +195,8 @@ def render_so101_gate_report_markdown(report: dict[str, Any]) -> str:
         f"- Attempts: {report['attempted_count']}/{report['maximum_attempts']}",
         f"- Eligible successes: {report['success_count']}/{report['required_successes']}",
         f"- Success rate: {report['success_rate']:.1%}",
-        f"- Independent episode artifacts: {report['episode_evidence']['independent_observation_artifact_count']}",
+        f"- Independent episode identities: {report['independent_episode_identity_count']}",
+        f"- Distinct observation artifacts: {report['episode_evidence']['independent_observation_artifact_count']}",
         "",
         "## Failure classes",
         "",
