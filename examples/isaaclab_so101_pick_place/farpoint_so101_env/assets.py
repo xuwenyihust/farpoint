@@ -27,14 +27,6 @@ SO101_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=so101_usd_path(),
         activate_contact_sensors=True,
-        # The printed SO-101 fingertips are rubberized.  The workshop USD has
-        # no explicit physics material, so Isaac otherwise falls back to a
-        # low-friction default that releases the cube during lift.
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            static_friction=2.0,
-            dynamic_friction=1.5,
-            restitution=0.0,
-        ),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False, max_depenetration_velocity=5.0),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=False,
@@ -52,11 +44,10 @@ SO101_CFG = ArticulationCfg(
             "Wrist_Roll": -1.6034,
             "Jaw": 1.7453,
         },
-        # Mount the fixed base at the table edge and on the table surface.
-        # Keeping z=0 would intersect the 4 cm table collider at reset.
-        # The workshop USD assumes a raised mounting pedestal.  At the table
-        # surface the pitched arm intersects the tabletop; 26.7 cm preserves
-        # clearance while keeping the cube-height grasp inside the workspace.
+        # Mount transform for this tabletop fixture. The pinned workshop USD
+        # remains unchanged; raising its articulation root places the SO-101
+        # shoulder/base fixture above the work surface and keeps the authored
+        # HOME gripper pose in the reachable tabletop half-space.
         pos=(-0.05, 0.0, 0.267),
         rot=(0.70710678, 0.0, 0.0, 0.70710678),
     ),
@@ -69,6 +60,11 @@ SO101_CFG = ArticulationCfg(
         "elbow": ImplicitActuatorCfg(joint_names_expr=["Elbow"], effort_limit_sim=30, stiffness=70, damping=7),
         "wrist_pitch": ImplicitActuatorCfg(joint_names_expr=["Wrist_Pitch"], effort_limit_sim=30, stiffness=50, damping=5),
         "wrist_roll": ImplicitActuatorCfg(joint_names_expr=["Wrist_Roll"], effort_limit_sim=30, stiffness=30, damping=3),
-        "gripper": ImplicitActuatorCfg(joint_names_expr=["Jaw"], effort_limit_sim=30, stiffness=20, damping=2),
+        # The small jaw inertia is under-damped with the workshop's generic
+        # servo gains and overshoots through a grasp at 30 Hz control. Keep
+        # the same stiffness while adding damping for a stable contact hold.
+        "gripper": ImplicitActuatorCfg(
+            joint_names_expr=["Jaw"], effort_limit_sim=30, stiffness=20, damping=5
+        ),
     },
 )

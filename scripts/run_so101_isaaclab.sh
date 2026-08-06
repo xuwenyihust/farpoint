@@ -10,16 +10,20 @@ fi
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="${FARPOINT_SO101_IMAGE:-farpoint-so101-isaaclab:3.0-beta2}"
+DATA_ROOT="${FARPOINT_DATA_ROOT:-${PROJECT_ROOT}/outputs}"
 ASSET="${PROJECT_ROOT}/.cache/farpoint/assets/so101/ce807d99724cb65671abec01f908a2fcb4a6eab7/SO-ARM101-USD.usd"
 if [[ ! -f "${ASSET}" ]]; then
   python3 "${PROJECT_ROOT}/scripts/fetch_so101_assets.py" --destination "${ASSET}"
 fi
+mkdir -p "${DATA_ROOT}"
 
 docker_args=(
   --rm --gpus all --network host
   -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y
+  -e FARPOINT_GIT_COMMIT="${FARPOINT_GIT_COMMIT:-unknown}"
   -e FARPOINT_SO101_USD=/workspace/project/.cache/farpoint/assets/so101/ce807d99724cb65671abec01f908a2fcb4a6eab7/SO-ARM101-USD.usd
   -v "${PROJECT_ROOT}:/workspace/project:rw"
+  -v "${DATA_ROOT}:/workspace/farpoint-data:rw"
 )
 if [[ "${MODE}" == "viewer" ]]; then
   docker_args+=(-e DISPLAY="${DISPLAY:-:0}" -v /tmp/.X11-unix:/tmp/.X11-unix:rw)

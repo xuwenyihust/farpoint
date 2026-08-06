@@ -78,3 +78,35 @@ def test_collection_retries_failure_without_changing_split(tmp_path):
 def test_collection_rejects_attempt_budget_below_target():
     with pytest.raises(ValueError, match="maximum_attempts"):
         create_manifest(plan(), collection_id="bad", git_commit="a" * 40, maximum_attempts=99)
+
+
+def test_collection_preserves_frozen_plan_order_within_retry_round():
+    variation_plan = plan()
+    variation_plan["trials"][0], variation_plan["trials"][1] = (
+        variation_plan["trials"][1],
+        variation_plan["trials"][0],
+    )
+    manifest = create_manifest(
+        variation_plan,
+        collection_id="ordered_pilot",
+        git_commit="a" * 40,
+    )
+
+    attempt = next_attempt(manifest, variation_plan)
+
+    assert attempt["variation_id"] == variation_plan["trials"][0]["variation_id"]
+
+
+def test_collection_attempt_seed_is_deterministic_uint32_for_isaac_lab():
+    variation_plan = plan()
+    first = next_attempt(
+        create_manifest(variation_plan, collection_id="seed_a", git_commit="a" * 40),
+        variation_plan,
+    )
+    second = next_attempt(
+        create_manifest(variation_plan, collection_id="seed_b", git_commit="b" * 40),
+        variation_plan,
+    )
+
+    assert first["attempt_seed"] == second["attempt_seed"]
+    assert 0 <= first["attempt_seed"] <= 2**32 - 1

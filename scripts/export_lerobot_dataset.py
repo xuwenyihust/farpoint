@@ -167,7 +167,37 @@ def _read_rgb(episode_dir: Path, row: dict[str, Any], key: str) -> np.ndarray:
         return np.asarray(image.convert("RGB"), dtype=np.uint8)
 
 
-def _so101_sidecar(dataset_id: str, records: list[dict[str, Any]], fps: int, width: int, height: int, selection_policy: str | None) -> dict[str, Any]:
+SO101_CAMERA_ROW_KEYS = {
+    "observation.images.front": "rgb_path",
+    "observation.images.wrist": "wrist_rgb_path",
+}
+
+
+def _so101_cameras(records: list[dict[str, Any]]) -> list[str]:
+    cameras = list(records[0]["recording"]["cameras"])
+    if "observation.images.front" not in cameras:
+        raise ValueError("SO-101 episodes must include observation.images.front")
+    unsupported = sorted(set(cameras).difference(SO101_CAMERA_ROW_KEYS))
+    if unsupported:
+        raise ValueError(f"unsupported SO-101 camera features: {unsupported}")
+    for record in records[1:]:
+        if list(record["recording"]["cameras"]) != cameras:
+            raise ValueError("SO-101 episodes must use the same ordered camera features")
+        for key in ("control_hz", "recording_stride"):
+            if record["recording"].get(key) != records[0]["recording"].get(key):
+                raise ValueError(f"SO-101 episodes must use the same recording.{key}")
+    return cameras
+
+
+def _so101_sidecar(
+    dataset_id: str,
+    records: list[dict[str, Any]],
+    fps: int,
+    width: int,
+    height: int,
+    selection_policy: str | None,
+    cameras: list[str],
+) -> dict[str, Any]:
     first = records[0]
     tasks = {record["task"]["task_id"]: record["task"] for record in records}
     sidecar = {
@@ -186,7 +216,9 @@ def _so101_sidecar(dataset_id: str, records: list[dict[str, Any]], fps: int, wid
         },
         "recording": {
             "fps": fps,
-            "cameras": ["observation.images.front", "observation.images.wrist"],
+            "control_hz": first["recording"].get("control_hz", fps),
+            "recording_stride": first["recording"].get("recording_stride", 1),
+            "cameras": cameras,
             "image_width": width,
             "image_height": height,
             "state_features": list(LEROBOT_JOINT_NAMES),
@@ -217,11 +249,6 @@ def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
             raise ValueError("SO-101 export cannot mix episode contract versions")
         if infer_fps(rows) != fps:
             raise ValueError(f"episode has a different recording rate: {episode_dir}")
-        for row in rows:
-            front = _read_rgb(episode_dir, row, "rgb_path")
-            wrist = _read_rgb(episode_dir, row, "wrist_rgb_path")
-            if front.shape[:2] != (height, width) or wrist.shape[:2] != (height, width):
-                raise ValueError(f"episode camera resolution mismatch: {episode_dir}")
         enriched = dict(metadata)
         enriched["identity"] = {**metadata["identity"], "dataset_episode_index": index}
         enriched["recording"] = {**metadata["recording"], "fps": fps, "frame_count": len(rows)}
@@ -230,6 +257,14 @@ def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
             raise ValueError(f"invalid SO-101 episode metadata: {'; '.join(errors)}")
         records.append(enriched)
 
+    cameras = _so101_cameras(records)
+    for _, episode_dir, _, rows, _ in loaded:
+        for row in rows:
+            for camera in cameras:
+                image = _read_rgb(episode_dir, row, SO101_CAMERA_ROW_KEYS[camera])
+                if image.shape[:2] != (height, width):
+                    raise ValueError(f"episode camera resolution mismatch: {episode_dir}")
+
     if dataset_class is None:
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
@@ -237,10 +272,14 @@ def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
     features = {
         "observation.state": {"dtype": "float32", "shape": (6,), "names": list(LEROBOT_JOINT_NAMES)},
         "action": {"dtype": "float32", "shape": (6,), "names": list(LEROBOT_JOINT_NAMES)},
-        "observation.images.front": {"dtype": "video", "shape": (height, width, 3), "names": ["height", "width", "channel"]},
-        "observation.images.wrist": {"dtype": "video", "shape": (height, width, 3), "names": ["height", "width", "channel"]},
         "next.done": {"dtype": "bool", "shape": (1,), "names": ["done"]},
     }
+    for camera in cameras:
+        features[camera] = {
+            "dtype": "video",
+            "shape": (height, width, 3),
+            "names": ["height", "width", "channel"],
+        }
     dataset = dataset_class.create(
         repo_id=manifest["dataset_id"], fps=fps, features=features, root=output_dir,
         robot_type="so101_follower", use_videos=True, image_writer_processes=0,
@@ -253,20 +292,31 @@ def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
                     raise ValueError("SO-101 observations must use the canonical simulation joint order")
                 state = radians_to_lerobot(select_joint_values(row, list(SIM_JOINT_NAMES), "joint_positions"), clip=True)
                 action = radians_to_lerobot(select_joint_values(row, list(SIM_JOINT_NAMES), "action_joint_positions"), clip=True)
-                dataset.add_frame({
+                frame = {
                     "observation.state": state,
                     "action": action,
-                    "observation.images.front": _read_rgb(episode_dir, row, "rgb_path"),
-                    "observation.images.wrist": _read_rgb(episode_dir, row, "wrist_rgb_path"),
                     "next.done": np.asarray([frame_index == len(rows) - 1], dtype=np.bool_),
                     "task": record["task"]["instruction"],
-                })
+                }
+                for camera in cameras:
+                    frame[camera] = _read_rgb(
+                        episode_dir, row, SO101_CAMERA_ROW_KEYS[camera]
+                    )
+                dataset.add_frame(frame)
             dataset.save_episode(parallel_encoding=False)
         dataset.finalize()
     except Exception:
         shutil.rmtree(output_dir, ignore_errors=True)
         raise
-    sidecar = _so101_sidecar(manifest["dataset_id"], records, fps, width, height, manifest.get("selection_policy"))
+    sidecar = _so101_sidecar(
+        manifest["dataset_id"],
+        records,
+        fps,
+        width,
+        height,
+        manifest.get("selection_policy"),
+        cameras,
+    )
     meta_dir = output_dir / "meta"
     (meta_dir / "farpoint_v3.json").write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (meta_dir / "episode_metadata.jsonl").write_text("".join(json.dumps(record, sort_keys=True) + "\n" for record in records), encoding="utf-8")

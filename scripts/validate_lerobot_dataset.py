@@ -91,9 +91,8 @@ def validate_v3_sidecar(sidecar: dict[str, Any], result: dict[str, Any]) -> None
         if robot.get(key) != expected:
             add_error(result, f"sidecar robot.{key} must be {expected!r}")
     recording = sidecar.get("recording") or {}
-    for camera in ("observation.images.front", "observation.images.wrist"):
-        if camera not in recording.get("cameras", []):
-            add_error(result, f"sidecar recording must include {camera}")
+    if "observation.images.front" not in recording.get("cameras", []):
+        add_error(result, "sidecar recording must include observation.images.front")
     for key in ("fps", "image_width", "image_height"):
         if not isinstance(recording.get(key), (int, float)) or recording[key] <= 0:
             add_error(result, f"sidecar recording.{key} must be positive")
@@ -536,9 +535,9 @@ def validate_v3_dataset(root: Path, sidecar: dict[str, Any], info: dict[str, Any
         int((episode.get("recording") or {}).get("frame_count") or 0)
         for episode in episodes
     )
-    validate_camera_video_frames(
-        root, "observation.images.wrist", expected_frames, result
-    )
+    for camera in (sidecar.get("recording") or {}).get("cameras", []):
+        if camera != "observation.images.front":
+            validate_camera_video_frames(root, camera, expected_frames, result)
     result["checks"]["episode_contracts"] = bool(episodes) and not result["errors"]
 
 

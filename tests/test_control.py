@@ -8,9 +8,11 @@ from farpoint.control import (
     bounded_position_target,
     calibrated_recovery_grasp_target,
     cartesian_tracking_servo_target,
+    collision_safe_pregrasp_waypoints,
     contact_pair_force_summary,
     filtered_contact_force,
     force_controlled_gripper_target,
+    force_controlled_rotary_jaw_target,
     grasp_proof_evidence,
     grasp_validation_decision,
     gripper_aperture_alignment,
@@ -18,6 +20,7 @@ from farpoint.control import (
     merge_contact_group_samples,
     placement_converged,
     rate_limit_revolute_joint_targets,
+    relative_object_grasp_servo_target,
     rmpflow_world_target,
     simulation_stop_reason,
     tactile_contact_hold_target,
@@ -30,6 +33,26 @@ from farpoint.control import (
     undirected_axis_angle_error_degrees,
     visual_servo_grasp_target,
 )
+
+
+def test_collision_safe_pregrasp_waypoints_raise_before_translating():
+    waypoints = collision_safe_pregrasp_waypoints(
+        [0.01, -0.30, 0.12],
+        [0.13, -0.13, 0.14],
+        clearance_z=0.22,
+    )
+
+    assert waypoints[0] == pytest.approx([0.01, -0.30, 0.22])
+    assert waypoints[1] == pytest.approx([0.13, -0.13, 0.22])
+
+
+def test_collision_safe_pregrasp_waypoints_reject_unsafe_clearance():
+    with pytest.raises(ValueError, match="clearance_z"):
+        collision_safe_pregrasp_waypoints(
+            [0.01, -0.30, 0.12],
+            [0.13, -0.13, 0.14],
+            clearance_z=0.14,
+        )
 
 
 def test_grasp_proof_uses_cumulative_contact_evidence():
@@ -476,6 +499,78 @@ def test_force_controlled_gripper_respects_validated_transport_ceiling():
     assert capped["position"] == pytest.approx(transport_ceiling)
 
 
+def test_force_controlled_rotary_jaw_closes_toward_lower_position():
+    update = force_controlled_rotary_jaw_target(
+        0.79,
+        0.791,
+        2.2,
+        0.6,
+        open_position=1.745,
+        closed_position=-0.175,
+        min_force=2.0,
+        max_force=20.0,
+        close_step=0.002,
+        backoff_step=0.001,
+        max_preload_error=0.02,
+        preload_reference_position=0.791,
+    )
+
+    assert update == {"position": pytest.approx(0.788), "action": "close"}
+
+
+def test_force_controlled_rotary_jaw_restores_30mm_settling_force_floor():
+    update = force_controlled_rotary_jaw_target(
+        0.2514,
+        0.2544,
+        1.55,
+        1.65,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        min_force=2.0,
+        max_force=60.0,
+        close_step=0.0005,
+        backoff_step=0.001,
+        max_preload_error=0.012,
+        preload_reference_position=0.2514,
+    )
+
+    assert update == {"position": pytest.approx(0.2509), "action": "close"}
+
+
+def test_force_controlled_rotary_jaw_backs_off_high_force_and_limits_preload():
+    backoff = force_controlled_rotary_jaw_target(
+        0.78,
+        0.779,
+        23.0,
+        0.0,
+        open_position=1.745,
+        closed_position=-0.175,
+        min_force=2.0,
+        max_force=20.0,
+        close_step=0.002,
+        backoff_step=0.001,
+        max_preload_error=0.02,
+        preload_reference_position=0.791,
+    )
+    capped = force_controlled_rotary_jaw_target(
+        0.771,
+        0.771,
+        0.0,
+        0.0,
+        open_position=1.745,
+        closed_position=-0.175,
+        min_force=2.0,
+        max_force=20.0,
+        close_step=0.002,
+        backoff_step=0.001,
+        max_preload_error=0.02,
+        preload_reference_position=0.791,
+    )
+
+    assert backoff == {"position": pytest.approx(0.781), "action": "backoff"}
+    assert capped == {"position": pytest.approx(0.771), "action": "close"}
+
+
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():
     result = gripper_aperture_alignment(
         {"center": [1.02, 0.24, 0.41]},
@@ -489,6 +584,48 @@ def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():
     assert result["position_error"] == pytest.approx([0.005, -0.005, -0.0025])
     assert result["xy_error"] == pytest.approx(0.0070710678)
     assert result["z_error"] == pytest.approx(0.0025)
+
+
+def test_relative_object_grasp_servo_tracks_offset_with_norm_limit():
+    result = relative_object_grasp_servo_target(
+        [0.15, -0.11, 0.06],
+        [0.03, 0.01, -0.04],
+        [0.13, -0.13, 0.09],
+        [0.13, -0.13, 0.09],
+        max_step=0.005,
+        max_correction=[0.02, 0.02, 0.02],
+    )
+
+    assert result["desired_position"] == pytest.approx([0.12, -0.12, 0.10])
+    delta = [
+        result["position"][axis] - [0.13, -0.13, 0.09][axis]
+        for axis in range(3)
+    ]
+    assert sum(value * value for value in delta) ** 0.5 == pytest.approx(0.005)
+
+
+def test_relative_object_grasp_servo_limits_total_axis_correction():
+    result = relative_object_grasp_servo_target(
+        [1.0, 1.0, 1.0],
+        [0.0, 0.0, 0.0],
+        [0.1, 0.2, 0.3],
+        [0.1, 0.2, 0.3],
+        max_step=2.0,
+        max_correction=[0.01, 0.02, 0.03],
+    )
+
+    assert result["position"] == pytest.approx([0.11, 0.22, 0.33])
+
+
+def test_relative_object_grasp_servo_rejects_invalid_limits():
+    with pytest.raises(ValueError, match="max_step"):
+        relative_object_grasp_servo_target(
+            [0.0] * 3,
+            [0.0] * 3,
+            [0.0] * 3,
+            [0.0] * 3,
+            max_step=0.0,
+        )
 
 
 def test_unilateral_contact_recenter_moves_toward_contact_side():

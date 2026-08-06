@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,38 @@ SCHEMA_VERSION = "farpoint.collection.v2"
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _new_manifest(
+    plan: dict[str, Any],
+    *,
+    collection_id: str,
+    git_commit: str,
+    required_successes: int,
+    maximum_attempts: int,
+    release_status: str,
+    completion_policy: str = "success_target",
+) -> dict[str, Any]:
+    if completion_policy not in {"success_target", "all_planned_trials"}:
+        raise ValueError("unsupported completion_policy")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "collection_id": collection_id,
+        "task_id": plan["task_id"],
+        "plan_id": plan["plan_id"],
+        "plan_sha256": plan["plan_sha256"],
+        "git_commit": git_commit,
+        "required_successes": required_successes,
+        "maximum_attempts": maximum_attempts,
+        "attempts": [],
+        "selected_variations": {},
+        "execution_status": "RUNNING",
+        "quality_status": "NOT_EVALUATED",
+        "release_status": release_status,
+        "completion_policy": completion_policy,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
 
 
 def create_manifest(
@@ -30,23 +63,46 @@ def create_manifest(
         raise ValueError("SO-101 collection requires exactly 100 planned variations")
     if maximum_attempts < len(trials):
         raise ValueError("maximum_attempts cannot be less than the planned variation count")
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "collection_id": collection_id,
-        "task_id": plan["task_id"],
-        "plan_id": plan["plan_id"],
-        "plan_sha256": plan["plan_sha256"],
-        "git_commit": git_commit,
-        "required_successes": 100,
-        "maximum_attempts": maximum_attempts,
-        "attempts": [],
-        "selected_variations": {},
-        "execution_status": "RUNNING",
-        "quality_status": "NOT_EVALUATED",
-        "release_status": "PILOT",
-        "created_at": _now(),
-        "updated_at": _now(),
-    }
+    return _new_manifest(
+        plan,
+        collection_id=collection_id,
+        git_commit=git_commit,
+        required_successes=100,
+        maximum_attempts=maximum_attempts,
+        release_status="PILOT",
+    )
+
+
+def create_gate_manifest(
+    plan: dict[str, Any], *, collection_id: str, git_commit: str
+) -> dict[str, Any]:
+    gate = plan.get("gate") or {}
+    trials = plan.get("trials") or []
+    required_successes = int(gate.get("required_successes", 0))
+    maximum_attempts = int(gate.get("maximum_attempts", 0))
+    kind = gate.get("kind")
+    if kind == "fixed_cube_repeatability":
+        if required_successes != len(trials) or maximum_attempts != len(trials):
+            raise ValueError("fixed gate must require one success for every frozen trial")
+    elif kind == "cube_workspace_matrix":
+        minimum_success_rate = float(gate.get("minimum_success_rate", 0.0))
+        if not 0.0 < minimum_success_rate <= 1.0:
+            raise ValueError("matrix gate minimum_success_rate must be in (0, 1]")
+        if maximum_attempts != len(trials):
+            raise ValueError("matrix gate must run each frozen trial exactly once")
+        if required_successes != math.ceil(minimum_success_rate * len(trials)):
+            raise ValueError("matrix gate required_successes does not match its threshold")
+    else:
+        raise ValueError("unsupported gate kind")
+    return _new_manifest(
+        plan,
+        collection_id=collection_id,
+        git_commit=git_commit,
+        required_successes=required_successes,
+        maximum_attempts=maximum_attempts,
+        release_status="EXPERIMENTAL",
+        completion_policy="all_planned_trials",
+    )
 
 
 def load_manifest(path: str | Path, plan: dict[str, Any]) -> dict[str, Any]:
@@ -66,6 +122,9 @@ def validate_manifest(manifest: dict[str, Any], plan: dict[str, Any]) -> None:
     if unknown:
         raise ValueError(f"collection selected unknown variations: {sorted(unknown)}")
     attempts = manifest.get("attempts") or []
+    completion_policy = manifest.get("completion_policy", "success_target")
+    if completion_policy not in {"success_target", "all_planned_trials"}:
+        raise ValueError("collection has unsupported completion_policy")
     if len(attempts) > int(manifest["maximum_attempts"]):
         raise ValueError("collection exceeds its frozen maximum attempt budget")
     attempt_ids = [row.get("attempt_id") for row in attempts]
@@ -82,15 +141,29 @@ def validate_manifest(manifest: dict[str, Any], plan: dict[str, Any]) -> None:
 def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any] | None:
     """Return the next uncovered variation, preserving the original split."""
     validate_manifest(manifest, plan)
-    if len(manifest["selected_variations"]) == int(manifest["required_successes"]):
+    completion_policy = manifest.get("completion_policy", "success_target")
+    if (
+        completion_policy == "success_target"
+        and len(manifest["selected_variations"])
+        == int(manifest["required_successes"])
+    ):
         return None
     if len(manifest["attempts"]) >= int(manifest["maximum_attempts"]):
         return None
     counts = Counter(row["variation_id"] for row in manifest["attempts"])
     selected = manifest["selected_variations"]
     candidates = [trial for trial in plan["trials"] if trial["variation_id"] not in selected]
-    candidates.sort(key=lambda trial: (counts[trial["variation_id"]], trial["trial_id"]))
-    trial = copy.deepcopy(candidates[0])
+    # Preserve the frozen plan order within each retry round. Sorting by the
+    # human-readable trial id silently defeated deliberately stratified or
+    # diagnostic plan ordering (for example a large-cube-first smoke test).
+    minimum_attempt_count = min(counts[trial["variation_id"]] for trial in candidates)
+    trial = copy.deepcopy(
+        next(
+            trial
+            for trial in candidates
+            if counts[trial["variation_id"]] == minimum_attempt_count
+        )
+    )
     attempt_index = counts[trial["variation_id"]]
     attempt_id = f"{trial['trial_id']}__attempt{attempt_index:02d}"
     retry_material = {
@@ -98,10 +171,12 @@ def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
         "trial_id": trial["trial_id"],
         "attempt_index": attempt_index,
     }
+    # Isaac Lab 3.0 forwards this value to NumPy's legacy RandomState API,
+    # which accepts only unsigned 32-bit seeds.
     retry_seed = int.from_bytes(
         hashlib.sha256(
             json.dumps(retry_material, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).digest()[:8],
+        ).digest()[:4],
         "big",
     )
     trial.update(
@@ -146,11 +221,22 @@ def record_attempt(
     manifest["attempts"].append(row)
     if row["selected_for_dataset"]:
         manifest["selected_variations"][attempt["variation_id"]] = attempt["attempt_id"]
-    complete = len(manifest["selected_variations"]) == int(manifest["required_successes"])
+    eligible_successes = len(manifest["selected_variations"])
     exhausted = len(manifest["attempts"]) >= int(manifest["maximum_attempts"])
+    completion_policy = manifest.get("completion_policy", "success_target")
+    complete = (
+        exhausted
+        if completion_policy == "all_planned_trials"
+        else eligible_successes == int(manifest["required_successes"])
+    )
     if complete or exhausted:
         manifest["execution_status"] = "FINISHED"
-        manifest["quality_status"] = "PASS" if complete else "FAIL"
+        manifest["quality_status"] = (
+            "PASS"
+            if complete
+            and eligible_successes >= int(manifest["required_successes"])
+            else "FAIL"
+        )
     manifest["updated_at"] = _now()
     validate_manifest(manifest, plan)
 

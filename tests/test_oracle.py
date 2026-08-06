@@ -6,6 +6,8 @@ from farpoint.oracle import (
     OraclePhase,
     OracleStateMachine,
     damped_least_squares,
+    quaternion_direction_error,
+    quaternion_rotation_vector_error,
 )
 
 
@@ -19,6 +21,41 @@ def test_damped_least_squares_solves_identity_task():
 def test_damped_least_squares_validates_dimensions():
     with pytest.raises(ValueError, match="dimensions"):
         damped_least_squares(np.eye(3), np.ones(2))
+
+
+def test_quaternion_rotation_vector_error_uses_shortest_xyzw_rotation():
+    identity = [0.0, 0.0, 0.0, 1.0]
+    quarter_turn_z = [0.0, 0.0, np.sqrt(0.5), np.sqrt(0.5)]
+
+    np.testing.assert_allclose(
+        quaternion_rotation_vector_error(identity, identity),
+        [0.0, 0.0, 0.0],
+    )
+    np.testing.assert_allclose(
+        quaternion_rotation_vector_error(quarter_turn_z, identity),
+        [0.0, 0.0, np.pi / 2],
+    )
+    np.testing.assert_allclose(
+        quaternion_rotation_vector_error(np.negative(quarter_turn_z), identity),
+        [0.0, 0.0, np.pi / 2],
+    )
+
+
+def test_quaternion_direction_error_constrains_axis_but_leaves_roll_free():
+    identity = [0.0, 0.0, 0.0, 1.0]
+    quarter_turn_x = [np.sqrt(0.5), 0.0, 0.0, np.sqrt(0.5)]
+    quarter_turn_z = [0.0, 0.0, np.sqrt(0.5), np.sqrt(0.5)]
+
+    np.testing.assert_allclose(
+        quaternion_direction_error(quarter_turn_x, identity),
+        [1.0, 0.0, 0.0],
+        atol=1e-6,
+    )
+    np.testing.assert_allclose(
+        quaternion_direction_error(quarter_turn_z, identity),
+        [0.0, 0.0, 0.0],
+        atol=1e-6,
+    )
 
 
 def test_oracle_requires_contact_lift_release_and_stability():

@@ -37,7 +37,7 @@ class FakeLeRobotDataset:
         (meta / "info.json").write_text(json.dumps({"features": {}}), encoding="utf-8")
 
 
-def _metadata(episode_id="episode-0000", split="train"):
+def _metadata(episode_id="episode-0000", split="train", *, include_wrist=False):
     obj = {
         "shape": "cube",
         "asset_id": "procedural_cube",
@@ -55,9 +55,9 @@ def _metadata(episode_id="episode-0000", split="train"):
         "provenance": {"simulator": "Isaac Sim", "physics_engine": "PhysX"},
         "task": {"task_id": "pick_place_cube_v1", "instruction": "Pick up the cube and place it in the tray.", "object_shape": "cube", "success_criteria_id": "contact_pick_place_v1"},
         "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "oracle_dls", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": {"sim_joint_names": list(SIM_JOINT_NAMES)}},
-        "scene": {"coordinate_frame": "world", "object": obj, "target": {"target_id": "tray"}, "cameras": ["front", "wrist"], "lighting_profile_id": "studio_v1"},
+        "scene": {"coordinate_frame": "world", "object": obj, "target": {"target_id": "tray"}, "cameras": ["front", "wrist"] if include_wrist else ["front"], "lighting_profile_id": "studio_v1"},
         "variation": {"schema_version": "farpoint.variation.v3", "variation_id": "cell_r00_c00_s00_red", "varied_axes": ["position_m"], "frozen_axes": ["shape"], "requested": obj, "resolved": obj, "split": split},
-        "recording": {"fps": 30, "cameras": ["observation.images.front", "observation.images.wrist"], "frame_count": 2, "state_features": list(SIM_JOINT_NAMES), "action_features": list(SIM_JOINT_NAMES)},
+        "recording": {"fps": 30, "control_hz": 120, "recording_stride": 4, "cameras": ["observation.images.front", "observation.images.wrist"] if include_wrist else ["observation.images.front"], "frame_count": 2, "state_features": list(SIM_JOINT_NAMES), "action_features": list(SIM_JOINT_NAMES)},
         "outcome": {"success": True, "dataset_valid": True, "failure_category": None, "failure_reason": None},
     }
 
@@ -70,13 +70,19 @@ def _episode(root, metadata):
     (root / "metrics.json").write_text(json.dumps({"success": True, "dataset_valid": True}), encoding="utf-8")
     rows = []
     for index in range(2):
-        for name, color in (("front", (255, 0, 0)), ("wrist", (0, 255, 0))):
+        cameras = (("front", (255, 0, 0)),)
+        if "observation.images.wrist" in metadata["recording"]["cameras"]:
+            cameras += (("wrist", (0, 255, 0)),)
+        for name, color in cameras:
             Image.new("RGB", (8, 6), color=color).save(root / f"{name}-{index}.png")
-        rows.append({"frame": index, "timestamp_seconds": index / 30, "rgb_path": f"front-{index}.png", "wrist_rgb_path": f"wrist-{index}.png", "joint_names": list(SIM_JOINT_NAMES), "joint_positions": [0.0] * 6, "action_joint_positions": [0.1] * 6})
+        row = {"frame": index, "timestamp_seconds": index / 30, "rgb_path": f"front-{index}.png", "joint_names": list(SIM_JOINT_NAMES), "joint_positions": [0.0] * 6, "action_joint_positions": [0.1] * 6}
+        if "observation.images.wrist" in metadata["recording"]["cameras"]:
+            row["wrist_rgb_path"] = f"wrist-{index}.png"
+        rows.append(row)
     (root / "observations.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
-def test_export_so101_writes_six_dof_and_two_cameras(tmp_path):
+def test_export_so101_v0_writes_six_dof_and_front_camera_only(tmp_path):
     metadata = _metadata()
     source = tmp_path / "episode-0000"
     _episode(source, metadata)
@@ -90,5 +96,21 @@ def test_export_so101_writes_six_dof_and_two_cameras(tmp_path):
         FakeLeRobotDataset.last_instance.frames[0]["observation.state"],
         radians_to_lerobot(np.zeros(6)),
     )
+    assert FakeLeRobotDataset.last_instance.frames[0]["observation.images.front"].shape == (6, 8, 3)
+    assert "observation.images.wrist" not in FakeLeRobotDataset.last_instance.frames[0]
+    sidecar = json.loads((output / "meta/farpoint_v3.json").read_text())
+    assert sidecar["robot"]["name"] == "so101"
+    assert sidecar["recording"]["cameras"] == ["observation.images.front"]
+    assert sidecar["recording"]["control_hz"] == 120
+    assert sidecar["recording"]["recording_stride"] == 4
+
+
+def test_export_so101_retains_dual_camera_compatibility(tmp_path):
+    metadata = _metadata(include_wrist=True)
+    source = tmp_path / "episode-0000"
+    _episode(source, metadata)
+    manifest = tmp_path / "selection.json"
+    manifest.write_text(json.dumps({"schema_version": "farpoint.export-selection.v1", "dataset_id": "so101-dual-camera-fixture", "episodes": [{"episode_dir": str(source), "trial_id": "trial-0000", "split": "train"}]}), encoding="utf-8")
+
+    export_dataset(manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset)
     assert FakeLeRobotDataset.last_instance.frames[0]["observation.images.wrist"].shape == (6, 8, 3)
-    assert json.loads((output / "meta/farpoint_v3.json").read_text())["robot"]["name"] == "so101"

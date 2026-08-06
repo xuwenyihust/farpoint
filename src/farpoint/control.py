@@ -1,6 +1,25 @@
 import math
 
 
+def collision_safe_pregrasp_waypoints(
+    home_position,
+    final_position,
+    *,
+    clearance_z,
+):
+    """Route above the workspace before moving over the grasp target."""
+    if len(home_position) != 3 or len(final_position) != 3:
+        raise ValueError("pregrasp positions must have three coordinates")
+    clearance = float(clearance_z)
+    minimum_clearance = max(float(home_position[2]), float(final_position[2]))
+    if clearance <= minimum_clearance:
+        raise ValueError("clearance_z must be above home and final positions")
+    return [
+        [float(home_position[0]), float(home_position[1]), clearance],
+        [float(final_position[0]), float(final_position[1]), clearance],
+    ]
+
+
 def _clamp(value, lower, upper):
     return max(float(lower), min(float(upper), float(value)))
 
@@ -79,6 +98,57 @@ def gripper_aperture_alignment(left_bounds, right_bounds, object_position):
 def undirected_axis_angle_error_degrees(actual, target):
     difference = (float(actual) - float(target) + 90.0) % 180.0 - 90.0
     return abs(difference)
+
+
+def relative_object_grasp_servo_target(
+    object_position,
+    desired_object_minus_grasp,
+    commanded_grasp_position,
+    nominal_grasp_position,
+    *,
+    max_step=0.0005,
+    max_correction=(0.015, 0.015, 0.020),
+):
+    """Track a measured object while preserving a calibrated grasp offset."""
+    values = (
+        object_position,
+        desired_object_minus_grasp,
+        commanded_grasp_position,
+        nominal_grasp_position,
+        max_correction,
+    )
+    if not all(len(value) == 3 for value in values):
+        raise ValueError("relative grasp servo values must have three coordinates")
+    step_limit = float(max_step)
+    if step_limit <= 0.0:
+        raise ValueError("max_step must be positive")
+    corrections = [float(value) for value in max_correction]
+    if any(value < 0.0 for value in corrections):
+        raise ValueError("max_correction values must be non-negative")
+
+    desired = [
+        float(object_position[axis])
+        - float(desired_object_minus_grasp[axis])
+        for axis in range(3)
+    ]
+    error = [
+        desired[axis] - float(commanded_grasp_position[axis])
+        for axis in range(3)
+    ]
+    error_norm = math.sqrt(sum(value * value for value in error))
+    scale = min(1.0, step_limit / error_norm) if error_norm > 0.0 else 0.0
+    target = []
+    for axis in range(3):
+        stepped = float(commanded_grasp_position[axis]) + scale * error[axis]
+        nominal = float(nominal_grasp_position[axis])
+        target.append(
+            _clamp(
+                stepped,
+                nominal - corrections[axis],
+                nominal + corrections[axis],
+            )
+        )
+    return {"position": target, "error": error, "desired_position": desired}
 
 
 def unilateral_contact_recenter_target(
@@ -541,6 +611,51 @@ def force_controlled_gripper_target(
             "action": "close",
         }
     return {"position": target, "action": "hold"}
+
+
+def force_controlled_rotary_jaw_target(
+    target_position,
+    measured_position,
+    left_force,
+    right_force,
+    *,
+    open_position,
+    closed_position,
+    min_force,
+    max_force,
+    close_step,
+    backoff_step,
+    max_preload_error=None,
+    preload_reference_position=None,
+):
+    """Adapt force control to a rotary jaw whose position decreases on close."""
+    open_value = float(open_position)
+    closed_value = float(closed_position)
+    if closed_value >= open_value:
+        raise ValueError("closed_position must be below open_position")
+
+    reference = (
+        None
+        if preload_reference_position is None
+        else open_value - float(preload_reference_position)
+    )
+    update = force_controlled_gripper_target(
+        open_value - float(target_position),
+        open_value - float(measured_position),
+        left_force,
+        right_force,
+        min_force=min_force,
+        max_force=max_force,
+        close_step=close_step,
+        backoff_step=backoff_step,
+        max_position=open_value - closed_value,
+        max_preload_error=max_preload_error,
+        preload_reference_position=reference,
+    )
+    return {
+        "position": open_value - float(update["position"]),
+        "action": update["action"],
+    }
 
 
 def filtered_contact_force(

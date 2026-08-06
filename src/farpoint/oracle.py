@@ -140,3 +140,74 @@ def damped_least_squares(
         projector = np.eye(jacobian.shape[1]) - task_inverse @ jacobian
         delta += nullspace_gain * projector @ posture
     return delta.astype(np.float32)
+
+
+def quaternion_rotation_vector_error(target_xyzw, current_xyzw) -> np.ndarray:
+    """Return the shortest rotation vector from current to target (xyzw)."""
+    target = np.asarray(target_xyzw, dtype=np.float64)
+    current = np.asarray(current_xyzw, dtype=np.float64)
+    if target.shape != (4,) or current.shape != (4,):
+        raise ValueError("quaternions must have shape (4,)")
+    target_norm = float(np.linalg.norm(target))
+    current_norm = float(np.linalg.norm(current))
+    if target_norm <= 1e-12 or current_norm <= 1e-12:
+        raise ValueError("quaternions must be non-zero")
+    target /= target_norm
+    current /= current_norm
+    if float(np.dot(target, current)) < 0.0:
+        target = -target
+    tx, ty, tz, tw = target
+    cx, cy, cz, cw = current
+    error = np.asarray(
+        [
+            tw * cw + tx * cx + ty * cy + tz * cz,
+            -tw * cx + tx * cw - ty * cz + tz * cy,
+            -tw * cy + tx * cz + ty * cw - tz * cx,
+            -tw * cz - tx * cy + ty * cx + tz * cw,
+        ],
+        dtype=np.float64,
+    )
+    if error[0] < 0.0:
+        error = -error
+    vector_norm = float(np.linalg.norm(error[1:]))
+    if vector_norm <= 1e-12:
+        return np.zeros(3, dtype=np.float32)
+    angle = 2.0 * np.arctan2(vector_norm, float(error[0]))
+    return (error[1:] * (angle / vector_norm)).astype(np.float32)
+
+
+def quaternion_direction_error(
+    target_xyzw,
+    current_xyzw,
+    local_axis=(0.0, 0.0, 1.0),
+) -> np.ndarray:
+    """Return angular error aligning one body-fixed axis, leaving roll free."""
+
+    def rotate(quaternion, vector):
+        quaternion = np.asarray(quaternion, dtype=np.float64)
+        if quaternion.shape != (4,):
+            raise ValueError("quaternions must have shape (4,)")
+        norm = float(np.linalg.norm(quaternion))
+        if norm <= 1e-12:
+            raise ValueError("quaternions must be non-zero")
+        x, y, z, w = quaternion / norm
+        rotation = np.asarray(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+            ],
+            dtype=np.float64,
+        )
+        return rotation @ vector
+
+    axis = np.asarray(local_axis, dtype=np.float64)
+    if axis.shape != (3,):
+        raise ValueError("local_axis must have shape (3,)")
+    axis_norm = float(np.linalg.norm(axis))
+    if axis_norm <= 1e-12:
+        raise ValueError("local_axis must be non-zero")
+    axis /= axis_norm
+    current_direction = rotate(current_xyzw, axis)
+    target_direction = rotate(target_xyzw, axis)
+    return np.cross(current_direction, target_direction).astype(np.float32)

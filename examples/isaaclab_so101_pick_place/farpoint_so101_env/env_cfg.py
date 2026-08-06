@@ -45,44 +45,46 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
     num_envs = 1
     env_spacing = 2.0
     replicate_physics = False
-    ground = AssetBaseCfg(prim_path="/World/Ground", spawn=sim_utils.GroundPlaneCfg())
     table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         spawn=sim_utils.CuboidCfg(
-            size=(0.50, 0.42, 0.04),
+            # Leave clearance in front of the fixed base so the official HOME
+            # pose (below the work surface) can rise without striking the slab
+            # edge. The variation workspace starts well inside x=0.08.
+            size=(0.37, 0.48, 0.04),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.42)),
         ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, 0.0, 0.012)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.265, 0.0, 0.012)),
     )
     tray_base = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Tray/Base",
         spawn=sim_utils.CuboidCfg(
-            size=(0.10, 0.08, 0.01),
+            size=(0.16, 0.14, 0.01),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.08, 0.70, 0.20)),
         ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.22, 0.10, 0.037)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, 0.02, 0.037)),
     )
     tray_wall_x0 = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Tray/WallX0",
-        spawn=sim_utils.CuboidCfg(size=(0.01, 0.08, 0.025), collision_props=sim_utils.CollisionPropertiesCfg()),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.17, 0.10, 0.050)),
+        spawn=sim_utils.CuboidCfg(size=(0.01, 0.14, 0.025)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.12, 0.02, 0.050)),
     )
     tray_wall_x1 = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Tray/WallX1",
-        spawn=sim_utils.CuboidCfg(size=(0.01, 0.08, 0.025), collision_props=sim_utils.CollisionPropertiesCfg()),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.27, 0.10, 0.050)),
+        spawn=sim_utils.CuboidCfg(size=(0.01, 0.14, 0.025)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.28, 0.02, 0.050)),
     )
     tray_wall_y0 = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Tray/WallY0",
-        spawn=sim_utils.CuboidCfg(size=(0.10, 0.01, 0.025), collision_props=sim_utils.CollisionPropertiesCfg()),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.22, 0.06, 0.050)),
+        spawn=sim_utils.CuboidCfg(size=(0.16, 0.01, 0.025)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, -0.05, 0.050)),
     )
     tray_wall_y1 = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Tray/WallY1",
-        spawn=sim_utils.CuboidCfg(size=(0.10, 0.01, 0.025), collision_props=sim_utils.CollisionPropertiesCfg()),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.22, 0.14, 0.050)),
+        spawn=sim_utils.CuboidCfg(size=(0.16, 0.01, 0.025)),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.20, 0.09, 0.050)),
     )
     cube_small_red = _cube("CubeSmallRed", 0.03, (0.85, 0.08, 0.06))
     cube_small_blue = _cube("CubeSmallBlue", 0.03, (0.04, 0.20, 0.85))
@@ -138,12 +140,16 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
         width=640,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(focal_length=13.5, focus_distance=0.08),
-        # The original workshop-style value was written as wxyz.  OffsetCfg
-        # in the pinned Isaac Lab release expects xyzw; leaving it unconverted
-        # points the optical axis back into the gripper body.
+        # OpenGL looks along camera-local -Z.  This orientation is calibrated
+        # from a successful physical grasp: in gripper-local coordinates the
+        # cube lies along approximately (0.516, -0.652, 0.556) from the camera.
+        # The previous -45-degree X rotation looked down and away from the
+        # aperture, producing valid but task-empty wrist frames.
         offset=TiledCameraCfg.OffsetCfg(
-            pos=(-0.005, 0.06, -0.062),
-            rot=(-0.3826834, 0.0, 0.0, 0.9238795),
+            # Keep the optical center outside the workshop bracket and above
+            # the finger plane so robot geometry does not occlude the task.
+            pos=(-0.02, -0.06, 0.08),
+            rot=(0.3556016, -0.2029594, -0.4522391, 0.7923603),
             convention="opengl",
         ),
     )
@@ -187,6 +193,12 @@ class EmptyManagerCfg:
 
 @configclass
 class EventsCfg:
+    bind_gripper_material = EventTerm(
+        func=mdp.bind_so101_gripper_material,
+        mode="prestartup",
+    )
+    # Binding de-instances the collision subtrees, so disable the workshop
+    # camera bracket afterwards to keep its collider from being restored.
     disable_camera_mount_collision = EventTerm(
         func=mdp.disable_workshop_camera_mount_collision,
         mode="prestartup",
@@ -210,10 +222,12 @@ class SO101CubePickPlaceEnvCfg(ManagerBasedRLEnvCfg):
     curriculum: EmptyManagerCfg = EmptyManagerCfg()
 
     def __post_init__(self):
-        self.decimation = 4
+        # The contact-aware oracle runs at the 120 Hz physics rate. RGB is
+        # rendered and recorded every fourth control tick (30 Hz).
+        self.decimation = 1
         self.episode_length_s = 20.0
         self.sim.dt = 1.0 / 120.0
-        self.sim.render_interval = self.decimation
+        self.sim.render_interval = 4
         self.sim.render.rendering_mode = "balanced"
         self.viewer.eye = (0.45, -0.45, 0.35)
         self.viewer.lookat = (0.20, 0.02, 0.07)

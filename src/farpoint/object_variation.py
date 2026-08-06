@@ -162,7 +162,12 @@ def generate_variation_plan(config: dict[str, Any]) -> dict[str, Any]:
                         asset_id=str(base.get("asset_id", "procedural_cube")),
                         dimensions_m=(size, size, size),
                         position_m=(xy[0], xy[1], float(config["workspace"]["table_z_m"]) + size / 2),
-                        orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+                        orientation_xyzw=tuple(
+                            float(value)
+                            for value in base.get(
+                                "orientation_xyzw", (0.0, 0.0, 0.0, 1.0)
+                            )
+                        ),
                         rgba=tuple(float(value) for value in color["rgba"]),
                         mass_kg=float(base["mass_kg"]),
                         static_friction=float(base["static_friction"]),
