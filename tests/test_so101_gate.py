@@ -61,9 +61,9 @@ def test_workspace_matrix_freezes_all_ten_cells_and_runs_all_before_scoring():
     positions = [
         (0.15, -0.11),
         (0.25, -0.11),
-        (0.20, -0.07),
-        (0.15, -0.03),
-        (0.25, -0.03),
+        (0.20, -0.095),
+        (0.15, -0.08),
+        (0.25, -0.08),
     ]
     plan = build_cube_workspace_matrix_plan(
         _config(),
@@ -117,4 +117,19 @@ def test_workspace_matrix_requires_five_unique_in_bounds_positions():
     with pytest.raises(ValueError, match="must be unique"):
         build_cube_workspace_matrix_plan(
             _config(), gate_id="bad", positions_xy_m=[(0.2, -0.07)] * 5
+        )
+
+
+def test_workspace_matrix_rejects_cube_footprint_overlapping_target_tray():
+    with pytest.raises(ValueError, match="overlaps the target tray"):
+        build_cube_workspace_matrix_plan(
+            _config(),
+            gate_id="bad",
+            positions_xy_m=[
+                (0.15, -0.11),
+                (0.25, -0.11),
+                (0.20, -0.095),
+                (0.15, -0.08),
+                (0.25, -0.03),
+            ],
         )

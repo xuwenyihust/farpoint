@@ -18,9 +18,9 @@ from farpoint.so101_gate import build_cube_workspace_matrix_plan  # noqa: E402
 DEFAULT_POSITIONS = (
     (0.15, -0.11),
     (0.25, -0.11),
-    (0.20, -0.07),
-    (0.15, -0.03),
-    (0.25, -0.03),
+    (0.20, -0.095),
+    (0.15, -0.08),
+    (0.25, -0.08),
 )
 
 

@@ -119,6 +119,20 @@ def build_cube_workspace_matrix_plan(
         raise ValueError("minimum_success_rate must be in (0, 1]")
     x_bounds = variation_config["workspace"]["x_bounds_m"]
     y_bounds = variation_config["workspace"]["y_bounds_m"]
+    edge_sizes = [float(value) for value in variation_config["object"]["edge_sizes_m"]]
+    if len(edge_sizes) != 2:
+        raise ValueError("workspace matrix requires exactly two configured cube sizes")
+    target_position = variation_config["target"]["position_m"]
+    target_dimensions = variation_config["target"]["dimensions_m"]
+    # A cube at arbitrary yaw fits inside a horizontal circle with radius
+    # edge/sqrt(2).  Reject any center whose conservative footprint intersects
+    # the fixed tray, so the workspace gate never starts with the object on or
+    # under the placement target.
+    cube_half_extent = max(edge_sizes) / math.sqrt(2.0)
+    target_x_min = float(target_position[0]) - float(target_dimensions[0]) / 2.0
+    target_x_max = float(target_position[0]) + float(target_dimensions[0]) / 2.0
+    target_y_min = float(target_position[1]) - float(target_dimensions[1]) / 2.0
+    target_y_max = float(target_position[1]) + float(target_dimensions[1]) / 2.0
     for position in positions_xy_m:
         if len(position) != 2:
             raise ValueError("each workspace position must contain x and y")
@@ -126,11 +140,16 @@ def build_cube_workspace_matrix_plan(
             raise ValueError("workspace matrix x position is outside configured bounds")
         if not y_bounds[0] <= position[1] <= y_bounds[1]:
             raise ValueError("workspace matrix y position is outside configured bounds")
+        overlaps_target = (
+            float(position[0]) + cube_half_extent > target_x_min
+            and float(position[0]) - cube_half_extent < target_x_max
+            and float(position[1]) + cube_half_extent > target_y_min
+            and float(position[1]) - cube_half_extent < target_y_max
+        )
+        if overlaps_target:
+            raise ValueError("workspace matrix cube footprint overlaps the target tray")
 
     base_plan = generate_variation_plan(variation_config)
-    edge_sizes = [float(value) for value in variation_config["object"]["edge_sizes_m"]]
-    if len(edge_sizes) != 2:
-        raise ValueError("workspace matrix requires exactly two configured cube sizes")
     templates = {
         edge_m: next(
             trial
