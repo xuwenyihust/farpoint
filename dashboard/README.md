@@ -26,3 +26,6 @@ list. External episodes remain in place and are never copied or quarantined.
 The registry supports legacy top-level episode metadata and Farpoint episode v3
 metadata. For v3, the Dashboard reads `identity`, `outcome`, `recording`, and
 `variation`, and plays the front camera directly from `rgb/front_*.png`.
+The episode details panel displays canonical scene entities plus the requested
+and simulator-resolved entity states; these remain read-only sidecar data and
+are fetched on demand rather than copied into the registry database.

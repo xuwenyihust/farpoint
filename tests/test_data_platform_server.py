@@ -1,4 +1,5 @@
 import base64
+import json
 import sys
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ SCRIPTS_ROOT = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_ROOT))
 
 from data_platform_server import (  # noqa: E402
+    build_episode_detail,
     build_preview_manifest,
     resolve_episode_asset,
     resolve_registered_episode_asset,
@@ -30,6 +32,57 @@ class DataPlatformAuthenticationTests(unittest.TestCase):
 
 
 class PreviewManifestTests(unittest.TestCase):
+    def test_builds_v3_entity_detail_from_registered_episode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            episode = Path(temporary) / "episode_so101_entities"
+            episode.mkdir()
+            entity = {
+                "entity_id": "placement_target",
+                "role": "placement_target",
+                "entity_type": "box",
+                "asset_id": "open_box_v1",
+            }
+            requested = {"placement_target": {**entity, "requested": True}}
+            resolved = {"placement_target": {**entity, "requested": False}}
+            (episode / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "farpoint.episode.v3",
+                        "identity": {
+                            "episode_id": episode.name,
+                            "split": "validation",
+                        },
+                        "task": {
+                            "task_id": "pick_place_generic",
+                            "target_entity_id": "placement_target",
+                            "acceptance_region_id": "placement_region",
+                        },
+                        "scene": {"entities": [entity]},
+                        "variation": {
+                            "variation_id": "box_pose_01",
+                            "varied_axes": [
+                                "entities.placement_target.pose.position_m"
+                            ],
+                            "requested": {"entities": requested},
+                            "resolved": {"entities": resolved},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            detail = build_episode_detail(
+                episode,
+                episode.name,
+                registry_row={"collection_id": "box_gate", "managed": 0},
+            )
+
+            self.assertEqual(detail["scene_entities"], [entity])
+            self.assertEqual(detail["requested_entities"], requested)
+            self.assertEqual(detail["resolved_entities"], resolved)
+            self.assertEqual(detail["source"]["collection_id"], "box_gate")
+            self.assertFalse(detail["source"]["managed"])
+
     def test_lists_v3_front_rgb_frames_without_a_preview_copy(self):
         with tempfile.TemporaryDirectory() as temporary:
             episode = Path(temporary) / "episode_so101_001"

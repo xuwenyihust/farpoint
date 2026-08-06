@@ -97,6 +97,49 @@ def build_preview_manifest(episodes_root, episode_id, episode_dir=None):
     }
 
 
+def build_episode_detail(episode_dir, episode_id, registry_row=None):
+    """Return queryable v3 scene metadata without exposing arbitrary files."""
+    metadata_path = resolve_registered_episode_asset(
+        episode_dir, episode_id, "metadata.json"
+    )
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError("episode metadata is not valid JSON") from error
+    identity = metadata.get("identity") or {}
+    task = metadata.get("task") or {}
+    scene = metadata.get("scene") or {}
+    variation = metadata.get("variation") or {}
+    requested = variation.get("requested") or {}
+    resolved = variation.get("resolved") or {}
+    row = registry_row or {}
+    return {
+        "episode_id": episode_id,
+        "schema_version": metadata.get("schema_version"),
+        "task": {
+            "task_id": task.get("task_id") or metadata.get("task_name"),
+            "instruction": task.get("instruction"),
+            "manipulated_entity_id": task.get("manipulated_entity_id"),
+            "target_entity_id": task.get("target_entity_id"),
+            "acceptance_region_id": task.get("acceptance_region_id"),
+        },
+        "variation": {
+            "variation_id": variation.get("variation_id"),
+            "split": identity.get("split") or variation.get("split"),
+            "varied_axes": variation.get("varied_axes") or [],
+            "frozen_axes": variation.get("frozen_axes") or [],
+        },
+        "scene_entities": scene.get("entities") or [],
+        "requested_entities": requested.get("entities") or {},
+        "resolved_entities": resolved.get("entities") or {},
+        "source": {
+            "collection_id": row.get("collection_id"),
+            "source_root": row.get("source_root"),
+            "managed": bool(row.get("managed", True)),
+        },
+    }
+
+
 def resolve_episode_asset(episodes_root, relative):
     """Resolve a local or symlinked episode asset without allowing path escape."""
     episodes_root = Path(episodes_root).resolve()
@@ -216,6 +259,23 @@ class PlatformHandler(BaseHTTPRequestHandler):
                         self.state.registry.layout.episodes,
                         episode_id,
                         episode_dir=row["artifact_path"],
+                    )
+                )
+            except FileNotFoundError:
+                self.send_error(HTTPStatus.NOT_FOUND)
+            except ValueError as error:
+                self._json({"error": str(error)}, status=HTTPStatus.BAD_REQUEST)
+        elif parsed.path.startswith("/api/episodes/"):
+            episode_id = unquote(parsed.path.removeprefix("/api/episodes/"))
+            try:
+                if not episode_id or "/" in episode_id or "\\" in episode_id:
+                    raise ValueError("invalid episode id")
+                row = self.state.registry.get_episode(episode_id)
+                if not row or not row.get("artifact_path"):
+                    raise FileNotFoundError(episode_id)
+                self._json(
+                    build_episode_detail(
+                        row["artifact_path"], episode_id, registry_row=row
                     )
                 )
             except FileNotFoundError:

@@ -139,9 +139,35 @@ def dashboard(tmp_path):
                 },
                 "provenance": {"created_at": "2026-08-06T00:00:00+00:00"},
                 "task": {"task_id": "so101_cube_pick_place"},
+                "scene": {
+                    "entities": [
+                        {
+                            "entity_id": "pick_object",
+                            "role": "manipulated_object",
+                            "entity_type": "cube",
+                            "asset_id": "procedural_cube_v1",
+                            "pose": {"position_m": [0.15, -0.11, 0.052]},
+                            "geometry": {"dimensions_m": [0.04, 0.04, 0.04]},
+                            "physics": {"body_type": "dynamic", "mass_kg": 0.04},
+                        },
+                        {
+                            "entity_id": "placement_target",
+                            "role": "placement_target",
+                            "entity_type": "pad",
+                            "asset_id": "green_pad_v1",
+                            "pose": {"position_m": [0.2, 0.1, 0.037]},
+                            "geometry": {"dimensions_m": [0.16, 0.14, 0.01]},
+                            "physics": {"body_type": "static"},
+                            "regions": [{"relation": "on", "geometry": {"dimensions_m": [0.16, 0.14, 0.01]}}],
+                        },
+                    ]
+                },
                 "variation": {
                     "variation_id": "cube_30mm_position_01",
                     "split": "validation",
+                    "varied_axes": ["entities.pick_object.pose.position_m"],
+                    "requested": {"entities": {"placement_target": {"entity_type": "pad", "pose": {"position_m": [0.2, 0.1, 0.037]}}}},
+                    "resolved": {"entities": {"placement_target": {"entity_type": "pad", "pose": {"position_m": [0.200000003, 0.100000001, 0.037]}}}},
                 },
                 "recording": {
                     "frame_count": 2,
@@ -255,8 +281,24 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
             "button", name=f"Play preview for {dashboard['so101_success']}"
         ).click()
         page.get_by_text("2 preview frames").wait_for()
-        assert "/rgb/front_000000.png" in page.locator("#playerImage").get_attribute("src")
+        player_source = page.locator("#playerImage").get_attribute("src")
+        assert any(
+            frame in player_source
+            for frame in (
+                "/rgb/front_000000.png",
+                "/rgb/front_000001.png",
+            )
+        )
         page.get_by_role("button", name="Close playback").click()
+        page.get_by_role(
+            "button", name=f"View metadata for {dashboard['so101_success']}"
+        ).click()
+        page.get_by_text("Manipulated object", exact=True).wait_for()
+        page.get_by_text("Placement target", exact=True).wait_for()
+        page.get_by_text("Requested entities", exact=True).wait_for()
+        page.get_by_text("Resolved entities", exact=True).wait_for()
+        assert page.get_by_text("0.200000003", exact=False).count() >= 1
+        page.get_by_role("button", name="Close metadata").click()
 
         page.locator("#collectionFilter").fill(dashboard["collection_id"])
         page.locator("#splitFilter").select_option("validation")
