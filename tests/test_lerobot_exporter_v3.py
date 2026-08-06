@@ -56,6 +56,15 @@ def _metadata(
         "dynamic_friction": 1.0,
         "restitution": 0.0,
     }
+    variation_obj = {
+        key: value for key, value in obj.items() if key != "initial_pose"
+    }
+    variation_obj.update(
+        {
+            "position_m": obj["initial_pose"]["position_m"],
+            "orientation_xyzw": obj["initial_pose"]["orientation_xyzw"],
+        }
+    )
     metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": episode_id, "trial_id": episode_id.replace("episode", "trial"), "task_id": "pick_place_cube_v1", "split": split, "episode_seed": 7},
@@ -63,7 +72,7 @@ def _metadata(
         "task": {"task_id": "pick_place_cube_v1", "instruction": "Pick up the cube and place it in the tray.", "object_shape": "cube", "success_criteria_id": "contact_pick_place_v1"},
         "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "oracle_dls", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": {"sim_joint_names": list(SIM_JOINT_NAMES)}},
         "scene": {"coordinate_frame": "world", "object": obj, "target": {"target_id": "tray"}, "cameras": ["front", "wrist"] if include_wrist else ["front"], "lighting_profile_id": "studio_v1"},
-        "variation": {"schema_version": "farpoint.variation.v3", "variation_id": "cell_r00_c00_s00_red", "varied_axes": ["position_m"], "frozen_axes": ["shape"], "requested": obj, "resolved": obj, "split": split},
+        "variation": {"schema_version": "farpoint.variation.v3", "variation_id": "cell_r00_c00_s00_red", "varied_axes": ["position_m"], "frozen_axes": ["shape"], "requested": variation_obj, "resolved": variation_obj, "split": split},
         "recording": {"fps": 30, "control_hz": 120, "recording_stride": 4, "cameras": ["observation.images.front", "observation.images.wrist"] if include_wrist else ["observation.images.front"], "frame_count": 2, "state_features": list(SIM_JOINT_NAMES), "action_features": list(SIM_JOINT_NAMES)},
         "outcome": {"success": True, "dataset_valid": True, "failure_category": None, "failure_reason": None},
     }
