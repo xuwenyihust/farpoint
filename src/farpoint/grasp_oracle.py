@@ -20,6 +20,52 @@ class GraspPhase(str, Enum):
     FAILED = "failed"
 
 
+def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
+    """Return whether a one-finger load should still steer the aperture."""
+    return phase in {
+        GraspPhase.CONTACT_ALIGNMENT,
+        GraspPhase.SLOW_CLOSE,
+        GraspPhase.BILATERAL_SETTLE,
+        GraspPhase.STATIC_HOLD,
+    }
+
+
+def advance_proof_lift_command(
+    commanded_joints,
+    measured_joints,
+    current_height_m: float,
+    *,
+    just_armed: bool,
+    increment_m: float = 0.0000625,
+    maximum_height_m: float = 0.010,
+) -> tuple[np.ndarray, float]:
+    """Advance proof lift without erasing accumulated gravity compensation."""
+    command_base = cartesian_motion_command_base(
+        commanded_joints, measured_joints, entering_motion=just_armed
+    )
+    if not np.isfinite(current_height_m) or current_height_m < 0.0:
+        raise ValueError("current proof-lift height must be finite and non-negative")
+    if increment_m <= 0.0 or maximum_height_m <= 0.0:
+        raise ValueError("proof-lift increment and maximum must be positive")
+    if current_height_m > maximum_height_m:
+        raise ValueError("current proof-lift height exceeds the maximum")
+    next_height = min(maximum_height_m, current_height_m + increment_m)
+    return command_base, float(next_height)
+
+
+def cartesian_motion_command_base(
+    commanded_joints, measured_joints, *, entering_motion: bool
+) -> np.ndarray:
+    """Rebase once on entry, then retain the integrated Cartesian command."""
+    commanded = np.asarray(commanded_joints, dtype=np.float32)
+    measured = np.asarray(measured_joints, dtype=np.float32)
+    if commanded.shape != measured.shape or commanded.ndim != 1:
+        raise ValueError("commanded and measured joints must be matching vectors")
+    if not np.all(np.isfinite(commanded)) or not np.all(np.isfinite(measured)):
+        raise ValueError("joint vectors must contain only finite values")
+    return (measured if entering_motion else commanded).copy()
+
+
 @dataclass(frozen=True)
 class ControlRecordingSchedule:
     """Separate high-rate control ticks from policy recording frames."""

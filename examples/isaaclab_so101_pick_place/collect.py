@@ -110,6 +110,9 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspDecision,
     GraspEvidence,
     GraspPhase,
+    advance_proof_lift_command,
+    cartesian_motion_command_base,
+    grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     quaternion_rotation_matrix_xyzw,
@@ -1276,6 +1279,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
     transport_recovery_xy = None
     placement_object_xy = None
     lift_object_start_position = None
+    transport_lift_target_m = 0.0
     bilateral_capture_steps = 0
     verify_bilateral_steps = 0
     verify_capture_latched = False
@@ -1378,12 +1382,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             grasp_jaw_hold = float(jaw_update["position"])
             jaw_force_action = str(jaw_update["action"])
         recenter_active = False
+        closing_alignment = phase is OraclePhase.CLOSE and (
+            grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
+        )
         verification_alignment = (
             phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
         )
         if (
             grasp_hold_pose is not None
-            and (settling_capture or verification_alignment)
+            and (closing_alignment or settling_capture or verification_alignment)
             and balanced_forces is not None
             and min(balanced_forces) < 0.5 <= max(balanced_forces)
         ):
@@ -1575,6 +1582,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             # Prove the grasp with a gentle test lift. A direct 8 cm target
             # change produces enough acceleration to shed a small cube before
             # contact persistence can be evaluated.
+            just_armed_proof_lift = False
             bilateral_capture = min(balanced_forces) >= 0.10
             if bilateral_capture and not verify_capture_latched:
                 # Re-capture the measured aperture as soon as recentering has
@@ -1596,7 +1604,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
                 verify_capture_wait_steps += 1
             if not verify_grasp_armed:
                 # While the rotary jaw settles, hold the arm exactly where it
-                # is, apart from one measured 0.25 mm recenter step, instead of
+                # is, apart from a bounded Cartesian recenter step, instead of
                 # integrating pose error against a constrained contact.
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 if not recenter_active:
@@ -1624,6 +1632,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
                 and verify_capture_wait_steps >= 3
             ):
                 verify_grasp_armed = True
+                just_armed_proof_lift = True
                 # Contact forces can prevent the arm from exactly reaching its
                 # Cartesian hold target while IK continues integrating in
                 # command space.  Discard that accumulated command error before
@@ -1633,8 +1642,17 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
                 grasp_hold_pose = ee_position.copy()
                 verify_object_start_z = float(scene[active_name].data.root_pos_w[0, 2].item())
             if verify_grasp_armed:
-                commanded_joints = _numpy(current).astype(np.float32).copy()
-                verify_lift_height = min(0.010, verify_lift_height + 0.0000625)
+                # Preserve the command-space integration that starts from the
+                # one-time rebase above. Rebasing on measured joints on every
+                # tick caps the gravity-loaded arm at one 5 mrad servo step;
+                # the failed workspace runs then moved the EE only 1.6 mm and
+                # never achieved the required 5 mm physical proof lift.
+                commanded_joints, verify_lift_height = advance_proof_lift_command(
+                    commanded_joints,
+                    _numpy(current),
+                    verify_lift_height,
+                    just_armed=just_armed_proof_lift,
+                )
             target = grasp_hold_pose + np.asarray((0.0, 0.0, verify_lift_height))
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw
             gripper_control = "verify_hold"
@@ -1645,6 +1663,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             lift_height = min(
                 0.08, verify_lift_height + 0.0000625 * (machine.phase_steps + 1)
             )
+            transport_lift_target_m = lift_height - verify_lift_height
             phase_motion_complete = lift_height >= 0.08
             object_world_position = _numpy(
                 scene[active_name].data.root_pos_w[0]
@@ -1658,7 +1677,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
             control_point_position = object_world_position
             control_point_offset_world = object_world_position - ee_position
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw
-            commanded_joints = _numpy(current).astype(np.float32).copy()
+            # Rebase exactly once when transport begins, then retain command-
+            # space integration. The former per-tick rebase moved a validated
+            # 30 mm grasp only 35.7 mm before the 40 s LIFT timeout instead of
+            # reaching the requested 80 mm clearance.
+            commanded_joints = cartesian_motion_command_base(
+                commanded_joints,
+                _numpy(current),
+                entering_motion=machine.phase_steps == 0,
+            )
         elif phase is OraclePhase.PREPLACE:
             object_world_position = _numpy(
                 scene[active_name].data.root_pos_w[0]
@@ -2133,6 +2160,21 @@ def run_attempt(env, trial, output_root: Path, git_commit: str):
                     0.0
                     if grasp_hold_nominal_y is None
                     else float(grasp_hold_pose[1] - grasp_hold_nominal_y)
+                ),
+                "grasp_xy_correction_m": (
+                    [0.0, 0.0]
+                    if grasp_hold_nominal_pose is None
+                    else (
+                        np.asarray(grasp_hold_pose[:2])
+                        - np.asarray(grasp_hold_nominal_pose[:2])
+                    ).tolist()
+                ),
+                "proof_lift_target_m": float(verify_lift_height),
+                "transport_lift_target_m": float(transport_lift_target_m),
+                "transport_lift_actual_m": (
+                    0.0
+                    if lift_object_start_position is None
+                    else float(object_pose[2] - lift_object_start_position[2])
                 ),
             }
             rows.append(row)

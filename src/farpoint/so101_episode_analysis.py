@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import struct
 import zlib
 from collections import Counter, defaultdict
@@ -155,6 +156,85 @@ def _object_pose(row: dict) -> list[float]:
     return [float(value) for value in pose]
 
 
+def _proof_lift_tracking(rows: list[dict]) -> dict | None:
+    verify_rows = [row for row in rows if row.get("phase") == "verify_contact"]
+    targets = [
+        float(row.get("truth", {}).get("proof_lift_target_m"))
+        for row in verify_rows
+        if row.get("truth", {}).get("proof_lift_target_m") is not None
+    ]
+    actual = [
+        float(row.get("grasp_evidence", {}).get("proof_lift_m"))
+        for row in verify_rows
+        if row.get("grasp_evidence", {}).get("proof_lift_m") is not None
+    ]
+    gripper_z = [
+        float(row["truth"]["gripper_link_pose_xyzw"][2])
+        for row in verify_rows
+        if len(row.get("truth", {}).get("gripper_link_pose_xyzw", [])) == 7
+    ]
+    if not targets and not actual and not gripper_z:
+        return None
+    target_max = max(targets, default=0.0)
+    actual_max = max(actual, default=0.0)
+    return {
+        "target_max_m": target_max,
+        "actual_max_m": actual_max,
+        "target_minus_actual_m": target_max - actual_max,
+        "gripper_vertical_displacement_m": (
+            max(gripper_z) - gripper_z[0] if gripper_z else None
+        ),
+        "verify_frame_count": len(verify_rows),
+    }
+
+
+def _contact_alignment_tracking(rows: list[dict]) -> dict:
+    unilateral_rows = []
+    recenter_norms = []
+    for row in rows:
+        correction = row.get("truth", {}).get("grasp_xy_correction_m")
+        if isinstance(correction, list) and len(correction) == 2:
+            recenter_norms.append(math.hypot(float(correction[0]), float(correction[1])))
+        if row.get("phase") != "close":
+            continue
+        forces = row.get("contact_forces_newtons", {})
+        left = float(forces.get("left_finger", 0.0))
+        right = float(forces.get("right_finger", 0.0))
+        if min(left, right) < 0.5 <= max(left, right):
+            unilateral_rows.append((left, right))
+    return {
+        "close_unilateral_contact_frames": len(unilateral_rows),
+        "close_peak_unilateral_force_n": max(
+            (max(forces) for forces in unilateral_rows), default=0.0
+        ),
+        "max_grasp_xy_recenter_m": max(recenter_norms, default=0.0),
+    }
+
+
+def _transport_lift_tracking(rows: list[dict]) -> dict | None:
+    lift_rows = [row for row in rows if row.get("phase") == "lift"]
+    targets = [
+        float(row.get("truth", {}).get("transport_lift_target_m"))
+        for row in lift_rows
+        if row.get("truth", {}).get("transport_lift_target_m") is not None
+    ]
+    actual = [
+        float(row.get("truth", {}).get("transport_lift_actual_m"))
+        for row in lift_rows
+        if row.get("truth", {}).get("transport_lift_actual_m") is not None
+    ]
+    if not targets and not actual:
+        return None
+    target_max = max(targets, default=0.0)
+    actual_max = max(actual, default=0.0)
+    return {
+        "target_max_m": target_max,
+        "actual_max_m": actual_max,
+        "target_minus_actual_m": target_max - actual_max,
+        "lift_frame_count": len(lift_rows),
+    }
+
+
 def _camera_frame_integrity(root: Path, rows: list[dict]) -> dict[str, dict]:
     result = {}
     root_resolved = root.resolve()
@@ -237,6 +317,7 @@ def summarize_so101_episode(episode_dir, *, verify_images: bool = False) -> dict
             if row.get("joint_positions") is not None
         }
     )
+    contact_alignment = _contact_alignment_tracking(rows)
     return {
         "episode_dir": str(root),
         "variation_id": metadata.get("variation", {}).get("variation_id"),
@@ -271,6 +352,9 @@ def summarize_so101_episode(episode_dir, *, verify_images: bool = False) -> dict
             )
             for side in ("left_finger", "right_finger")
         },
+        "proof_lift_tracking": _proof_lift_tracking(rows),
+        "transport_lift_tracking": _transport_lift_tracking(rows),
+        **contact_alignment,
         "camera_frame_counts": camera_frame_counts,
         "camera_frame_integrity": camera_frame_integrity,
         "state_dimensions": state_dimensions,
@@ -335,17 +419,32 @@ def render_so101_analysis_markdown(analysis: dict) -> str:
         "- Independent observation artifacts: "
         f"{analysis['independent_observation_artifact_count']}",
         "",
-        "| Episode | Result | Frames | Terminal phase | Lift (m) | Bilateral frames | Cameras |",
-        "|---|---:|---:|---|---:|---:|---|",
+        "| Episode | Result | Frames | Terminal phase | Lift (m) | Proof target/actual (mm) | Transport target/actual (mm) | Max recenter (mm) | Bilateral frames | Cameras |",
+        "|---|---:|---:|---|---:|---:|---:|---:|---:|---|",
     ]
     for episode in analysis["episodes"]:
         cameras = ", ".join(sorted(episode["camera_frame_counts"])) or "none"
+        proof = episode.get("proof_lift_tracking")
+        proof_text = (
+            "n/a"
+            if proof is None
+            else f"{proof['target_max_m'] * 1000:.2f}/{proof['actual_max_m'] * 1000:.2f}"
+        )
+        transport = episode.get("transport_lift_tracking")
+        transport_text = (
+            "n/a"
+            if transport is None
+            else f"{transport['target_max_m'] * 1000:.2f}/{transport['actual_max_m'] * 1000:.2f}"
+        )
         lines.append(
             "| "
             f"{Path(episode['episode_dir']).name} | "
             f"{'PASS' if episode['success'] else 'FAIL'} | "
             f"{episode['observation_count']} | {episode['terminal_phase']} | "
             f"{episode['object_lift_above_initial_m']:.6f} | "
+            f"{proof_text} | "
+            f"{transport_text} | "
+            f"{episode['max_grasp_xy_recenter_m'] * 1000:.2f} | "
             f"{episode['bilateral_contact_frames']} | {cameras} |"
         )
     lines.extend(["", "## Duplicate artifact audit", ""])

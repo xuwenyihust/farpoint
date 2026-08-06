@@ -6,6 +6,9 @@ from farpoint.grasp_oracle import (
     ControlRecordingSchedule,
     GraspEvidence,
     GraspPhase,
+    advance_proof_lift_command,
+    cartesian_motion_command_base,
+    grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     rotary_jaw_capture_hold_target,
@@ -70,6 +73,72 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
             open_position=1.7453,
             preload_rad=-0.1,
         )
+
+
+def test_unilateral_recenter_starts_before_bilateral_contact():
+    assert grasp_phase_allows_unilateral_recenter(GraspPhase.CONTACT_ALIGNMENT)
+    assert grasp_phase_allows_unilateral_recenter(GraspPhase.SLOW_CLOSE)
+    assert grasp_phase_allows_unilateral_recenter(GraspPhase.BILATERAL_SETTLE)
+    assert not grasp_phase_allows_unilateral_recenter(GraspPhase.APPROACH)
+    assert not grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
+
+
+def test_proof_lift_rebases_once_then_preserves_accumulated_command():
+    measured = np.asarray([0.0, 0.1, 0.2, 0.3, 0.4, 1.0], dtype=np.float32)
+    ahead = measured + 0.02
+
+    base, height = advance_proof_lift_command(
+        ahead, measured, 0.0, just_armed=True
+    )
+    np.testing.assert_allclose(base, measured)
+    assert height == pytest.approx(0.0000625)
+
+    accumulated = base + 0.01
+    base, height = advance_proof_lift_command(
+        accumulated, measured, height, just_armed=False
+    )
+    np.testing.assert_allclose(base, accumulated)
+    assert height == pytest.approx(0.000125)
+
+
+def test_cartesian_motion_command_rebases_only_on_phase_entry():
+    measured = np.asarray([0.0, 0.1, 0.2], dtype=np.float32)
+    accumulated = measured + 0.03
+
+    np.testing.assert_allclose(
+        cartesian_motion_command_base(
+            accumulated, measured, entering_motion=True
+        ),
+        measured,
+    )
+    np.testing.assert_allclose(
+        cartesian_motion_command_base(
+            accumulated, measured, entering_motion=False
+        ),
+        accumulated,
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"current_height_m": -0.1},
+        {"increment_m": 0.0},
+        {"maximum_height_m": 0.0},
+    ),
+)
+def test_proof_lift_command_rejects_invalid_ramp(kwargs):
+    arguments = {
+        "commanded_joints": [0.0] * 6,
+        "measured_joints": [0.0] * 6,
+        "current_height_m": 0.0,
+        "just_armed": False,
+    }
+    arguments.update(kwargs)
+    with pytest.raises(ValueError):
+        advance_proof_lift_command(**arguments)
+
+
 def test_grasp_requires_each_named_quasi_static_stage():
     machine = ContactAwareGraspStateMachine(
         control_hz=10,

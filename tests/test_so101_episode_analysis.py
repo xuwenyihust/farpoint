@@ -117,6 +117,75 @@ def test_analysis_counts_failure_reasons(tmp_path):
     assert analysis["failure_class_counts"] == {"phase_timeout": 1}
 
 
+def test_summary_reports_proof_lift_tracking_and_close_recenter(tmp_path):
+    episode = tmp_path / "episode_tracking"
+    rows = _write_episode(episode)
+    rows[0].update(
+        {
+            "phase": "close",
+            "contact_forces_newtons": {"left_finger": 4.0, "right_finger": 0.0},
+            "truth": {
+                **rows[0]["truth"],
+                "grasp_xy_correction_m": [0.003, 0.004],
+            },
+        }
+    )
+    rows[1].update(
+        {
+            "phase": "verify_contact",
+            "grasp_evidence": {"proof_lift_m": 0.006},
+            "truth": {
+                **rows[1]["truth"],
+                "proof_lift_target_m": 0.01,
+                "gripper_link_pose_xyzw": [0.2, 0.1, 0.16, 0, 0, 0, 1],
+            },
+        }
+    )
+    rows.append(
+        {
+            **rows[1],
+            "frame": 2,
+            "timestamp_seconds": 2 / 30,
+            "phase": "lift",
+            "truth": {
+                **rows[1]["truth"],
+                "transport_lift_target_m": 0.075,
+                "transport_lift_actual_m": 0.062,
+            },
+        }
+    )
+    (episode / "observations.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+
+    summary = summarize_so101_episode(episode)
+
+    assert summary["close_unilateral_contact_frames"] == 1
+    assert summary["close_peak_unilateral_force_n"] == pytest.approx(4.0)
+    assert summary["max_grasp_xy_recenter_m"] == pytest.approx(0.005)
+    assert summary["proof_lift_tracking"] == {
+        "target_max_m": pytest.approx(0.01),
+        "actual_max_m": pytest.approx(0.006),
+        "target_minus_actual_m": pytest.approx(0.004),
+        "gripper_vertical_displacement_m": pytest.approx(0.0),
+        "verify_frame_count": 1,
+    }
+    assert summary["transport_lift_tracking"] == {
+        "target_max_m": pytest.approx(0.075),
+        "actual_max_m": pytest.approx(0.062),
+        "target_minus_actual_m": pytest.approx(0.013),
+        "lift_frame_count": 1,
+    }
+    report = render_so101_analysis_markdown(
+        analyze_so101_episodes([episode])
+    )
+    assert "Proof target/actual (mm)" in report
+    assert "Transport target/actual (mm)" in report
+    assert "10.00/6.00" in report
+    assert "75.00/62.00" in report
+    assert "5.00" in report
+
+
 def test_failure_classification_is_stable_across_detailed_phase_names():
     assert (
         classify_so101_failure("bilateral_contact_lost:bilateral_settle", "oracle")
