@@ -36,6 +36,45 @@ def episode_id_for_attempt(collection_id: str, attempt_id: str) -> str:
     return f"episode_{collection_id}__{attempt_id}"
 
 
+def build_attempt_run_state(
+    attempt: dict[str, Any], *, collection_id: str, git_commit: str
+) -> dict[str, Any]:
+    """Build the live sidecar used before final episode metadata is available."""
+    return {
+        "schema_version": "farpoint.episode-run.v1",
+        "execution_status": "RUNNING",
+        "identity": {
+            "episode_id": episode_id_for_attempt(collection_id, attempt["attempt_id"]),
+            "trial_id": attempt["trial_id"],
+            "task_id": "so101_cube_pick_place",
+            "split": attempt["split"],
+            "episode_seed": int(attempt["attempt_seed"]) % (2**32),
+        },
+        "provenance": {
+            "collection_id": collection_id,
+            "git_commit": git_commit,
+        },
+        "variation": {
+            "variation_id": attempt["variation_id"],
+            "split": attempt["split"],
+            "varied_axes": copy.deepcopy(attempt["varied_axes"]),
+            "frozen_axes": copy.deepcopy(attempt["frozen_axes"]),
+            "requested": copy.deepcopy(attempt.get("requested") or {}),
+            "resolved": copy.deepcopy(attempt.get("resolved") or {}),
+        },
+        "recording": {
+            "cameras": ["observation.images.front"],
+            "frame_count": 0,
+        },
+        "outcome": {
+            "success": None,
+            "dataset_valid": False,
+            "failure_category": None,
+            "failure_reason": None,
+        },
+    }
+
+
 def _new_manifest(
     plan: dict[str, Any],
     *,

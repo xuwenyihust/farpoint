@@ -142,6 +142,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     posture_geometry_diagnostics,
 )
 from farpoint.so101_collection import (  # noqa: E402
+    build_attempt_run_state,
     build_export_selection,
     create_gate_manifest,
     create_manifest,
@@ -1304,6 +1305,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     root = output_root / episode_id_for_attempt(collection_id, trial["attempt_id"])
     if root.exists():
         raise FileExistsError(f"episode output already exists: {root}")
+    run_state = build_attempt_run_state(
+        trial, collection_id=collection_id, git_commit=git_commit
+    )
+    _write_json(root / "run-state.json", run_state)
     for control_step in range(schedule.steps_for_seconds(120.0)):
         phase = machine.phase
         phase_motion_complete = True
@@ -2379,6 +2384,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     _write_json(root / "metadata.json", metadata)
     (root / "observations.jsonl").write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
     _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows)})
+    run_state["execution_status"] = "FINISHED"
+    run_state["recording"]["frame_count"] = len(rows)
+    run_state["outcome"] = copy.deepcopy(metadata["outcome"])
+    _write_json(root / "run-state.json", run_state)
     return root.name, success, bool(rows), metadata["outcome"]["failure_category"], metadata["outcome"]["failure_reason"]
 
 
@@ -2473,13 +2482,44 @@ def main():
                     f"SO101_ATTEMPT_ERROR attempt={attempt['attempt_id']}\n{details}",
                     flush=True,
                 )
-                error_root = args_cli.output_root / f"error_{attempt['attempt_id']}"
+                failed_episode_id = episode_id_for_attempt(
+                    manifest["collection_id"], attempt["attempt_id"]
+                )
+                error_root = args_cli.output_root / failed_episode_id
+                run_state_path = error_root / "run-state.json"
+                if isinstance(error, FileExistsError):
+                    failed_run_state = None
+                elif run_state_path.exists():
+                    failed_run_state = _read_json(run_state_path)
+                elif not error_root.exists():
+                    failed_run_state = build_attempt_run_state(
+                        attempt,
+                        collection_id=manifest["collection_id"],
+                        git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+                    )
+                else:
+                    failed_run_state = None
+                if failed_run_state is not None:
+                    failed_run_state["execution_status"] = "FAILED"
+                    failed_run_state["outcome"] = {
+                        "success": False,
+                        "dataset_valid": False,
+                        "failure_category": "runner",
+                        "failure_reason": f"{type(error).__name__}: {error}",
+                    }
+                    _write_json(run_state_path, failed_run_state)
+                runner_error_path = (
+                    error_root / "runner_error.json"
+                    if failed_run_state is not None
+                    else args_cli.output_root
+                    / f"runner_error_{attempt['attempt_id']}.json"
+                )
                 _write_json(
-                    error_root / "runner_error.json",
+                    runner_error_path,
                     {"error": repr(error), "traceback": details},
                 )
                 episode_id, success, valid, category, reason = (
-                    None,
+                    failed_episode_id if failed_run_state is not None else None,
                     False,
                     False,
                     "runner",

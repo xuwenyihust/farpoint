@@ -4,6 +4,7 @@ import pytest
 
 from farpoint.object_variation import generate_variation_plan, load_variation_config
 from farpoint.so101_collection import (
+    build_attempt_run_state,
     build_export_selection,
     create_manifest,
     episode_id_for_attempt,
@@ -33,6 +34,29 @@ def test_episode_id_is_namespaced_by_collection():
 def test_episode_id_rejects_unsafe_identifiers(collection_id, attempt_id):
     with pytest.raises(ValueError, match="must contain only"):
         episode_id_for_attempt(collection_id, attempt_id)
+
+
+def test_attempt_run_state_preserves_live_collection_and_variation_context():
+    variation_plan = plan()
+    attempt = next_attempt(
+        create_manifest(
+            variation_plan, collection_id="pilot_live", git_commit="a" * 40
+        ),
+        variation_plan,
+    )
+
+    state = build_attempt_run_state(
+        attempt, collection_id="pilot_live", git_commit="b" * 40
+    )
+
+    assert state["schema_version"] == "farpoint.episode-run.v1"
+    assert state["execution_status"] == "RUNNING"
+    assert state["identity"]["episode_id"].startswith("episode_pilot_live__")
+    assert state["identity"]["split"] == attempt["split"]
+    assert state["provenance"]["collection_id"] == "pilot_live"
+    assert state["variation"]["requested"] == attempt["requested"]
+    assert state["variation"]["resolved"] == attempt["resolved"]
+    assert state["recording"]["cameras"] == ["observation.images.front"]
 
 
 def plan():

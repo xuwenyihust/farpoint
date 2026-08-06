@@ -45,17 +45,34 @@ def metadata_episode_id(metadata):
     )
 
 
+def read_registered_episode_record(episode_dir, episode_id):
+    episode_dir = Path(episode_dir).resolve()
+    if episode_dir.name != episode_id:
+        raise ValueError("episode asset root identity mismatch")
+    metadata_path = episode_dir / "metadata.json"
+    if metadata_path.exists():
+        try:
+            record = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            raise ValueError("episode asset root is not valid") from error
+        if metadata_episode_id(record) == episode_id:
+            return record
+        raise ValueError("episode asset root identity mismatch")
+    try:
+        record = json.loads((episode_dir / "run-state.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise ValueError("episode asset root is not valid") from error
+    if metadata_episode_id(record) == episode_id:
+        return record
+    raise ValueError("episode asset root is not valid")
+
+
 def resolve_registered_episode_asset(episode_dir, episode_id, relative):
     episode_dir = Path(episode_dir).resolve()
     relative_path = Path(unquote(str(relative)))
     if relative_path.is_absolute() or ".." in relative_path.parts:
         raise ValueError("invalid episode asset path")
-    try:
-        metadata = json.loads((episode_dir / "metadata.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
-        raise ValueError("episode asset root is not valid") from error
-    if metadata_episode_id(metadata) != episode_id or episode_dir.name != episode_id:
-        raise ValueError("episode asset root identity mismatch")
+    read_registered_episode_record(episode_dir, episode_id)
     target = (episode_dir / relative_path).resolve()
     if target != episode_dir and episode_dir not in target.parents:
         raise ValueError("episode asset path escapes its episode root")
@@ -99,13 +116,7 @@ def build_preview_manifest(episodes_root, episode_id, episode_dir=None):
 
 def build_episode_detail(episode_dir, episode_id, registry_row=None):
     """Return queryable v3 scene metadata without exposing arbitrary files."""
-    metadata_path = resolve_registered_episode_asset(
-        episode_dir, episode_id, "metadata.json"
-    )
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
-        raise ValueError("episode metadata is not valid JSON") from error
+    metadata = read_registered_episode_record(episode_dir, episode_id)
     identity = metadata.get("identity") or {}
     task = metadata.get("task") or {}
     scene = metadata.get("scene") or {}
@@ -117,7 +128,9 @@ def build_episode_detail(episode_dir, episode_id, registry_row=None):
         "episode_id": episode_id,
         "schema_version": metadata.get("schema_version"),
         "task": {
-            "task_id": task.get("task_id") or metadata.get("task_name"),
+            "task_id": task.get("task_id")
+            or identity.get("task_id")
+            or metadata.get("task_name"),
             "instruction": task.get("instruction"),
             "manipulated_entity_id": task.get("manipulated_entity_id"),
             "target_entity_id": task.get("target_entity_id"),

@@ -95,7 +95,79 @@ def make_v3_episode(root, collection_id, episode_id, success=True, metrics=True)
     return episode
 
 
+def make_running_v3_episode(root, collection_id, episode_id, status="RUNNING"):
+    collection = root / "pilots" / collection_id
+    write_json(
+        collection / "manifest.json",
+        {"schema_version": "farpoint.collection.v2", "collection_id": collection_id},
+    )
+    episode = collection / "episodes" / episode_id
+    write_json(
+        episode / "run-state.json",
+        {
+            "schema_version": "farpoint.episode-run.v1",
+            "execution_status": status,
+            "identity": {
+                "episode_id": episode_id,
+                "trial_id": "trial_001",
+                "task_id": "so101_cube_pick_place",
+                "split": "test",
+                "episode_seed": 42,
+            },
+            "provenance": {"collection_id": collection_id},
+            "variation": {"variation_id": "cube_40mm_position_03", "split": "test"},
+            "recording": {
+                "frame_count": 0,
+                "cameras": ["observation.images.front"],
+            },
+            "outcome": {
+                "success": False if status == "FAILED" else None,
+                "dataset_valid": False,
+                "failure_category": "runner" if status == "FAILED" else None,
+                "failure_reason": "RuntimeError: simulation stopped"
+                if status == "FAILED"
+                else None,
+            },
+        },
+    )
+    rgb = episode / "rgb"
+    rgb.mkdir()
+    (rgb / "front_000000.png").write_bytes(b"png")
+    return episode
+
+
 class EpisodeRegistryTests(unittest.TestCase):
+    def test_running_and_runner_failed_episode_sidecars_are_visible(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            outputs = root / "outputs"
+            external = root / "farpoint-so101"
+            running = make_running_v3_episode(
+                external, "pilot_live", "episode_pilot_live__trial_001"
+            )
+            failed = make_running_v3_episode(
+                external,
+                "pilot_failed",
+                "episode_pilot_failed__trial_001",
+                status="FAILED",
+            )
+
+            registry = EpisodeRegistry(outputs, episode_roots=[external])
+            registry.scan()
+            rows = {row["episode_id"]: row for row in registry.list_episodes()}
+
+            self.assertEqual(rows[running.name]["status"], "RUNNING")
+            self.assertEqual(rows[running.name]["health"], "OK")
+            self.assertEqual(rows[running.name]["observation_count"], 1)
+            self.assertEqual(rows[running.name]["variation_id"], "cube_40mm_position_03")
+            self.assertEqual(rows[failed.name]["status"], "FAIL")
+            self.assertEqual(rows[failed.name]["failure_category"], "runner")
+            self.assertEqual(
+                rows[failed.name]["failure_reason"],
+                "RuntimeError: simulation stopped",
+            )
+            self.assertEqual(rows[failed.name]["dataset_valid"], 0)
+
     def test_collection_scoped_episode_ids_keep_repeated_attempts_distinct(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

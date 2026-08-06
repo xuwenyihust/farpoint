@@ -32,6 +32,49 @@ class DataPlatformAuthenticationTests(unittest.TestCase):
 
 
 class PreviewManifestTests(unittest.TestCase):
+    def test_running_episode_sidecar_supports_detail_and_front_preview(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            episode = Path(temporary) / "episode_pilot_live__trial_001"
+            rgb = episode / "rgb"
+            rgb.mkdir(parents=True)
+            requested = {"pick_object": {"entity_type": "cube"}}
+            resolved = {"pick_object": {"entity_type": "cube"}}
+            (episode / "run-state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "farpoint.episode-run.v1",
+                        "execution_status": "RUNNING",
+                        "identity": {
+                            "episode_id": episode.name,
+                            "task_id": "so101_cube_pick_place",
+                            "split": "train",
+                        },
+                        "variation": {
+                            "variation_id": "cube_live",
+                            "requested": {"entities": requested},
+                            "resolved": {"entities": resolved},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (rgb / "front_000000.png").write_bytes(b"png")
+
+            detail = build_episode_detail(
+                episode,
+                episode.name,
+                registry_row={"collection_id": "pilot_live", "managed": 0},
+            )
+            preview = build_preview_manifest(
+                Path(temporary), episode.name, episode_dir=episode
+            )
+
+            self.assertEqual(detail["variation"]["variation_id"], "cube_live")
+            self.assertEqual(detail["task"]["task_id"], "so101_cube_pick_place")
+            self.assertEqual(detail["requested_entities"], requested)
+            self.assertEqual(detail["resolved_entities"], resolved)
+            self.assertEqual(preview["frame_count"], 1)
+
     def test_builds_v3_entity_detail_from_registered_episode(self):
         with tempfile.TemporaryDirectory() as temporary:
             episode = Path(temporary) / "episode_so101_entities"

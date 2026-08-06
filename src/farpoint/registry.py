@@ -346,8 +346,14 @@ class EpisodeRegistry:
         for directory, child_names, file_names in os.walk(source_root):
             path = Path(directory)
             if path.name.startswith("episode_"):
+                has_rgb = "rgb" in child_names
                 child_names[:] = []
-                if "metadata.json" in file_names or "metrics.json" in file_names:
+                if (
+                    "metadata.json" in file_names
+                    or "metrics.json" in file_names
+                    or "run-state.json" in file_names
+                    or has_rgb
+                ):
                     yield path
 
     @staticmethod
@@ -382,8 +388,10 @@ class EpisodeRegistry:
         path = location.path
         metadata_path = path / "metadata.json"
         metrics_path = path / "metrics.json"
+        run_state_path = path / "run-state.json"
         metadata = {}
         metrics = {}
+        run_state = {}
         problems = []
         metadata_valid = False
         metrics_valid = False
@@ -397,21 +405,33 @@ class EpisodeRegistry:
             metrics_valid = isinstance(metrics, dict)
         except (OSError, ValueError) as error:
             problems.append(f"metrics:{type(error).__name__}")
+        try:
+            run_state = read_json(run_state_path)
+            run_state_valid = isinstance(run_state, dict)
+        except (OSError, ValueError) as error:
+            run_state_valid = False
+            if run_state_path.exists():
+                problems.append(f"run_state:{type(error).__name__}")
 
         updated = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
         age_seconds = max(0.0, (now - updated).total_seconds())
-        schema_version = metadata.get("schema_version") if metadata_valid else None
-        identity = metadata.get("identity", {}) if schema_version == "farpoint.episode.v3" else {}
-        outcome = metadata.get("outcome", {}) if schema_version == "farpoint.episode.v3" else {}
-        recording = metadata.get("recording", {}) if schema_version == "farpoint.episode.v3" else {}
-        variation = metadata.get("variation", {}) if schema_version == "farpoint.episode.v3" else {}
-        task = metadata.get("task", {}) if schema_version == "farpoint.episode.v3" else {}
-        provenance = metadata.get("provenance", {}) if schema_version == "farpoint.episode.v3" else {}
+        episode_record = metadata if metadata_valid else run_state
+        schema_version = episode_record.get("schema_version") if episode_record else None
+        structured_record = schema_version in {
+            "farpoint.episode.v3",
+            "farpoint.episode-run.v1",
+        }
+        identity = episode_record.get("identity", {}) if structured_record else {}
+        outcome = episode_record.get("outcome", {}) if structured_record else {}
+        recording = episode_record.get("recording", {}) if structured_record else {}
+        variation = episode_record.get("variation", {}) if structured_record else {}
+        task = episode_record.get("task", {}) if structured_record else {}
+        provenance = episode_record.get("provenance", {}) if structured_record else {}
         episode_id = self._first(
-            metadata.get("episode_id"), identity.get("episode_id")
-        ) if metadata_valid else None
+            episode_record.get("episode_id"), identity.get("episode_id")
+        ) if episode_record else None
         health = "OK"
-        if not metadata_valid:
+        if not metadata_valid and not run_state_valid:
             health = "ORPHANED" if not metadata_path.exists() else "CORRUPT"
         elif episode_id != path.name:
             health = "ORPHANED"
@@ -420,7 +440,12 @@ class EpisodeRegistry:
             health = "CORRUPT"
 
         success = self._first(outcome.get("success"), metrics.get("success"))
+        execution_status = run_state.get("execution_status") if run_state_valid else None
         if metadata_valid and metrics_valid:
+            status = "PASS" if success is True else "FAIL"
+        elif execution_status == "FAILED":
+            status = "FAIL"
+        elif execution_status == "FINISHED":
             status = "PASS" if success is True else "FAIL"
         elif age_seconds <= self.incomplete_timeout_seconds:
             status = "RUNNING"
@@ -487,10 +512,16 @@ class EpisodeRegistry:
             "dataset_valid": self._boolean(self._first(
                 outcome.get("dataset_valid"), metrics.get("dataset_valid")
             )),
-            "observation_count": self._integer(self._first(
-                recording.get("frame_count"), metrics.get("dataset_observation_count"),
-                metrics.get("observation_count"),
-            )),
+            "observation_count": self._integer(
+                self._first(
+                    len(list((path / "rgb").glob("front_*.png")))
+                    if run_state_valid and not metadata_valid
+                    else None,
+                    recording.get("frame_count"),
+                    metrics.get("dataset_observation_count"),
+                    metrics.get("observation_count"),
+                )
+            ),
             "size_bytes": size_bytes,
             "preview_path": str(preview) if preview else None,
             "report_path": str(report) if report.exists() else None,
