@@ -49,6 +49,10 @@ def parse_args():
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "outputs/episodes")
     parser.add_argument("--max-attempts-this-run", type=int, default=150)
     parser.add_argument(
+        "--collection-id",
+        help="Explicit identity for a non-gate collection; required for formal profiles.",
+    )
+    parser.add_argument(
         "--watchdog-policy",
         type=Path,
         help=(
@@ -120,6 +124,7 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_minimum_safe_descent_fraction,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
@@ -2396,11 +2401,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             phase,
             has_contact,
             descent_fraction,
-            # The production cube is fixed at 45-degree yaw, so its leading
-            # corner intentionally reaches the moving finger at about 79%
-            # insertion. This low-force contact starts alignment; PREGRASP
-            # contact or substantially earlier insertion contact is a sweep.
-            minimum_safe_descent_fraction=0.75,
+            # The fixed 45-degree yaw makes the leading corner of a 40 mm cube
+            # reach the moving finger earlier than a 30 mm cube. The frozen
+            # size-aware threshold keeps PREGRASP contact unsafe while allowing
+            # low-force DESCEND contact to hand off to calibrated slow close.
+            minimum_safe_descent_fraction=so101_minimum_safe_descent_fraction(
+                object_spec["dimensions_m"][0]
+            ),
         )
         cube_dropped = (
             cube_was_lifted
@@ -2798,7 +2805,15 @@ def main():
                 git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
             )
         else:
-            manifest = create_manifest(plan, collection_id="so101_cube_pick_place_pilot", git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"))
+            if plan.get("collection") and not args_cli.collection_id:
+                raise ValueError("formal collection profiles require --collection-id")
+            manifest = create_manifest(
+                plan,
+                collection_id=(
+                    args_cli.collection_id or "so101_cube_pick_place_pilot"
+                ),
+                git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+            )
     # Persist RUNNING before Isaac environment construction. A SIGINT/SIGTERM
     # during the expensive RTX startup must still leave a terminal manifest.
     write_manifest(args_cli.manifest, manifest)

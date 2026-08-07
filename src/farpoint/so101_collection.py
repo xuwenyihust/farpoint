@@ -139,18 +139,38 @@ def create_manifest(
     maximum_attempts: int = 150,
 ) -> dict[str, Any]:
     trials = plan.get("trials") or []
-    if len(trials) != 100:
-        raise ValueError("SO-101 collection requires exactly 100 planned variations")
-    if maximum_attempts < len(trials):
-        raise ValueError("maximum_attempts cannot be less than the planned variation count")
-    return _new_manifest(
+    profile = plan.get("collection") or {}
+    if profile:
+        if profile.get("kind") != "mirrored_mass_success_collection":
+            raise ValueError("unsupported SO-101 collection profile")
+        required_successes = int(profile.get("required_successes", 0))
+        frozen_maximum = int(profile.get("maximum_attempts", 0))
+        if required_successes != len(trials) or required_successes <= 0:
+            raise ValueError("mirrored mass collection must require every planned variation")
+        if frozen_maximum < required_successes:
+            raise ValueError("mirrored mass collection attempt budget is unreachable")
+        if maximum_attempts != frozen_maximum:
+            raise ValueError("maximum_attempts does not match the frozen collection profile")
+        release_status = "CANDIDATE"
+    else:
+        if len(trials) != 100:
+            raise ValueError("SO-101 collection requires exactly 100 planned variations")
+        if maximum_attempts < len(trials):
+            raise ValueError("maximum_attempts cannot be less than the planned variation count")
+        required_successes = 100
+        frozen_maximum = maximum_attempts
+        release_status = "PILOT"
+    manifest = _new_manifest(
         plan,
         collection_id=collection_id,
         git_commit=git_commit,
-        required_successes=100,
-        maximum_attempts=maximum_attempts,
-        release_status="PILOT",
+        required_successes=required_successes,
+        maximum_attempts=frozen_maximum,
+        release_status=release_status,
     )
+    if profile:
+        manifest["collection_profile"] = copy.deepcopy(profile)
+    return manifest
 
 
 def create_pilot_manifest(
@@ -531,7 +551,9 @@ def build_export_selection(manifest: dict[str, Any], episodes_root: str = "outpu
         )
     return {
         "schema_version": "farpoint.export-selection.v1",
-        "dataset_id": "farpoint-so101-cube-pick-place",
+        "dataset_id": (manifest.get("collection_profile") or {}).get(
+            "dataset_id", "farpoint-so101-cube-pick-place"
+        ),
         "collection_id": manifest["collection_id"],
         "selection_policy": "one_success_per_stratified_variation",
         "episodes": selected,
