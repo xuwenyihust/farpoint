@@ -8,6 +8,7 @@ from farpoint.so101_grasp_geometry import (
     aabb_corners,
     posture_geometry_diagnostics,
     so101_capture_aperture_reference,
+    so101_capture_feed_axis_local,
     transform_points_xyzw,
 )
 
@@ -67,6 +68,20 @@ def test_capture_aperture_reference_returns_copy_and_validates_joint_limit():
     for invalid in (float("nan"), float("inf")):
         with pytest.raises(ValueError, match="finite"):
             so101_capture_aperture_reference(invalid)
+
+
+def test_capture_feed_axis_preserves_small_path_and_opens_large_channel():
+    np.testing.assert_allclose(so101_capture_feed_axis_local(0.9), [0.0, 0.0, 1.0])
+    np.testing.assert_allclose(so101_capture_feed_axis_local(1.7), [0.0, 1.0, 0.0])
+    midpoint = so101_capture_feed_axis_local(1.45)
+    np.testing.assert_allclose(midpoint, [0.0, np.sqrt(0.5), np.sqrt(0.5)])
+    assert np.linalg.norm(midpoint) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -0.1747, 1.7454])
+def test_capture_feed_axis_validates_joint_limit(invalid):
+    with pytest.raises(ValueError):
+        so101_capture_feed_axis_local(invalid)
     for invalid in (-0.1747, 1.7454):
         with pytest.raises(ValueError, match="pinned USD limits"):
             so101_capture_aperture_reference(invalid)

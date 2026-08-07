@@ -118,6 +118,26 @@ def so101_capture_aperture_reference(jaw_position_rad: float) -> np.ndarray:
     )
 
 
+def so101_capture_feed_axis_local(jaw_position_rad: float) -> np.ndarray:
+    """Return the gripper-local collision-free insertion direction.
+
+    The validated 30 mm side insertion follows local +Z.  At jaw=1.7 rad the
+    exact-mesh fixed/moving contact pair lies in the local X-Z closing plane
+    with nearly identical local-Y coordinates, so its open channel is local
+    +Y.  Blend and normalize between the production calibration endpoints;
+    this preserves the 30 mm path while avoiding the rotating jaw sweeping a
+    40 mm cube during side insertion.
+    """
+    jaw_position = float(jaw_position_rad)
+    if not np.isfinite(jaw_position):
+        raise ValueError("jaw_position_rad must be finite")
+    if not -0.1746 <= jaw_position <= 1.7453:
+        raise ValueError("jaw_position_rad must be within pinned USD limits")
+    blend = float(np.clip((jaw_position - 1.2) / (1.7 - 1.2), 0.0, 1.0))
+    direction = np.asarray((0.0, blend, 1.0 - blend), dtype=np.float64)
+    return (direction / np.linalg.norm(direction)).astype(np.float32)
+
+
 def _vector(value, *, length: int, name: str) -> np.ndarray:
     result = np.asarray(value, dtype=np.float64)
     if result.shape != (length,) or not np.isfinite(result).all():

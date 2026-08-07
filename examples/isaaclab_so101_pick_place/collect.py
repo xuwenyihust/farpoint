@@ -145,6 +145,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_WORKSHOP_COMMIT,
     posture_geometry_diagnostics,
     so101_capture_aperture_reference,
+    so101_capture_feed_axis_local,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -665,6 +666,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     )
     jaw_preshape = so101_approach_jaw_target(object_edge_m)
     aperture_reference = so101_capture_aperture_reference(jaw_preshape)
+    feed_axis_local = so101_capture_feed_axis_local(jaw_preshape)
     closed_jaw = float(np.deg2rad(-10.0))
     bilateral_threshold_n = 0.10
     seed = 0
@@ -719,10 +721,12 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             live_pose[3:7],
             aperture_reference,
         )
-        local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
+        feed_axis_world = (
+            quaternion_rotation_matrix_xyzw(live_pose[3:7]) @ feed_axis_local
+        )
         above_target = (
             aligned_target
-            + feed_distance_m * local_z_world
+            + feed_distance_m * feed_axis_world
             + np.asarray((0.0, 0.0, 0.070), dtype=np.float32)
         )
         action = _ik_action(
@@ -748,8 +752,10 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             live_pose[3:7],
             aperture_reference,
         )
-        local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
-        pregrasp_target = aligned_target + feed_distance_m * local_z_world
+        feed_axis_world = (
+            quaternion_rotation_matrix_xyzw(live_pose[3:7]) @ feed_axis_local
+        )
+        pregrasp_target = aligned_target + feed_distance_m * feed_axis_world
         action = _ik_action(
             robot,
             scene["ee_frame"],
@@ -777,9 +783,11 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             live_pose[3:7],
             aperture_reference,
         )
-        local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
+        feed_axis_world = (
+            quaternion_rotation_matrix_xyzw(live_pose[3:7]) @ feed_axis_local
+        )
         target = aligned_target + (
-            feed_distance_m * (1.0 - fraction) * local_z_world
+            feed_distance_m * (1.0 - fraction) * feed_axis_world
         )
         action = _ik_action(
             robot,
@@ -912,6 +920,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         "object_edge_m": object_edge_m,
         "object_orientation_xyzw": object_orientation.tolist(),
         "aperture_center_local_m": aperture_reference.tolist(),
+        "feed_axis_local": feed_axis_local.tolist(),
         "posture_target_rad": posture_target.tolist(),
         "expected_safe_orientation_xyzw": expected_safe_orientation.tolist(),
         "measured_safe_pose_xyzw": safe_pose.tolist(),
@@ -1268,6 +1277,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
+    capture_feed_axis_local = so101_capture_feed_axis_local(approach_jaw)
     target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
     target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
@@ -1474,11 +1484,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 live_gripper_pose[3:7],
                 capture_object_in_gripper,
             )
-            local_z_world = quaternion_rotation_matrix_xyzw(
-                live_gripper_pose[3:7]
-            )[:, 2]
+            capture_feed_axis_world = (
+                quaternion_rotation_matrix_xyzw(live_gripper_pose[3:7])
+                @ capture_feed_axis_local
+            )
             feed_distance_m = 0.070
-            distal_pregrasp = capture_target + feed_distance_m * local_z_world
+            distal_pregrasp = (
+                capture_target + feed_distance_m * capture_feed_axis_world
+            )
             if phase is OraclePhase.PREGRASP:
                 final_target = distal_pregrasp
             else:
@@ -1487,7 +1500,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     1.0, (machine.phase_steps + 1) / insertion_steps
                 )
                 final_target = capture_target + (
-                    feed_distance_m * (1.0 - descent_fraction) * local_z_world
+                    feed_distance_m
+                    * (1.0 - descent_fraction)
+                    * capture_feed_axis_world
                 )
                 phase_motion_complete = descent_fraction >= 1.0
             if phase is OraclePhase.PREGRASP and pregrasp_route_index < 3:
@@ -2246,6 +2261,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 "capture_aperture_reference_local_m": (
                     capture_object_in_gripper.tolist()
                 ),
+                "capture_feed_axis_local": capture_feed_axis_local.tolist(),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),
                 "transport_lift_actual_m": (
