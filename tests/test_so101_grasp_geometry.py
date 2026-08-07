@@ -11,6 +11,7 @@ from farpoint.so101_grasp_geometry import (
     posture_geometry_diagnostics,
     so101_capture_aperture_reference,
     so101_capture_channel_direction_world,
+    so101_level_capture_orientation_xyzw,
     transform_points_xyzw,
 )
 
@@ -98,6 +99,36 @@ def test_capture_channel_is_horizontal_normalized_and_perpendicular():
 def test_capture_channel_validates_orientation(invalid):
     with pytest.raises(ValueError):
         so101_capture_channel_direction_world(invalid)
+
+
+def test_level_capture_orientation_flattens_axis_and_preserves_channel():
+    orientation = np.asarray(
+        (-0.6417146921, 0.1408973038, 0.0826371983, -0.7493473291)
+    )
+    original_channel = so101_capture_channel_direction_world(orientation)
+
+    levelled = so101_level_capture_orientation_xyzw(orientation)
+    levelled_closing = (
+        quaternion_rotation_matrix_xyzw(levelled)
+        @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+    )
+
+    assert np.linalg.norm(levelled) == pytest.approx(1.0)
+    assert levelled_closing[2] == pytest.approx(0.0, abs=1e-7)
+    np.testing.assert_allclose(
+        so101_capture_channel_direction_world(levelled),
+        original_channel,
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]),
+)
+def test_level_capture_orientation_validates_input(invalid):
+    with pytest.raises(ValueError):
+        so101_level_capture_orientation_xyzw(invalid)
 
 
 def test_posture_diagnostic_aligns_aperture_without_using_link_origin():

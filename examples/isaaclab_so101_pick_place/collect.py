@@ -148,6 +148,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     posture_geometry_diagnostics,
     so101_capture_aperture_reference,
     so101_capture_channel_direction_world,
+    so101_level_capture_orientation_xyzw,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -288,6 +289,8 @@ def _ik_action(
     device,
     posture_target=None,
     orientation_target=None,
+    orientation_local_axis=(0.0, 0.0, 1.0),
+    orientation_weight=0.03,
     nullspace_gain=0.20,
     max_joint_step=0.02,
     lock_wrist=False,
@@ -357,14 +360,17 @@ def _ik_action(
         task_error = position_error
         nullspace_error = posture_error
     else:
-        orientation_weight = 0.03
+        orientation_weight = float(orientation_weight)
+        if not np.isfinite(orientation_weight) or orientation_weight <= 0.0:
+            raise ValueError("orientation_weight must be positive and finite")
         # SO-101 has five arm joints: position plus full orientation would be
-        # a six-dimensional, over-constrained task. Align the gripper's local
-        # approach axis (three rows, rank two) and leave rotation around that
-        # axis to the wrist-roll posture regularizer.
+        # a six-dimensional, over-constrained task. Align one selected local
+        # axis (three rows, rank two) and leave rotation around that axis to
+        # the wrist-roll posture regularizer.
         orientation_error = quaternion_direction_error(
             orientation_target,
             _numpy(robot.data.body_link_pose_w.torch[0, body_index, 3:7]),
+            local_axis=orientation_local_axis,
         )
         jacobian = spatial_jacobian.copy()
         jacobian[3:] *= orientation_weight
@@ -1246,11 +1252,11 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
     # Exact jaw=1.7 mesh contact-pair direction in the gripper frame.  The
     # first path screen showed that the horizontal channel perpendicular to
     # this axis is the only route that gets close to the 40 mm cube.  This
-    # second screen varies wrist roll around the zero-tilt solution and the
-    # requested aperture height instead of testing unrelated world axes.
+    # The prior screen showed wrist-roll regularization alone does not level
+    # the closing axis. Keep its best roll branch, directly level the measured
+    # end-effector axis above the cube, and retain a small height screen.
     candidates = tuple(
-        (roll, aperture_height_offset_m)
-        for roll in (0.25, 0.33, 0.40)
+        (0.25, aperture_height_offset_m)
         for aperture_height_offset_m in (-0.010, 0.0, 0.010)
     )
     destination = output_root / "grasp_path_diagnostic"
@@ -1310,6 +1316,8 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
                     device,
                     posture_target=posture_target,
                     orientation_target=orientation_target,
+                    orientation_local_axis=SO101_CAPTURE_CLOSING_AXIS_LOCAL,
+                    orientation_weight=0.12,
                     max_joint_step=0.01,
                 )
                 action[0, 5] = jaw_preshape
@@ -1335,12 +1343,21 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         contact_free = advance_segment(
             "safe_posture", 180, lambda _fraction: safe_target
         )
+        unlevelled_safe_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
+        orientation_target = so101_level_capture_orientation_xyzw(
+            unlevelled_safe_pose[3:7]
+        )
+        if contact_free:
+            contact_free = advance_segment(
+                "level_capture_axis", 240, lambda _fraction: safe_target
+            )
         safe_pose = _numpy(
             robot.data.body_link_pose_w.torch[0, body_index]
         ).copy()
-        orientation_target = safe_pose[3:7].copy()
         closing_axis_world = (
-            quaternion_rotation_matrix_xyzw(orientation_target)
+            quaternion_rotation_matrix_xyzw(safe_pose[3:7])
             @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
         )
         # Use the side that v9 showed to be reachable.  The opposite side
@@ -1396,14 +1413,28 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         final_position_error_m = float(
             np.linalg.norm(final_target - final_pose[:3])
         )
+        final_closing_axis_world = (
+            quaternion_rotation_matrix_xyzw(final_pose[3:7])
+            @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+        )
         record = {
             "candidate_index": candidate_index,
             "label": label,
             "posture_target_rad": posture_target.tolist(),
             "aperture_height_offset_m": aperture_height_offset_m,
+            "unlevelled_closing_axis_world": (
+                quaternion_rotation_matrix_xyzw(unlevelled_safe_pose[3:7])
+                @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+            ).tolist(),
+            "levelled_orientation_target_xyzw": orientation_target.tolist(),
             "closing_axis_world_at_safe": closing_axis_world.tolist(),
+            "closing_axis_world_final": final_closing_axis_world.tolist(),
             "outside_direction_world": direction.tolist(),
-            "contact_free": bool(contact_free and final_position_error_m < 0.010),
+            "contact_free": bool(
+                contact_free
+                and final_position_error_m < 0.010
+                and abs(float(final_closing_axis_world[2])) < 0.05
+            ),
             "first_contact_segment": first_contact_segment,
             "first_contact_fraction": first_contact_fraction,
             "first_contact_forces_n": list(first_contact_forces),
@@ -1418,7 +1449,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         print("SO101_GRASP_PATH " + json.dumps(record, sort_keys=True), flush=True)
 
     report = {
-        "schema_version": "farpoint.so101_grasp_path_diagnostic.v2",
+        "schema_version": "farpoint.so101_grasp_path_diagnostic.v3",
         "git_commit": os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
         "asset_sha256": SO101_WORKSHOP_ASSET_SHA256,
         "camera_features": ["front"],
@@ -1431,6 +1462,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         "outside_distance_m": outside_distance_m,
         "vertical_clearance_m": vertical_clearance_m,
         "contact_threshold_n": contact_threshold_n,
+        "maximum_closing_axis_abs_z": 0.05,
         "successful_candidate_labels": [
             item["label"] for item in results if item["contact_free"]
         ],

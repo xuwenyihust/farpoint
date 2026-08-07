@@ -165,6 +165,49 @@ def so101_capture_channel_direction_world(gripper_orientation_xyzw) -> np.ndarra
     )
 
 
+def so101_level_capture_orientation_xyzw(gripper_orientation_xyzw) -> np.ndarray:
+    """Rotate a posture so the jaw=1.7 closing axis is world-horizontal.
+
+    The correction is applied about the currently reachable insertion
+    channel.  This preserves the horizontal channel direction while removing
+    the vertical component that made both finger tips sweep through the cube.
+    """
+    orientation = _vector(
+        gripper_orientation_xyzw,
+        length=4,
+        name="gripper_orientation_xyzw",
+    )
+    orientation_norm = float(np.linalg.norm(orientation))
+    if orientation_norm <= 1e-12:
+        raise ValueError("gripper_orientation_xyzw must be non-zero")
+    orientation = orientation / orientation_norm
+    rotation = quaternion_rotation_matrix_xyzw(orientation)
+    closing_world = rotation @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+    horizontal_norm = float(np.linalg.norm(closing_world[:2]))
+    if horizontal_norm <= 1e-6:
+        raise ValueError("closing axis must have a horizontal component")
+    channel_world = so101_capture_channel_direction_world(orientation)
+    correction_angle = float(np.arctan2(-closing_world[2], horizontal_norm))
+    half_angle = correction_angle * 0.5
+    delta = np.concatenate(
+        (channel_world * np.sin(half_angle), [np.cos(half_angle)])
+    )
+    # Pre-multiply by the world-frame correction quaternion.
+    dx, dy, dz, dw = delta
+    x, y, z, w = orientation
+    result = np.asarray(
+        (
+            dw * x + dx * w + dy * z - dz * y,
+            dw * y - dx * z + dy * w + dz * x,
+            dw * z + dx * y - dy * x + dz * w,
+            dw * w - dx * x - dy * y - dz * z,
+        ),
+        dtype=np.float64,
+    )
+    result /= np.linalg.norm(result)
+    return result.astype(np.float32)
+
+
 def aabb_corners(bounds) -> np.ndarray:
     """Return the eight corners of a three-dimensional AABB."""
     if len(bounds) != 2:
