@@ -1,5 +1,6 @@
 import json
 import sys
+from types import SimpleNamespace
 from argparse import Namespace
 from pathlib import Path
 
@@ -53,6 +54,59 @@ def test_coverage_first_collection_release_is_accepted_without_yield_acceptance(
     }
 
     assert release_dataset.evidence_accepted(evidence) is True
+
+
+def test_balanced_selection_candidate_is_accepted_as_release_evidence():
+    evidence = {
+        "schema_version": "farpoint.collection-selection.v1",
+        "execution_status": "FINISHED",
+        "quality_status": "PASS",
+        "release_status": "CANDIDATE",
+        "required_successes": 1,
+        "selected_variations": {"cube_r00_c00_s0_k0": "attempt00"},
+        "attempts": [
+            {
+                "episode_id": "episode-0",
+                "selected_for_dataset": True,
+                "success": True,
+                "dataset_valid": True,
+                "split": "train",
+            }
+        ],
+    }
+
+    assert release_dataset.evidence_accepted(evidence) is True
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("execution_status", "RUNNING"),
+        ("quality_status", "FAIL"),
+        ("release_status", "EXPERIMENTAL"),
+    ],
+)
+def test_balanced_selection_rejects_non_candidate_states(field, value):
+    evidence = {
+        "schema_version": "farpoint.collection-selection.v1",
+        "execution_status": "FINISHED",
+        "quality_status": "PASS",
+        "release_status": "CANDIDATE",
+        "required_successes": 1,
+        "selected_variations": {"cube_r00_c00_s0_k0": "attempt00"},
+        "attempts": [
+            {
+                "episode_id": "episode-0",
+                "selected_for_dataset": True,
+                "success": True,
+                "dataset_valid": True,
+                "split": "train",
+            }
+        ],
+    }
+    evidence[field] = value
+
+    assert release_dataset.evidence_accepted(evidence) is False
 
 
 def test_public_release_audit_requires_dataset_card(tmp_path, monkeypatch):
@@ -135,6 +189,45 @@ def test_upload_rc_uses_isolated_revision(tmp_path, successful_audits, monkeypat
     assert result["revision"] == revision
     assert calls == [(tmp_path / "public", spec["hf_repo_id"], revision)]
     assert json.loads((tmp_path / "rc.json").read_text())["commit"] == "hub-commit"
+
+
+def test_huggingface_rc_upload_can_resume_existing_branch(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeApi:
+        def create_branch(self, **kwargs):
+            calls.append(("create_branch", kwargs))
+
+        def upload_folder(self, **kwargs):
+            calls.append(("upload_folder", kwargs))
+            return SimpleNamespace(oid="hub-commit")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(HfApi=FakeApi),
+    )
+
+    result = release_dataset.upload_huggingface_rc(
+        tmp_path,
+        "owner/dataset",
+        "v0.0.0-rc1",
+    )
+
+    assert result == {"commit": "hub-commit", "revision": "v0.0.0-rc1"}
+    assert calls[0] == (
+        "create_branch",
+        {
+            "repo_id": "owner/dataset",
+            "repo_type": "dataset",
+            "branch": "v0.0.0-rc1",
+            "revision": "main",
+            "exist_ok": True,
+        },
+    )
+    assert calls[1][0] == "upload_folder"
+    assert calls[1][1]["revision"] == "v0.0.0-rc1"
+    assert calls[1][1]["delete_patterns"] == ["*"]
 
 
 def test_v2_release_requires_collection_or_benchmark_manifest(tmp_path, monkeypatch):

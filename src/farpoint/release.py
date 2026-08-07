@@ -9,6 +9,7 @@ from typing import Any
 
 
 VIEWER_ALLOWED_JSON = {Path("meta/info.json"), Path("meta/stats.json")}
+PARQUET_EMPTY_STRUCT_FIELD = "__farpoint_empty__"
 REQUIRED_VIEWER_PATHS = (
     Path("meta/info.json"),
     Path("meta/stats.json"),
@@ -29,6 +30,8 @@ def _parquet_safe(value: Any, field_name: str | None = None) -> Any:
             )
         return value
     if isinstance(value, dict):
+        if not value:
+            return {PARQUET_EMPTY_STRUCT_FIELD: True}
         return {str(key): _parquet_safe(item, str(key)) for key, item in value.items()}
     if isinstance(value, list):
         return [_parquet_safe(item, field_name) for item in value]
