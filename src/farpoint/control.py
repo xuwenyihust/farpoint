@@ -1,6 +1,66 @@
 import math
 
 
+def so101_approach_jaw_target(object_width_m):
+    """Return a size-aware open-jaw target for collision-free insertion."""
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 0.90 + 0.50 * interpolation
+
+
+def settle_release_separation_target(
+    release_hold_position,
+    phase_steps,
+    *,
+    control_hz,
+    separation_speed_mps=0.015,
+    maximum_separation_m=0.020,
+):
+    """Ramp the open gripper upward so a released object cannot hang on one finger."""
+    if len(release_hold_position) != 3:
+        raise ValueError("release_hold_position must have three coordinates")
+    steps = int(phase_steps)
+    rate = float(control_hz)
+    speed = float(separation_speed_mps)
+    maximum = float(maximum_separation_m)
+    if steps < 0:
+        raise ValueError("phase_steps must be non-negative")
+    if rate <= 0.0 or speed <= 0.0 or maximum <= 0.0:
+        raise ValueError("release separation rates and limits must be positive")
+    distance = min(maximum, speed * (steps + 1) / rate)
+    return [
+        float(release_hold_position[0]),
+        float(release_hold_position[1]),
+        float(release_hold_position[2]) + distance,
+    ]
+
+
+def unsafe_so101_approach_contact(
+    phase,
+    has_contact,
+    descent_fraction=None,
+    *,
+    minimum_safe_descent_fraction=0.75,
+):
+    """Reject contact during routing or before the calibrated insertion window."""
+    if not bool(has_contact):
+        return False
+    phase_name = str(getattr(phase, "value", phase))
+    if phase_name == "pregrasp":
+        return True
+    if phase_name != "descend" or descent_fraction is None:
+        return False
+    fraction = float(descent_fraction)
+    threshold = float(minimum_safe_descent_fraction)
+    if not math.isfinite(fraction) or not math.isfinite(threshold):
+        raise ValueError("descent fractions must be finite")
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("minimum_safe_descent_fraction must be in [0, 1]")
+    return fraction < threshold
+
+
 def collision_safe_pregrasp_waypoints(
     home_position,
     final_position,

@@ -113,8 +113,12 @@ from farpoint_so101_env.mdp import (  # noqa: E402
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
 from farpoint.control import (  # noqa: E402
     bounded_position_target,
+    collision_safe_pregrasp_waypoints,
     force_controlled_rotary_jaw_target,
+    settle_release_separation_target,
+    so101_approach_jaw_target,
     unilateral_contact_recenter_target,
+    unsafe_so101_approach_contact,
 )
 from farpoint.grasp_oracle import (  # noqa: E402
     ContactAwareGraspStateMachine,
@@ -1245,7 +1249,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     open_jaw = float(robot.data.joint_pos[0, 5].item())
     closed_jaw = float(np.deg2rad(-10.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
-    approach_jaw = 0.90 if float(object_spec["dimensions_m"][0]) <= 0.03 else 1.20
+    approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
     target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
@@ -1266,10 +1270,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     )
     grasp_machine = ContactAwareGraspStateMachine(
         control_hz=schedule.control_hz,
-        minimum_contact_force_n=2.0,
+        # Low-force bilateral contact is sufficient to enter the quasi-static
+        # hold; rigidity and the later physical proof lift remain mandatory.
+        # The formal workspace run showed stable 30 mm captures oscillating
+        # around 0.1--1.9 N before being rejected by the former 2 N floor.
+        minimum_contact_force_n=0.10,
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
-        static_hold_s=0.50,
+        static_hold_s=0.20,
         proof_lift_hold_s=0.10,
         phase_timeout_s=20.0,
         # Bilateral contact on the rotary SO-101 jaw occurs at the crossover
@@ -1383,12 +1391,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # capture to relax to 1.55/1.65 N while the validator still
                 # required 2.0 N, producing a deterministic false contact-loss
                 # failure despite rigid, balanced contact.
-                min_force=(
-                    grasp_machine.minimum_contact_force_n
-                    if settling_capture
-                    else 3.0
-                ),
-                max_force=60.0,
+                min_force=(0.5 if settling_capture else 3.0),
+                # Back off before the independent 30 N safety validator can
+                # trip on a one-control-tick unilateral force spike.
+                max_force=20.0,
                 close_step=(
                     0.0005
                     if settling_capture
@@ -1468,16 +1474,22 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 )
                 phase_motion_complete = descent_fraction >= 1.0
             if phase is OraclePhase.PREGRASP and pregrasp_route_index < 3:
-                # Reuse the path that passed debug_calibrated_grasp_v6:
-                # establish the grasp posture at a reachable safe pose, route
-                # 70 mm above the distal aperture, then descend outside the
-                # fingertips.  The former generic 0.22 m clearance waypoint
-                # drove shoulder pitch into its lower joint limit.
-                route = (
-                    np.asarray((0.165, -0.11, 0.16), dtype=np.float32),
-                    distal_pregrasp
-                    + np.asarray((0.0, 0.0, 0.070), dtype=np.float32),
+                # The formal run proved that translating directly toward the
+                # former 0.16 m staging pose sweeps a long finger through some
+                # 40 mm cubes. Lift at the home XY first, translate at a
+                # reachable 0.19 m clearance, then descend outside the fingers.
+                safe_route = collision_safe_pregrasp_waypoints(
+                    home_ee,
                     distal_pregrasp,
+                    clearance_z=max(
+                        0.19,
+                        float(home_ee[2]) + 0.04,
+                        float(distal_pregrasp[2]) + 0.04,
+                    ),
+                )
+                route = tuple(
+                    np.asarray(waypoint, dtype=np.float32)
+                    for waypoint in (*safe_route, distal_pregrasp.tolist())
                 )
                 target = route[pregrasp_route_index]
                 phase_motion_complete = False
@@ -1593,10 +1605,19 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # Continuing to chase the displaced cube recreates the old
                 # unilateral wedge failure.
                 target = grasp_hold_pose
-                jaw = max(
-                    closed_jaw, float(commanded_joints[5]) - 0.001
+                jaw_update = force_controlled_rotary_jaw_target(
+                    float(current[5].item()),
+                    float(current[5].item()),
+                    *finger_forces,
+                    open_position=open_jaw,
+                    closed_position=closed_jaw,
+                    min_force=2.0,
+                    max_force=20.0,
+                    close_step=0.001,
+                    backoff_step=0.002,
                 )
-                gripper_control = "calibrated_slow_close"
+                jaw = float(jaw_update["position"])
+                gripper_control = f"calibrated_slow_{jaw_update['action']}"
         elif phase is OraclePhase.VERIFY_CONTACT:
             # Prove the grasp with a gentle test lift. A direct 8 cm target
             # change produces enough acceleration to shed a small cube before
@@ -1810,10 +1831,22 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 - current_object_position
             )
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw
-        elif phase in {OraclePhase.OPEN, OraclePhase.SETTLE}:
+        elif phase is OraclePhase.OPEN:
             if release_hold_pose is None:
                 release_hold_pose = ee_position.copy()
             target = release_hold_pose
+            jaw = open_jaw
+        elif phase is OraclePhase.SETTLE:
+            if release_hold_pose is None:
+                release_hold_pose = ee_position.copy()
+            target = np.asarray(
+                settle_release_separation_target(
+                    release_hold_pose,
+                    machine.phase_steps,
+                    control_hz=schedule.control_hz,
+                ),
+                dtype=np.float32,
+            )
             jaw = open_jaw
         else:
             target = (
@@ -2027,15 +2060,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         # Static-body filtering is not supported by PhysX GPU contact-pair
         # reporting. Table clearance is instead guaranteed by the validated
         # grasp posture and Cartesian waypoint envelope.
-        unexpected_collision = bool(
-            phase is OraclePhase.DESCEND
-            and has_contact
-            and descent_fraction is not None
+        unexpected_collision = unsafe_so101_approach_contact(
+            phase,
+            has_contact,
+            descent_fraction,
             # The production cube is fixed at 45-degree yaw, so its leading
             # corner intentionally reaches the moving finger at about 79%
-            # insertion.  This low-force contact starts contact alignment;
-            # only substantially earlier contact indicates a path sweep.
-            and descent_fraction < 0.75
+            # insertion. This low-force contact starts alignment; PREGRASP
+            # contact or substantially earlier insertion contact is a sweep.
+            minimum_safe_descent_fraction=0.75,
         )
         cube_dropped = (
             cube_was_lifted
