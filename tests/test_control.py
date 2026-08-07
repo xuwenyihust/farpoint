@@ -3,6 +3,7 @@ import unittest
 import pytest
 
 from farpoint.control import (
+    advance_unilateral_contact_crossover,
     advance_so101_slow_close_target,
     apply_place_hover_guard,
     bilateral_grasp_ready,
@@ -800,6 +801,37 @@ def test_so101_rotary_jaw_recenter_moves_away_from_loaded_side():
     assert jaw_loaded["contact_side"] == "left"
     assert fixed_loaded["position"] == pytest.approx([1.0, 0.249, 0.54])
     assert fixed_loaded["contact_side"] == "right"
+
+
+def test_unilateral_contact_crossover_latches_on_first_side_transfer():
+    state = advance_unilateral_contact_crossover(None, 0.0, 1.7)
+    assert state == {"contact_side": "right", "crossed": False}
+
+    no_contact = advance_unilateral_contact_crossover(
+        state["contact_side"], 0.1, 0.1
+    )
+    assert no_contact == {"contact_side": "right", "crossed": False}
+
+    crossover = advance_unilateral_contact_crossover(
+        no_contact["contact_side"], 0.6, 0.0
+    )
+    assert crossover == {"contact_side": "left", "crossed": True}
+
+    same_side = advance_unilateral_contact_crossover(
+        crossover["contact_side"], 1.0, 0.0
+    )
+    assert same_side == {"contact_side": "left", "crossed": False}
+
+
+def test_unilateral_contact_crossover_ignores_bilateral_samples():
+    assert advance_unilateral_contact_crossover("right", 1.0, 1.0) == {
+        "contact_side": "right",
+        "crossed": False,
+    }
+    with pytest.raises(ValueError, match="left, right, or None"):
+        advance_unilateral_contact_crossover("unknown", 0.0, 0.0)
+    with pytest.raises(ValueError, match="finite and positive"):
+        advance_unilateral_contact_crossover(None, 0.0, 0.0, min_force=0.0)
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():

@@ -330,6 +330,31 @@ def so101_rotary_jaw_recenter_target(
     )
 
 
+def advance_unilateral_contact_crossover(
+    previous_contact_side,
+    left_force,
+    right_force,
+    *,
+    min_force=0.5,
+):
+    """Detect the first transfer between unilateral gripper contact sides."""
+    previous = None if previous_contact_side is None else str(previous_contact_side)
+    if previous not in {None, "left", "right"}:
+        raise ValueError("previous_contact_side must be left, right, or None")
+    threshold = float(min_force)
+    if not math.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("min_force must be finite and positive")
+    left_active = float(left_force) >= threshold
+    right_active = float(right_force) >= threshold
+    if left_active == right_active:
+        return {"contact_side": previous, "crossed": False}
+    current = "left" if left_active else "right"
+    return {
+        "contact_side": current,
+        "crossed": previous is not None and current != previous,
+    }
+
+
 def track_observed_pick_target(
     object_position_estimate,
     object_grasp_offset,

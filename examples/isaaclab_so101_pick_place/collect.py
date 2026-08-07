@@ -113,6 +113,7 @@ from farpoint_so101_env.mdp import (  # noqa: E402
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
 from farpoint.control import (  # noqa: E402
+    advance_unilateral_contact_crossover,
     advance_so101_slow_close_target,
     bounded_position_target,
     collision_safe_pregrasp_waypoints,
@@ -1322,6 +1323,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     grasp_relative_reference = None
     previous_object_in_gripper = None
     descent_lateral_correction = 0.0
+    unilateral_contact_side = None
+    tactile_crossover_latched = False
+    tactile_crossover_target = None
     pregrasp_route_index = 0
     rows = []
     root = output_root / episode_id_for_attempt(collection_id, trial["attempt_id"])
@@ -1427,6 +1431,23 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             and balanced_forces is not None
             and min(balanced_forces) < 0.5 <= max(balanced_forces)
         ):
+            crossover = advance_unilateral_contact_crossover(
+                unilateral_contact_side,
+                *balanced_forces,
+                min_force=0.5,
+            )
+            unilateral_contact_side = crossover["contact_side"]
+            if (
+                closing_alignment
+                and crossover["crossed"]
+                and not tactile_crossover_latched
+            ):
+                tactile_crossover_latched = True
+                tactile_crossover_target = ee_position.copy()
+                grasp_hold_pose = tactile_crossover_target.copy()
+                jaw_command = float(commanded_joints[5])
+                commanded_joints = _numpy(current).astype(np.float32).copy()
+                commanded_joints[5] = jaw_command
             jaw_center = _numpy(
                 robot.data.body_link_pose_w.torch[
                     0, robot.body_names.index("jaw"), :3
@@ -1435,24 +1456,25 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             gripper_center = _numpy(
                 robot.data.body_link_pose_w.torch[0, body_index, :3]
             )
-            recenter = so101_rotary_jaw_recenter_target(
-                grasp_hold_pose,
-                grasp_hold_nominal_pose,
-                {"center": jaw_center.tolist()},
-                {"center": gripper_center.tolist()},
-                *balanced_forces,
-                min_force=0.5,
-                step=(0.0000625 if settling_capture else 0.000125),
-                max_correction=(
-                    0.002
-                    if settling_capture
-                    else so101_unilateral_recenter_limit(
-                        object_spec["dimensions_m"][0]
-                    )
-                ),
-            )
-            grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)
-            recenter_active = bool(recenter["active"])
+            if not tactile_crossover_latched:
+                recenter = so101_rotary_jaw_recenter_target(
+                    grasp_hold_pose,
+                    grasp_hold_nominal_pose,
+                    {"center": jaw_center.tolist()},
+                    {"center": gripper_center.tolist()},
+                    *balanced_forces,
+                    min_force=0.5,
+                    step=(0.0000625 if settling_capture else 0.000125),
+                    max_correction=(
+                        0.002
+                        if settling_capture
+                        else so101_unilateral_recenter_limit(
+                            object_spec["dimensions_m"][0]
+                        )
+                    ),
+                )
+                grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)
+                recenter_active = bool(recenter["active"])
         if phase is OraclePhase.HOME:
             target = home_ee
             jaw = open_jaw
@@ -1871,6 +1893,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             gripper_control = f"force_{jaw_force_action}"
         if recenter_active:
             gripper_control += "+recenter"
+        elif tactile_crossover_latched and phase is OraclePhase.CLOSE:
+            gripper_control += "+tactile_crossover_hold"
         if control_step == 0:
             print(
                 f"SO101_ORACLE_START phase={phase.value} "
@@ -2237,6 +2261,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                         np.asarray(grasp_hold_pose[:2])
                         - np.asarray(grasp_hold_nominal_pose[:2])
                     ).tolist()
+                ),
+                "tactile_crossover_latched": tactile_crossover_latched,
+                "tactile_crossover_contact_side": unilateral_contact_side,
+                "tactile_crossover_target_m": (
+                    None
+                    if tactile_crossover_target is None
+                    else tactile_crossover_target.tolist()
                 ),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),
