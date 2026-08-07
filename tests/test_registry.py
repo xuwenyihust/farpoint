@@ -121,12 +121,22 @@ def make_running_v3_episode(root, collection_id, episode_id, status="RUNNING"):
                 "cameras": ["observation.images.front"],
             },
             "outcome": {
-                "success": False if status == "FAILED" else None,
+                "success": False if status in {"FAILED", "ABORTED"} else None,
                 "dataset_valid": False,
-                "failure_category": "runner" if status == "FAILED" else None,
-                "failure_reason": "RuntimeError: simulation stopped"
-                if status == "FAILED"
-                else None,
+                "failure_category": (
+                    "interrupted"
+                    if status == "ABORTED"
+                    else "runner"
+                    if status == "FAILED"
+                    else None
+                ),
+                "failure_reason": (
+                    "SIGINT"
+                    if status == "ABORTED"
+                    else "RuntimeError: simulation stopped"
+                    if status == "FAILED"
+                    else None
+                ),
             },
         },
     )
@@ -151,6 +161,12 @@ class EpisodeRegistryTests(unittest.TestCase):
                 "episode_pilot_failed__trial_001",
                 status="FAILED",
             )
+            aborted = make_running_v3_episode(
+                external,
+                "pilot_aborted",
+                "episode_pilot_aborted__trial_001",
+                status="ABORTED",
+            )
 
             registry = EpisodeRegistry(outputs, episode_roots=[external])
             registry.scan()
@@ -167,6 +183,9 @@ class EpisodeRegistryTests(unittest.TestCase):
                 "RuntimeError: simulation stopped",
             )
             self.assertEqual(rows[failed.name]["dataset_valid"], 0)
+            self.assertEqual(rows[aborted.name]["status"], "FAIL")
+            self.assertEqual(rows[aborted.name]["failure_category"], "interrupted")
+            self.assertEqual(rows[aborted.name]["failure_reason"], "SIGINT")
 
     def test_collection_scoped_episode_ids_keep_repeated_attempts_distinct(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -310,6 +329,40 @@ class EpisodeRegistryTests(unittest.TestCase):
 
             self.assertEqual(row["record_type"], "COLLECTION")
             self.assertEqual(row["status"], "PILOT")
+
+    def test_so101_selection_collection_is_terminal_pass_in_benchmark_tab(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outputs = Path(directory) / "outputs"
+            write_json(
+                outputs / "benchmarks" / "balanced50" / "manifest.json",
+                {
+                    "schema_version": "farpoint.collection-selection.v1",
+                    "collection_id": "balanced50",
+                    "task_id": "so101_cube_pick_place",
+                    "execution_status": "FINISHED",
+                    "quality_status": "PASS",
+                    "required_successes": 2,
+                    "maximum_attempts": 2,
+                    "created_at": "2026-08-07T00:00:00+00:00",
+                    "updated_at": "2026-08-07T00:01:00+00:00",
+                    "attempts": [
+                        {"attempt_id": "a", "success": True},
+                        {"attempt_id": "b", "success": True},
+                    ],
+                },
+            )
+
+            registry = EpisodeRegistry(outputs)
+            registry.scan()
+            row = registry.list_benchmarks()[0]
+
+            self.assertEqual(row["record_type"], "COLLECTION")
+            self.assertEqual(row["status"], "PASS")
+            self.assertEqual(row["planned_trials"], 2)
+            self.assertEqual(row["completed_trials"], 2)
+            self.assertEqual(row["passed_trials"], 2)
+            self.assertEqual(row["success_rate"], 1.0)
+            self.assertEqual(row["accepted"], 1)
 
     def test_local_display_name_is_exposed_without_changing_collection_id(self):
         with tempfile.TemporaryDirectory() as directory:

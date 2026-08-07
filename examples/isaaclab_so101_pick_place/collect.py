@@ -7,6 +7,7 @@ import argparse
 import copy
 import json
 import os
+import signal
 import sys
 import traceback
 from pathlib import Path
@@ -32,14 +33,6 @@ SO101_HOME_JOINTS = np.asarray(
 )
 SO101_GRASP_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
 SO101_CAPTURE_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
-# Exact-mesh aperture candidate at jaw=1.2 rad for the production variation's
-# fixed 45-degree cube yaw.  The shallower jaw=1.0 candidate was physically
-# validated in debug_calibrated_grasp_v6, but contacts the rotated cube at only
-# 79% insertion.  This paired point preserves 4.8 mm exact table clearance and
-# increases the open mesh gap from 62.9 mm to 69.3 mm.
-SO101_CAPTURE_OBJECT_IN_GRIPPER = np.asarray(
-    [0.0214971882, -0.0084643886, -0.0546656502], dtype=np.float32
-)
 # Safe-height reference only.  The 5-DOF arm cannot preserve a full world
 # quaternion throughout translation, so production targeting uses the current
 # measured orientation and gripper-local aperture on every control step.
@@ -80,6 +73,7 @@ def parse_args():
     )
     parser.add_argument("--diagnose-grasp-offsets", action="store_true")
     parser.add_argument("--diagnose-grasp-grid", action="store_true")
+    parser.add_argument("--diagnose-grasp-paths", action="store_true")
     parser.add_argument("--diagnose-calibrated-grasp", action="store_true")
     parser.add_argument(
         "--enable-wrist-camera",
@@ -112,9 +106,14 @@ from farpoint_so101_env.mdp import (  # noqa: E402
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
 from farpoint.control import (  # noqa: E402
+    advance_so101_slow_close_target,
     bounded_position_target,
+    collision_safe_pregrasp_waypoints,
     force_controlled_rotary_jaw_target,
+    settle_release_separation_target,
+    so101_approach_jaw_target,
     unilateral_contact_recenter_target,
+    unsafe_so101_approach_contact,
 )
 from farpoint.grasp_oracle import (  # noqa: E402
     ContactAwareGraspStateMachine,
@@ -142,21 +141,31 @@ from farpoint.scene_entities import bind_scene_entities  # noqa: E402
 from farpoint.so101 import LEROBOT_JOINT_NAMES, SIM_JOINT_NAMES, mapping_metadata  # noqa: E402
 from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+    SO101_CAPTURE_CLOSING_AXIS_LOCAL,
     SO101_RUNTIME_QUATERNION_ORDER,
     SO101_WORKSHOP_ASSET_SHA256,
     SO101_WORKSHOP_COMMIT,
     posture_geometry_diagnostics,
+    so101_capture_aperture_reference,
+    so101_capture_channel_direction_world,
+    so101_level_capture_orientation_xyzw,
 )
 from farpoint.so101_collection import (  # noqa: E402
+    CollectionSignalAbort,
+    abort_attempt_run_state,
+    abort_collection_manifest,
     build_attempt_run_state,
     build_export_selection,
     create_gate_manifest,
     create_manifest,
     create_pilot_manifest,
+    collection_interruption_reason,
     episode_id_for_attempt,
+    finish_diagnostic_manifest,
     load_manifest,
     next_attempt,
     record_attempt,
+    raise_collection_signal_abort,
     write_manifest,
 )
 
@@ -280,6 +289,8 @@ def _ik_action(
     device,
     posture_target=None,
     orientation_target=None,
+    orientation_local_axis=(0.0, 0.0, 1.0),
+    orientation_weight=0.03,
     nullspace_gain=0.20,
     max_joint_step=0.02,
     lock_wrist=False,
@@ -349,14 +360,17 @@ def _ik_action(
         task_error = position_error
         nullspace_error = posture_error
     else:
-        orientation_weight = 0.03
+        orientation_weight = float(orientation_weight)
+        if not np.isfinite(orientation_weight) or orientation_weight <= 0.0:
+            raise ValueError("orientation_weight must be positive and finite")
         # SO-101 has five arm joints: position plus full orientation would be
-        # a six-dimensional, over-constrained task. Align the gripper's local
-        # approach axis (three rows, rank two) and leave rotation around that
-        # axis to the wrist-roll posture regularizer.
+        # a six-dimensional, over-constrained task. Align one selected local
+        # axis (three rows, rank two) and leave rotation around that axis to
+        # the wrist-roll posture regularizer.
         orientation_error = quaternion_direction_error(
             orientation_target,
             _numpy(robot.data.body_link_pose_w.torch[0, body_index, 3:7]),
+            local_axis=orientation_local_axis,
         )
         jacobian = spatial_jacobian.copy()
         jacobian[3:] *= orientation_weight
@@ -631,7 +645,7 @@ def run_grasp_posture_diagnostic(env, output_root: Path) -> None:
 
 
 def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
-    """Run one contact-only slow-close and proof-lift calibration attempt."""
+    """Run the production 40 mm slow-close and proof-lift calibration."""
     scene = env.scene
     robot = scene["robot"]
     body_index = _body_index(robot)
@@ -649,12 +663,19 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         if name != active_name
     ]
     object_position = np.asarray((0.1589218, -0.1071630, 0.052), dtype=np.float32)
+    object_orientation = np.asarray(
+        (0.0, 0.0, np.sin(np.pi / 8.0), np.cos(np.pi / 8.0)),
+        dtype=np.float32,
+    )
+    object_edge_m = 0.040
     posture_target = np.asarray((0.50, 0.50), dtype=np.float32)
     expected_safe_orientation = np.asarray(
         (-0.6417147, 0.1408973, 0.0826372, -0.7493473), dtype=np.float32
     )
-    jaw_preshape = 1.0
+    jaw_preshape = so101_approach_jaw_target(object_edge_m)
+    aperture_reference = so101_capture_aperture_reference(jaw_preshape)
     closed_jaw = float(np.deg2rad(-10.0))
+    bilateral_threshold_n = 0.10
     seed = 0
     destination = output_root / "calibrated_grasp_diagnostic"
     destination.mkdir(parents=True, exist_ok=True)
@@ -665,7 +686,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     env.reset(seed=seed)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
-    _move_object(scene[active_name], object_position, device)
+    _move_object(
+        scene[active_name], object_position, device, object_orientation
+    )
     _aim_front_camera(scene, device)
     command = SO101_HOME_JOINTS.copy()
     action = torch.tensor(command[None, :], dtype=torch.float32, device=device)
@@ -691,7 +714,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     safe_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
     settled_cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
     aligned_target = gripper_target_for_object_local_offset(
-        settled_cube, safe_pose[3:7], SO101_APERTURE_REFERENCE_IN_GRIPPER_M
+        settled_cube, safe_pose[3:7], aperture_reference
     )
     feed_distance_m = 0.070
     # Route above a distal, tip-first pregrasp.  The fixed finger extends along
@@ -703,7 +726,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
-            SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+            aperture_reference,
         )
         local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         above_target = (
@@ -732,7 +755,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
-            SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+            aperture_reference,
         )
         local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         pregrasp_target = aligned_target + feed_distance_m * local_z_world
@@ -761,7 +784,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
-            SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+            aperture_reference,
         )
         local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         target = aligned_target + (
@@ -807,7 +830,11 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             overload = max(forces) > 30.0
             if overload:
                 break
-            bilateral_steps = bilateral_steps + 1 if min(forces) > 2.0 else 0
+            bilateral_steps = (
+                bilateral_steps + 1
+                if min(forces) >= bilateral_threshold_n
+                else 0
+            )
             if bilateral_steps >= 15:
                 contact_jaw_target = float(command[5])
                 break
@@ -845,7 +872,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             action[0, 5] = contact_jaw_target
             command = _numpy(action[0]).astype(np.float32).copy()
             env.step(action)
-            if _bilateral_contact(contacts):
+            if _bilateral_contact(contacts, threshold_n=bilateral_threshold_n):
                 hold_bilateral_steps += 1
 
     lift_start_cube = _numpy(scene[active_name].data.root_pos_w[0]).copy()
@@ -868,7 +895,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             action[0, 5] = contact_jaw_target
             command = _numpy(action[0]).astype(np.float32).copy()
             env.step(action)
-            if _bilateral_contact(contacts):
+            if _bilateral_contact(contacts, threshold_n=bilateral_threshold_n):
                 lift_bilateral_steps += 1
 
     final_cube = _numpy(scene[active_name].data.root_pos_w[0]).copy()
@@ -891,7 +918,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         "camera_features": ["front"],
         "wrist_camera_enabled": False,
         "asset_sha256": SO101_WORKSHOP_ASSET_SHA256,
-        "aperture_center_local_m": SO101_APERTURE_REFERENCE_IN_GRIPPER_M.tolist(),
+        "object_edge_m": object_edge_m,
+        "object_orientation_xyzw": object_orientation.tolist(),
+        "aperture_center_local_m": aperture_reference.tolist(),
         "posture_target_rad": posture_target.tolist(),
         "expected_safe_orientation_xyzw": expected_safe_orientation.tolist(),
         "measured_safe_pose_xyzw": safe_pose.tolist(),
@@ -899,6 +928,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             np.linalg.norm(safe_pose[3:7] - expected_safe_orientation)
         ),
         "jaw_preshape_rad": jaw_preshape,
+        "bilateral_threshold_n": bilateral_threshold_n,
         "aligned_target_m": np.asarray(aligned_target).tolist(),
         "alignment_pose_xyzw": alignment_pose.tolist(),
         "jaw_pose_xyzw": _numpy(
@@ -1192,6 +1222,255 @@ def run_grasp_grid_diagnostic(env, output_root: Path) -> None:
     _write_json(destination / "results.json", {"candidates": results})
 
 
+def run_grasp_path_diagnostic(env, output_root: Path) -> None:
+    """Screen two-stage 40 mm insertion paths before contact-only closing."""
+    scene = env.scene
+    robot = scene["robot"]
+    body_index = _body_index(robot)
+    device = env.device
+    active_name = "cube_large_blue"
+    inactive = [
+        name
+        for name in (
+            "cube_small_red",
+            "cube_small_blue",
+            "cube_large_red",
+            "cube_large_blue",
+        )
+        if name != active_name
+    ]
+    object_position = np.asarray((0.1589218, -0.1071630, 0.052), dtype=np.float32)
+    object_orientation = np.asarray(
+        (0.0, 0.0, np.sin(np.pi / 8.0), np.cos(np.pi / 8.0)),
+        dtype=np.float32,
+    )
+    jaw_preshape = so101_approach_jaw_target(0.040)
+    aperture_reference = so101_capture_aperture_reference(jaw_preshape)
+    outside_distance_m = 0.080
+    vertical_clearance_m = 0.080
+    contact_threshold_n = 0.10
+    # Exact jaw=1.7 mesh contact-pair direction in the gripper frame.  The
+    # first path screen showed that the horizontal channel perpendicular to
+    # this axis is the only route that gets close to the 40 mm cube.  This
+    # The prior screen showed wrist-roll regularization alone does not level
+    # the closing axis. Keep its best roll branch, directly level the measured
+    # end-effector axis above the cube, and retain a small height screen.
+    candidates = tuple(
+        (0.25, aperture_height_offset_m)
+        for aperture_height_offset_m in (-0.010, 0.0, 0.010)
+    )
+    destination = output_root / "grasp_path_diagnostic"
+    destination.mkdir(parents=True, exist_ok=True)
+    results = []
+
+    def live_aligned_target(aperture_height_offset_m):
+        pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+        cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+        return gripper_target_for_object_local_offset(
+            cube
+            + np.asarray(
+                (0.0, 0.0, aperture_height_offset_m), dtype=np.float32
+            ),
+            pose[3:7],
+            aperture_reference,
+        )
+
+    for candidate_index, (roll, aperture_height_offset_m) in enumerate(candidates):
+        posture_target = np.asarray((0.50, roll), dtype=np.float32)
+        label = f"roll_{roll:+.2f}_height_{aperture_height_offset_m:+.3f}"
+        env.farpoint_active_cube = active_name
+        env.reset(seed=0)
+        for index, name in enumerate(inactive):
+            _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
+        _move_object(
+            scene[active_name], object_position, device, object_orientation
+        )
+        _aim_front_camera(scene, device)
+        command = SO101_HOME_JOINTS.copy()
+        action = torch.tensor(command[None, :], dtype=torch.float32, device=device)
+        env.step(action)
+        cube_start = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+        first_contact_segment = None
+        first_contact_fraction = None
+        first_contact_forces = (0.0, 0.0)
+        contacts = (scene["contact_jaw"], scene["contact_gripper"])
+        orientation_target = None
+
+        def advance_segment(segment, steps, target_for_fraction):
+            nonlocal command
+            nonlocal first_contact_segment
+            nonlocal first_contact_fraction
+            nonlocal first_contact_forces
+            segment_start_cube = _numpy(
+                scene[active_name].data.root_pos_w[0, :3]
+            ).copy()
+            for step in range(steps):
+                fraction = (step + 1) / steps
+                target = target_for_fraction(fraction)
+                action = _ik_action(
+                    robot,
+                    scene["ee_frame"],
+                    target,
+                    command,
+                    body_index,
+                    device,
+                    posture_target=posture_target,
+                    orientation_target=orientation_target,
+                    orientation_local_axis=SO101_CAPTURE_CLOSING_AXIS_LOCAL,
+                    orientation_weight=0.12,
+                    max_joint_step=0.01,
+                )
+                action[0, 5] = jaw_preshape
+                command = _numpy(action[0]).astype(np.float32).copy()
+                env.step(action)
+                forces = _cube_contact_forces(contacts)
+                if max(forces) >= contact_threshold_n:
+                    first_contact_segment = segment
+                    first_contact_fraction = fraction
+                    first_contact_forces = forces
+                    return False
+                cube_now = _numpy(
+                    scene[active_name].data.root_pos_w[0, :3]
+                ).copy()
+                if float(np.linalg.norm(cube_now - segment_start_cube)) >= 0.003:
+                    first_contact_segment = segment
+                    first_contact_fraction = fraction
+                    first_contact_forces = forces
+                    return False
+            return True
+
+        safe_target = np.asarray((0.165, -0.11, 0.18), dtype=np.float32)
+        contact_free = advance_segment(
+            "safe_posture", 180, lambda _fraction: safe_target
+        )
+        unlevelled_safe_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
+        orientation_target = so101_level_capture_orientation_xyzw(
+            unlevelled_safe_pose[3:7]
+        )
+        if contact_free:
+            contact_free = advance_segment(
+                "level_capture_axis", 240, lambda _fraction: safe_target
+            )
+        safe_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
+        closing_axis_world = (
+            quaternion_rotation_matrix_xyzw(safe_pose[3:7])
+            @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+        )
+        # Use the side that v9 showed to be reachable.  The opposite side
+        # drove the arm across the cube during the outside descent.
+        direction = so101_capture_channel_direction_world(
+            orientation_target
+        )
+        if contact_free:
+            contact_free = advance_segment(
+                "above_outside",
+                180,
+                lambda _fraction: (
+                    live_aligned_target(aperture_height_offset_m)
+                    + outside_distance_m * direction
+                    + np.asarray((0.0, 0.0, vertical_clearance_m), dtype=np.float32)
+                ),
+            )
+        if contact_free:
+            contact_free = advance_segment(
+                "outside_descent",
+                180,
+                lambda fraction: (
+                    live_aligned_target(aperture_height_offset_m)
+                    + outside_distance_m * direction
+                    + np.asarray(
+                        (0.0, 0.0, vertical_clearance_m * (1.0 - fraction)),
+                        dtype=np.float32,
+                    )
+                ),
+            )
+        if contact_free:
+            contact_free = advance_segment(
+                "lateral_insert",
+                240,
+                lambda fraction: (
+                    live_aligned_target(aperture_height_offset_m)
+                    + outside_distance_m * (1.0 - fraction) * direction
+                ),
+            )
+
+        final_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
+        final_cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+        final_target = gripper_target_for_object_local_offset(
+            final_cube
+            + np.asarray(
+                (0.0, 0.0, aperture_height_offset_m), dtype=np.float32
+            ),
+            final_pose[3:7],
+            aperture_reference,
+        )
+        final_position_error_m = float(
+            np.linalg.norm(final_target - final_pose[:3])
+        )
+        final_closing_axis_world = (
+            quaternion_rotation_matrix_xyzw(final_pose[3:7])
+            @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+        )
+        record = {
+            "candidate_index": candidate_index,
+            "label": label,
+            "posture_target_rad": posture_target.tolist(),
+            "aperture_height_offset_m": aperture_height_offset_m,
+            "unlevelled_closing_axis_world": (
+                quaternion_rotation_matrix_xyzw(unlevelled_safe_pose[3:7])
+                @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+            ).tolist(),
+            "levelled_orientation_target_xyzw": orientation_target.tolist(),
+            "closing_axis_world_at_safe": closing_axis_world.tolist(),
+            "closing_axis_world_final": final_closing_axis_world.tolist(),
+            "outside_direction_world": direction.tolist(),
+            "contact_free": bool(
+                contact_free
+                and final_position_error_m < 0.010
+                and abs(float(final_closing_axis_world[2])) < 0.05
+            ),
+            "first_contact_segment": first_contact_segment,
+            "first_contact_fraction": first_contact_fraction,
+            "first_contact_forces_n": list(first_contact_forces),
+            "final_position_error_m": final_position_error_m,
+            "cube_displacement_m": (final_cube - cube_start).tolist(),
+            "final_contact": _contact_debug(contacts),
+        }
+        results.append(record)
+        Image.fromarray(_image(scene["front_camera"], device), mode="RGB").save(
+            destination / f"candidate_{candidate_index:02d}_{label}_front.png"
+        )
+        print("SO101_GRASP_PATH " + json.dumps(record, sort_keys=True), flush=True)
+
+    report = {
+        "schema_version": "farpoint.so101_grasp_path_diagnostic.v3",
+        "git_commit": os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+        "asset_sha256": SO101_WORKSHOP_ASSET_SHA256,
+        "camera_features": ["front"],
+        "wrist_camera_enabled": False,
+        "object_edge_m": 0.040,
+        "object_orientation_xyzw": object_orientation.tolist(),
+        "jaw_preshape_rad": jaw_preshape,
+        "aperture_center_local_m": aperture_reference.tolist(),
+        "closing_axis_local": SO101_CAPTURE_CLOSING_AXIS_LOCAL.tolist(),
+        "outside_distance_m": outside_distance_m,
+        "vertical_clearance_m": vertical_clearance_m,
+        "contact_threshold_n": contact_threshold_n,
+        "maximum_closing_axis_abs_z": 0.05,
+        "successful_candidate_labels": [
+            item["label"] for item in results if item["contact_free"]
+        ],
+        "candidates": results,
+    }
+    _write_json(destination / "results.json", report)
+
+
 def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: str):
     device = env.device
     scene = env.scene
@@ -1245,7 +1524,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     open_jaw = float(robot.data.joint_pos[0, 5].item())
     closed_jaw = float(np.deg2rad(-10.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
-    approach_jaw = 0.90 if float(object_spec["dimensions_m"][0]) <= 0.03 else 1.20
+    approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
+    capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
     target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
     target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
@@ -1266,16 +1546,19 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     )
     grasp_machine = ContactAwareGraspStateMachine(
         control_hz=schedule.control_hz,
-        minimum_contact_force_n=2.0,
+        # Low-force bilateral contact is sufficient to enter the quasi-static
+        # hold; rigidity and the later physical proof lift remain mandatory.
+        # The formal workspace run showed stable 30 mm captures oscillating
+        # around 0.1--1.9 N before being rejected by the former 2 N floor.
+        minimum_contact_force_n=0.10,
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
-        static_hold_s=0.50,
+        static_hold_s=0.20,
         proof_lift_hold_s=0.10,
         phase_timeout_s=20.0,
-        # Bilateral contact on the rotary SO-101 jaw occurs at the crossover
-        # between moving-finger and fixed-finger load. Give the bounded
-        # force/recenter controller time to restore the missing side; stable
-        # timers still reset on every unilateral sample.
+        # Give the bounded force/recenter controller time to restore a missing
+        # side after first contact; stable timers still reset on every
+        # unilateral sample.
         maximum_contact_loss_s=0.20,
     )
     commanded_joints = _numpy(initial_joints[0]).astype(np.float32).copy()
@@ -1383,12 +1666,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # capture to relax to 1.55/1.65 N while the validator still
                 # required 2.0 N, producing a deterministic false contact-loss
                 # failure despite rigid, balanced contact.
-                min_force=(
-                    grasp_machine.minimum_contact_force_n
-                    if settling_capture
-                    else 3.0
-                ),
-                max_force=60.0,
+                min_force=(0.5 if settling_capture else 3.0),
+                # Back off before the independent 30 N safety validator can
+                # trip on a one-control-tick unilateral force spike.
+                max_force=20.0,
                 close_step=(
                     0.0005
                     if settling_capture
@@ -1449,7 +1730,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             capture_target = gripper_target_for_object_local_offset(
                 object_world,
                 live_gripper_pose[3:7],
-                SO101_CAPTURE_OBJECT_IN_GRIPPER,
+                capture_object_in_gripper,
             )
             local_z_world = quaternion_rotation_matrix_xyzw(
                 live_gripper_pose[3:7]
@@ -1468,16 +1749,22 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 )
                 phase_motion_complete = descent_fraction >= 1.0
             if phase is OraclePhase.PREGRASP and pregrasp_route_index < 3:
-                # Reuse the path that passed debug_calibrated_grasp_v6:
-                # establish the grasp posture at a reachable safe pose, route
-                # 70 mm above the distal aperture, then descend outside the
-                # fingertips.  The former generic 0.22 m clearance waypoint
-                # drove shoulder pitch into its lower joint limit.
-                route = (
-                    np.asarray((0.165, -0.11, 0.16), dtype=np.float32),
-                    distal_pregrasp
-                    + np.asarray((0.0, 0.0, 0.070), dtype=np.float32),
+                # The formal run proved that translating directly toward the
+                # former 0.16 m staging pose sweeps a long finger through some
+                # 40 mm cubes. Lift at the home XY first, translate at a
+                # reachable 0.19 m clearance, then descend outside the fingers.
+                safe_route = collision_safe_pregrasp_waypoints(
+                    home_ee,
                     distal_pregrasp,
+                    clearance_z=max(
+                        0.19,
+                        float(home_ee[2]) + 0.04,
+                        float(distal_pregrasp[2]) + 0.04,
+                    ),
+                )
+                route = tuple(
+                    np.asarray(waypoint, dtype=np.float32)
+                    for waypoint in (*safe_route, distal_pregrasp.tolist())
                 )
                 target = route[pregrasp_route_index]
                 phase_motion_complete = False
@@ -1593,10 +1880,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # Continuing to chase the displaced cube recreates the old
                 # unilateral wedge failure.
                 target = grasp_hold_pose
-                jaw = max(
-                    closed_jaw, float(commanded_joints[5]) - 0.001
+                jaw_update = advance_so101_slow_close_target(
+                    float(commanded_joints[5]),
+                    float(current[5].item()),
+                    *finger_forces,
+                    open_position=open_jaw,
+                    closed_position=closed_jaw,
                 )
-                gripper_control = "calibrated_slow_close"
+                jaw = float(jaw_update["position"])
+                gripper_control = f"calibrated_slow_{jaw_update['action']}"
         elif phase is OraclePhase.VERIFY_CONTACT:
             # Prove the grasp with a gentle test lift. A direct 8 cm target
             # change produces enough acceleration to shed a small cube before
@@ -1810,10 +2102,22 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 - current_object_position
             )
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw
-        elif phase in {OraclePhase.OPEN, OraclePhase.SETTLE}:
+        elif phase is OraclePhase.OPEN:
             if release_hold_pose is None:
                 release_hold_pose = ee_position.copy()
             target = release_hold_pose
+            jaw = open_jaw
+        elif phase is OraclePhase.SETTLE:
+            if release_hold_pose is None:
+                release_hold_pose = ee_position.copy()
+            target = np.asarray(
+                settle_release_separation_target(
+                    release_hold_pose,
+                    machine.phase_steps,
+                    control_hz=schedule.control_hz,
+                ),
+                dtype=np.float32,
+            )
             jaw = open_jaw
         else:
             target = (
@@ -2027,15 +2331,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         # Static-body filtering is not supported by PhysX GPU contact-pair
         # reporting. Table clearance is instead guaranteed by the validated
         # grasp posture and Cartesian waypoint envelope.
-        unexpected_collision = bool(
-            phase is OraclePhase.DESCEND
-            and has_contact
-            and descent_fraction is not None
+        unexpected_collision = unsafe_so101_approach_contact(
+            phase,
+            has_contact,
+            descent_fraction,
             # The production cube is fixed at 45-degree yaw, so its leading
             # corner intentionally reaches the moving finger at about 79%
-            # insertion.  This low-force contact starts contact alignment;
-            # only substantially earlier contact indicates a path sweep.
-            and descent_fraction < 0.75
+            # insertion. This low-force contact starts alignment; PREGRASP
+            # contact or substantially earlier insertion contact is a sweep.
+            minimum_safe_descent_fraction=0.75,
         )
         cube_dropped = (
             cube_was_lifted
@@ -2049,7 +2353,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 right_force_n=float(contact_forces[1]),
                 aperture_aligned=float(
                     np.linalg.norm(
-                        object_in_gripper - SO101_CAPTURE_OBJECT_IN_GRIPPER
+                        object_in_gripper - capture_object_in_gripper
                     )
                 )
                 <= 0.025,
@@ -2195,6 +2499,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                         np.asarray(grasp_hold_pose[:2])
                         - np.asarray(grasp_hold_nominal_pose[:2])
                     ).tolist()
+                ),
+                "approach_jaw_target_rad": approach_jaw,
+                "capture_aperture_reference_local_m": (
+                    capture_object_in_gripper.tolist()
                 ),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),
@@ -2421,59 +2729,94 @@ def main():
             )
         else:
             manifest = create_manifest(plan, collection_id="so101_cube_pick_place_pilot", git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"))
-    # Isaac Lab 3.0 keeps the config entry point in the Gym registration, but
-    # Gymnasium does not instantiate that config automatically.  Construct it
-    # explicitly so this works both from the launcher and from Python callers.
-    from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
+    # Persist RUNNING before Isaac environment construction. A SIGINT/SIGTERM
+    # during the expensive RTX startup must still leave a terminal manifest.
+    write_manifest(args_cli.manifest, manifest)
+    previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
-    env_cfg = SO101CubePickPlaceEnvCfg()
-    # Seed the construction path as well as every reset.  Isaac Lab warns and
-    # may initialize manager state nondeterministically when this remains None.
-    env_cfg.seed = 0
-    if not args_cli.enable_wrist_camera:
-        # Setting both entries to None before environment construction means
-        # Isaac Lab neither spawns nor renders the wrist sensor in v0.
-        env_cfg.scene.wrist_camera = None
-        env_cfg.observations.policy.wrist_rgb = None
-    env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
+    signal.signal(signal.SIGTERM, raise_collection_signal_abort)
+    env = None
+    active_attempt = None
     try:
+        # Isaac Lab 3.0 keeps the config entry point in the Gym registration,
+        # but Gymnasium does not instantiate that config automatically.
+        from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
+
+        env_cfg = SO101CubePickPlaceEnvCfg()
+        # Seed the construction path as well as every reset. Isaac Lab warns
+        # and may initialize manager state nondeterministically when this is None.
+        env_cfg.seed = 0
+        if not args_cli.enable_wrist_camera:
+            # Both entries are removed before construction, so v0 neither
+            # spawns nor renders the wrist sensor.
+            env_cfg.scene.wrist_camera = None
+            env_cfg.observations.policy.wrist_rgb = None
+        env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
         if args_cli.diagnose_jacobian:
             run_jacobian_diagnostic(env)
+            finish_diagnostic_manifest(manifest, "jacobian", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_grasp_postures:
             try:
                 run_grasp_posture_diagnostic(env, args_cli.output_root)
-            except BaseException as error:
+            except Exception as error:
                 details = traceback.format_exc()
                 print("SO101_GRASP_POSTURE_ERROR\n" + details, flush=True)
                 _write_json(
                     args_cli.output_root / "diagnostic_error.json",
                     {"error": repr(error), "traceback": details},
                 )
+                finish_diagnostic_manifest(
+                    manifest, "grasp_postures", succeeded=False
+                )
+                write_manifest(args_cli.manifest, manifest)
                 raise
+            finish_diagnostic_manifest(
+                manifest, "grasp_postures", succeeded=True
+            )
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_calibrated_grasp:
             try:
                 run_calibrated_grasp_diagnostic(env, args_cli.output_root)
-            except BaseException as error:
+            except Exception as error:
                 details = traceback.format_exc()
                 print("SO101_CALIBRATED_GRASP_ERROR\n" + details, flush=True)
                 _write_json(
                     args_cli.output_root / "diagnostic_error.json",
                     {"error": repr(error), "traceback": details},
                 )
+                finish_diagnostic_manifest(
+                    manifest, "calibrated_grasp", succeeded=False
+                )
+                write_manifest(args_cli.manifest, manifest)
                 raise
+            finish_diagnostic_manifest(
+                manifest, "calibrated_grasp", succeeded=True
+            )
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_grasp_offsets:
             run_grasp_offset_diagnostic(env, args_cli.output_root)
+            finish_diagnostic_manifest(manifest, "grasp_offsets", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_grasp_grid:
             run_grasp_grid_diagnostic(env, args_cli.output_root)
+            finish_diagnostic_manifest(manifest, "grasp_grid", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
+            return
+        if args_cli.diagnose_grasp_paths:
+            run_grasp_path_diagnostic(env, args_cli.output_root)
+            finish_diagnostic_manifest(manifest, "grasp_paths", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
             return
         for _ in range(args_cli.max_attempts_this_run):
             attempt = next_attempt(manifest, plan)
             if attempt is None:
                 break
+            active_attempt = attempt
             try:
                 episode_id, success, valid, category, reason = run_attempt(
                     env,
@@ -2534,8 +2877,34 @@ def main():
             record_attempt(manifest, plan, attempt, episode_id=episode_id, success=success, dataset_valid=valid, failure_category=category, failure_reason=reason)
             write_manifest(args_cli.manifest, manifest)
             print(f"SO101_ATTEMPT {attempt['attempt_id']} success={success} phase={category or 'complete'}", flush=True)
+            active_attempt = None
+    except (KeyboardInterrupt, CollectionSignalAbort) as error:
+        reason = collection_interruption_reason(error)
+        if manifest.get("execution_status") == "RUNNING":
+            abort_collection_manifest(manifest, reason)
+        if active_attempt is not None:
+            interrupted_episode_id = episode_id_for_attempt(
+                manifest["collection_id"], active_attempt["attempt_id"]
+            )
+            run_state_path = (
+                args_cli.output_root / interrupted_episode_id / "run-state.json"
+            )
+            if run_state_path.exists():
+                interrupted_run_state = _read_json(run_state_path)
+                if interrupted_run_state.get("execution_status") == "RUNNING":
+                    abort_attempt_run_state(interrupted_run_state, reason)
+                    _write_json(run_state_path, interrupted_run_state)
+        write_manifest(args_cli.manifest, manifest)
+        print(
+            f"SO101_COLLECTION_ABORTED reason={reason} "
+            f"attempt={None if active_attempt is None else active_attempt['attempt_id']}",
+            flush=True,
+        )
+        raise
     finally:
-        env.close()
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
+        if env is not None:
+            env.close()
         simulation_app.close()
     if manifest["quality_status"] == "PASS" and not args_cli.gate_plan:
         _write_json(args_cli.manifest.with_name("export_selection.json"), build_export_selection(manifest, str(args_cli.output_root)))

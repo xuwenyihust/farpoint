@@ -198,6 +198,35 @@ def test_transient_bilateral_force_cannot_validate_grasp():
     assert decision.failure_reason == "bilateral_contact_lost:bilateral_settle"
 
 
+def test_low_force_capture_still_requires_physical_proof_lift():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        minimum_contact_force_n=0.10,
+        bilateral_settle_s=0.1,
+        static_hold_s=0.1,
+        proof_lift_hold_s=0.1,
+    )
+    low_force = {
+        "left_force_n": 0.15,
+        "right_force_n": 0.20,
+        "proof_lift_m": 0.0,
+    }
+
+    for _ in range(6):
+        decision = machine.step(_evidence(**low_force))
+
+    assert decision.phase is GraspPhase.PROOF_LIFT
+    assert machine.step(_evidence(**low_force)).phase is GraspPhase.PROOF_LIFT
+    assert machine.step(
+        _evidence(
+            **{
+                **low_force,
+                "proof_lift_m": machine.minimum_proof_lift_m,
+            }
+        )
+    ).phase is GraspPhase.VALIDATED
+
+
 def test_motion_during_bilateral_contact_resets_settle_window():
     machine = ContactAwareGraspStateMachine(control_hz=10, bilateral_settle_s=0.2)
     machine.step(_evidence(right_force_n=0.0))

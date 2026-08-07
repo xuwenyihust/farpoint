@@ -58,12 +58,154 @@ SO101_APERTURE_REFERENCE_IN_GRIPPER_M = np.asarray(
     (0.0190589216, -0.0084643856, -0.0578673638), dtype=np.float32
 )
 
+# Production aperture centers from the exact collision meshes at the frozen
+# wrist posture (pitch=0.5 rad, roll=0.5 rad) and 45-degree cube yaw.  The
+# 1.2-rad point is the reference used by the validated 30 mm episodes.  The
+# larger openings were recomputed from the pinned workshop USD after the
+# 40 mm slow-close regression showed that reusing the 1.2-rad point at a
+# 1.7-rad approach leaves the cube 12.7 mm too deep in the finger throat.
+SO101_CAPTURE_APERTURE_CALIBRATION = (
+    (
+        1.2,
+        np.asarray((0.0214971882, -0.0084643886, -0.0546656502), dtype=np.float32),
+    ),
+    (
+        1.4,
+        np.asarray(
+            (0.0224196905, -0.0086327176, -0.0479056704), dtype=np.float32
+        ),
+    ),
+    (
+        1.7,
+        np.asarray(
+            (0.0236281415, -0.0086327433, -0.0420040267), dtype=np.float32
+        ),
+    ),
+)
+
+# Direction between the exact medial contact candidates at jaw=1.7 rad,
+# expressed in the gripper frame.  Its horizontal perpendicular identifies
+# the open channel through which a 40 mm cube can enter without crossing the
+# rotary jaw's closing sweep.
+SO101_CAPTURE_CLOSING_AXIS_LOCAL = np.asarray(
+    (0.913094, -0.004627, 0.407722), dtype=np.float32
+)
+SO101_CAPTURE_CLOSING_AXIS_LOCAL /= np.linalg.norm(
+    SO101_CAPTURE_CLOSING_AXIS_LOCAL
+)
+
+
+def so101_capture_aperture_reference(jaw_position_rad: float) -> np.ndarray:
+    """Return the calibrated local aperture center for an approach opening.
+
+    Openings below 1.2 rad deliberately retain the validated 30 mm reference.
+    Between measured exact-mesh anchors the center is linearly interpolated;
+    the small interpolation error is bounded by the adjacent calibration
+    points instead of extrapolating rotary-jaw geometry.  Values above the
+    largest production anchor retain the 1.7-rad reference up to the pinned
+    USD open limit.
+    """
+    jaw_position = float(jaw_position_rad)
+    if not np.isfinite(jaw_position):
+        raise ValueError("jaw_position_rad must be finite")
+    if not -0.1746 <= jaw_position <= 1.7453:
+        raise ValueError("jaw_position_rad must be within pinned USD limits")
+
+    positions = np.asarray(
+        [position for position, _reference in SO101_CAPTURE_APERTURE_CALIBRATION],
+        dtype=np.float64,
+    )
+    references = np.asarray(
+        [reference for _position, reference in SO101_CAPTURE_APERTURE_CALIBRATION],
+        dtype=np.float64,
+    )
+    calibrated_position = float(np.clip(jaw_position, positions[0], positions[-1]))
+    return np.asarray(
+        [
+            np.interp(calibrated_position, positions, references[:, axis])
+            for axis in range(3)
+        ],
+        dtype=np.float32,
+    )
+
 
 def _vector(value, *, length: int, name: str) -> np.ndarray:
     result = np.asarray(value, dtype=np.float64)
     if result.shape != (length,) or not np.isfinite(result).all():
         raise ValueError(f"{name} must contain {length} finite values")
     return result
+
+
+def so101_capture_channel_direction_world(gripper_orientation_xyzw) -> np.ndarray:
+    """Return the reachable horizontal insertion direction for jaw=1.7.
+
+    The returned direction is perpendicular to the measured closing axis.
+    Its sign selects the side that the first eight-direction PhysX screen
+    found reachable; the opposite side crosses the cube during descent.
+    """
+    orientation = _vector(
+        gripper_orientation_xyzw,
+        length=4,
+        name="gripper_orientation_xyzw",
+    )
+    closing_world = (
+        quaternion_rotation_matrix_xyzw(orientation)
+        @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+    )
+    horizontal_norm = float(np.linalg.norm(closing_world[:2]))
+    if horizontal_norm <= 1e-6:
+        raise ValueError("closing axis must have a horizontal component")
+    return np.asarray(
+        (
+            closing_world[1] / horizontal_norm,
+            -closing_world[0] / horizontal_norm,
+            0.0,
+        ),
+        dtype=np.float32,
+    )
+
+
+def so101_level_capture_orientation_xyzw(gripper_orientation_xyzw) -> np.ndarray:
+    """Rotate a posture so the jaw=1.7 closing axis is world-horizontal.
+
+    The correction is applied about the currently reachable insertion
+    channel.  This preserves the horizontal channel direction while removing
+    the vertical component that made both finger tips sweep through the cube.
+    """
+    orientation = _vector(
+        gripper_orientation_xyzw,
+        length=4,
+        name="gripper_orientation_xyzw",
+    )
+    orientation_norm = float(np.linalg.norm(orientation))
+    if orientation_norm <= 1e-12:
+        raise ValueError("gripper_orientation_xyzw must be non-zero")
+    orientation = orientation / orientation_norm
+    rotation = quaternion_rotation_matrix_xyzw(orientation)
+    closing_world = rotation @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+    horizontal_norm = float(np.linalg.norm(closing_world[:2]))
+    if horizontal_norm <= 1e-6:
+        raise ValueError("closing axis must have a horizontal component")
+    channel_world = so101_capture_channel_direction_world(orientation)
+    correction_angle = float(np.arctan2(-closing_world[2], horizontal_norm))
+    half_angle = correction_angle * 0.5
+    delta = np.concatenate(
+        (channel_world * np.sin(half_angle), [np.cos(half_angle)])
+    )
+    # Pre-multiply by the world-frame correction quaternion.
+    dx, dy, dz, dw = delta
+    x, y, z, w = orientation
+    result = np.asarray(
+        (
+            dw * x + dx * w + dy * z - dz * y,
+            dw * y - dx * z + dy * w + dz * x,
+            dw * z + dx * y - dy * x + dz * w,
+            dw * w - dx * x - dy * y - dz * z,
+        ),
+        dtype=np.float64,
+    )
+    result /= np.linalg.norm(result)
+    return result.astype(np.float32)
 
 
 def aabb_corners(bounds) -> np.ndarray:

@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import build_benchmark_report
 from build_benchmark_report import (
     build_report,
+    load_trial,
     normalize_manifest,
     reproducibility_summary,
     summarize,
@@ -16,6 +17,140 @@ from build_benchmark_report import (
 
 
 class BenchmarkReportTests(unittest.TestCase):
+    def test_v3_trial_links_back_to_searchable_dashboard_episode(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode_id = "episode_so101__cube 01"
+            episode = root / "episodes" / episode_id
+            episode.mkdir(parents=True)
+            (episode / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "farpoint.episode.v3",
+                        "identity": {"episode_id": episode_id},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (episode / "metrics.json").write_text(
+                json.dumps({"success": True, "dataset_valid": True}),
+                encoding="utf-8",
+            )
+            previous_episodes = build_benchmark_report.EPISODES_ROOT
+            previous_reports = build_benchmark_report.REPORTS_ROOT
+            build_benchmark_report.EPISODES_ROOT = root / "episodes"
+            build_benchmark_report.REPORTS_ROOT = root / "reports"
+            try:
+                result = load_trial(
+                    {"episode_id": episode_id, "success": True},
+                    root / "reports" / "benchmarks" / "collection",
+                )
+            finally:
+                build_benchmark_report.EPISODES_ROOT = previous_episodes
+                build_benchmark_report.REPORTS_ROOT = previous_reports
+
+        self.assertEqual(
+            result["report_href"],
+            "/?view=episodes&search=episode_so101__cube%2001",
+        )
+
+    def test_v3_trial_infers_middle_rgb_frame_from_recording_metadata(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode_id = "episode_so101__cube 01"
+            episode = root / "episodes" / episode_id
+            episode.mkdir(parents=True)
+            (episode / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "farpoint.episode.v3",
+                        "identity": {"episode_id": episode_id},
+                        "recording": {
+                            "cameras": ["observation.images.front"],
+                            "frame_count": 3,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            previous_episodes = build_benchmark_report.EPISODES_ROOT
+            previous_reports = build_benchmark_report.REPORTS_ROOT
+            build_benchmark_report.EPISODES_ROOT = root / "episodes"
+            build_benchmark_report.REPORTS_ROOT = root / "reports"
+            try:
+                result = load_trial(
+                    {"episode_id": episode_id, "success": True},
+                    root / "reports" / "benchmarks" / "collection",
+                )
+            finally:
+                build_benchmark_report.EPISODES_ROOT = previous_episodes
+                build_benchmark_report.REPORTS_ROOT = previous_reports
+
+        self.assertEqual(
+            result["preview_href"],
+            "/files/episodes/episode_so101__cube%2001/rgb/front_000001.png",
+        )
+
+    def test_balanced_so101_selection_normalizes_as_collection(self):
+        balance = {
+            "total": 50,
+            "splits": {"train": 40, "validation": 5, "test": 5},
+            "workspace_cells": {f"r{row:02d}_c{column:02d}": 2 for row in range(5) for column in range(5)},
+            "workspace_rows": {f"r{row:02d}": 10 for row in range(5)},
+            "workspace_columns": {f"c{column:02d}": 10 for column in range(5)},
+            "sizes": {"size_0": 25, "size_1": 25},
+            "colors": {"color_0": 25, "color_1": 25},
+            "size_color": {"a": 12, "b": 13, "c": 13, "d": 12},
+        }
+        result = normalize_manifest(
+            {
+                "schema_version": "farpoint.collection-selection.v1",
+                "collection_id": "balanced50",
+                "task_id": "so101_cube_pick_place",
+                "execution_status": "FINISHED",
+                "quality_status": "PASS",
+                "required_successes": 50,
+                "attempts": [
+                    {
+                        "attempt_id": str(index),
+                        "trial_id": str(index),
+                        "episode_id": f"episode_{index}",
+                        "split": "train" if index < 40 else "validation" if index < 45 else "test",
+                        "success": True,
+                        "dataset_valid": True,
+                    }
+                    for index in range(50)
+                ],
+                "balance": balance,
+            }
+        )
+
+        self.assertEqual(result["report_kind"], "collection")
+        self.assertEqual(result["benchmark_id"], "balanced50")
+        self.assertEqual(result["planned_trials"], 50)
+        self.assertEqual(result["passed_trials"], 50)
+        self.assertEqual(result["acceptance"]["selection_balance"], balance)
+
+        trials = [
+            {
+                **trial,
+                "dataset_observation_count": 2,
+                "final_target_xy_distance": None,
+                "object_lift_height": None,
+                "release_settle_frames": None,
+            }
+            for trial in result["trials"]
+        ]
+        summary = summarize(result, trials)
+        self.assertTrue(summary["accepted"])
+        self.assertTrue(
+            summary["acceptance_checks"]["successful_trials_meet_task_thresholds"]
+        )
+        self.assertTrue(summary["acceptance_checks"]["dataset_valid"])
     def test_report_links_do_not_follow_snapshot_symlinks(self):
         from tempfile import TemporaryDirectory
 

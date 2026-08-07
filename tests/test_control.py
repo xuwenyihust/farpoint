@@ -3,6 +3,7 @@ import unittest
 import pytest
 
 from farpoint.control import (
+    advance_so101_slow_close_target,
     apply_place_hover_guard,
     bilateral_grasp_ready,
     bounded_position_target,
@@ -22,7 +23,9 @@ from farpoint.control import (
     rate_limit_revolute_joint_targets,
     relative_object_grasp_servo_target,
     rmpflow_world_target,
+    settle_release_separation_target,
     simulation_stop_reason,
+    so101_approach_jaw_target,
     tactile_contact_hold_target,
     tactile_search_active,
     temporal_contact_confirmed,
@@ -31,6 +34,7 @@ from farpoint.control import (
     update_contact_loss_streak,
     unilateral_contact_recenter_target,
     undirected_axis_angle_error_degrees,
+    unsafe_so101_approach_contact,
     visual_servo_grasp_target,
 )
 
@@ -53,6 +57,32 @@ def test_collision_safe_pregrasp_waypoints_reject_unsafe_clearance():
             [0.13, -0.13, 0.14],
             clearance_z=0.14,
         )
+
+
+def test_so101_approach_jaw_widens_for_large_cube():
+    assert so101_approach_jaw_target(0.03) == pytest.approx(0.90)
+    assert so101_approach_jaw_target(0.035) == pytest.approx(1.30)
+    assert so101_approach_jaw_target(0.04) == pytest.approx(1.70)
+    assert so101_approach_jaw_target(0.10) < 1.7453
+    with pytest.raises(ValueError, match="finite and positive"):
+        so101_approach_jaw_target(0.0)
+
+
+def test_settle_release_separation_ramps_and_caps_vertical_clearance():
+    start = [0.20, 0.10, 0.08]
+    assert settle_release_separation_target(
+        start, 0, control_hz=120
+    ) == pytest.approx([0.20, 0.10, 0.080125])
+    assert settle_release_separation_target(
+        start, 500, control_hz=120
+    ) == pytest.approx([0.20, 0.10, 0.10])
+
+
+def test_unsafe_so101_approach_contact_rejects_route_and_early_insertion():
+    assert unsafe_so101_approach_contact("pregrasp", True)
+    assert unsafe_so101_approach_contact("descend", True, 0.25)
+    assert not unsafe_so101_approach_contact("descend", True, 0.80)
+    assert not unsafe_so101_approach_contact("descend", False, 0.25)
 
 
 def test_grasp_proof_uses_cumulative_contact_evidence():
@@ -569,6 +599,81 @@ def test_force_controlled_rotary_jaw_backs_off_high_force_and_limits_preload():
 
     assert backoff == {"position": pytest.approx(0.781), "action": "backoff"}
     assert capped == {"position": pytest.approx(0.771), "action": "close"}
+
+
+def test_so101_slow_close_accumulates_command_under_actuator_lag():
+    target = 1.40
+    measured = 1.40
+    for _ in range(120):
+        update = advance_so101_slow_close_target(
+            target,
+            measured,
+            0.0,
+            0.0,
+            open_position=1.7453,
+            closed_position=-0.1746,
+        )
+        target = update["position"]
+        measured = max(target, measured - 0.0002)
+
+    assert target == pytest.approx(1.28)
+    assert measured == pytest.approx(1.376)
+    assert target - measured == pytest.approx(-0.096)
+
+
+@pytest.mark.parametrize("approach_target", [0.90, 1.70])
+def test_so101_slow_close_reaches_mechanical_limit_inside_phase_budget(
+    approach_target,
+):
+    closed = -0.1746
+    target = approach_target
+    steps = 0
+    while target > closed and steps < 2400:
+        update = advance_so101_slow_close_target(
+            target,
+            target,
+            0.0,
+            0.0,
+            open_position=1.7453,
+            closed_position=closed,
+        )
+        target = update["position"]
+        assert closed <= target <= 1.7453
+        steps += 1
+
+    assert target == pytest.approx(closed)
+    assert steps < 2400
+
+
+def test_so101_slow_close_force_actions_preserve_limits():
+    unilateral = advance_so101_slow_close_target(
+        0.50,
+        0.51,
+        3.0,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+    )
+    bilateral = advance_so101_slow_close_target(
+        unilateral["position"],
+        0.50,
+        2.0,
+        2.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+    )
+    high_force = advance_so101_slow_close_target(
+        -0.1746,
+        -0.17,
+        21.0,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+    )
+    assert unilateral == {"position": pytest.approx(0.499), "action": "close"}
+    assert bilateral == {"position": pytest.approx(0.499), "action": "hold"}
+    assert high_force == {"position": pytest.approx(-0.168), "action": "backoff"}
+    assert -0.1746 <= high_force["position"] <= 1.7453
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():

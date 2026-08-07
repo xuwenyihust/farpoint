@@ -105,11 +105,39 @@ def dashboard(tmp_path):
     benchmark_report.write_text(
         "<!doctype html><title>Benchmark QA report</title>", encoding="utf-8"
     )
+    selection_id = "so101_balanced50_candidate"
+    selection_name = "SO-101 Balanced 50 Candidate"
+    write_json(
+        tmp_path / "benchmarks" / selection_id / "manifest.json",
+        {
+            "schema_version": "farpoint.collection-selection.v1",
+            "collection_id": selection_id,
+            "task_id": "so101_cube_pick_place",
+            "execution_status": "FINISHED",
+            "quality_status": "PASS",
+            "required_successes": 50,
+            "maximum_attempts": 50,
+            "created_at": "2026-08-07T00:00:00+00:00",
+            "updated_at": "2026-08-07T00:01:00+00:00",
+            "attempts": [
+                {"attempt_id": f"attempt_{index}", "success": True}
+                for index in range(50)
+            ],
+        },
+    )
+    selection_report = tmp_path / "reports" / "benchmarks" / selection_id / "index.html"
+    selection_report.parent.mkdir(parents=True)
+    selection_report.write_text(
+        "<!doctype html><title>SO-101 Balanced 50 report</title>", encoding="utf-8"
+    )
     write_json(
         tmp_path / ".data-platform" / "display-names.json",
         {
             "schema_version": "farpoint.display-names.v1",
-            "records": {benchmark_id: display_name},
+            "records": {
+                benchmark_id: display_name,
+                selection_id: selection_name,
+            },
         },
     )
     future = time.time() + 60
@@ -237,6 +265,8 @@ def dashboard(tmp_path):
             "episode_id": episode_id,
             "benchmark_id": benchmark_id,
             "display_name": display_name,
+            "selection_id": selection_id,
+            "selection_name": selection_name,
             "so101_success": so101_success.name,
             "so101_failure": so101_failure.name,
             "so101_incomplete": so101_incomplete.name,
@@ -318,6 +348,15 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         benchmark.wait_for()
         assert benchmark.get_attribute("href") == (
             f"/reports/benchmarks/{dashboard['benchmark_id']}/index.html"
+        )
+        selection = page.get_by_role("link", name=dashboard["selection_name"])
+        selection.wait_for()
+        selection_row = page.locator("#benchmarkRows tr", has=selection)
+        assert selection_row.get_by_text("COLLECTION", exact=True).count() == 1
+        assert selection_row.get_by_text("PASS", exact=True).count() == 1
+        assert selection_row.get_by_text("50 / 50", exact=True).count() == 1
+        assert selection.get_attribute("href") == (
+            f"/reports/benchmarks/{dashboard['selection_id']}/index.html"
         )
         page.go_back(wait_until="networkidle")
         assert page.get_by_placeholder("Search episode or task").input_value() == (

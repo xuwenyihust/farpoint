@@ -1,11 +1,17 @@
 import numpy as np
 import pytest
 
+from farpoint.grasp_oracle import quaternion_rotation_matrix_xyzw
 from farpoint.so101_grasp_geometry import (
     SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+    SO101_CAPTURE_APERTURE_CALIBRATION,
+    SO101_CAPTURE_CLOSING_AXIS_LOCAL,
     SO101_RUNTIME_QUATERNION_ORDER,
     aabb_corners,
     posture_geometry_diagnostics,
+    so101_capture_aperture_reference,
+    so101_capture_channel_direction_world,
+    so101_level_capture_orientation_xyzw,
     transform_points_xyzw,
 )
 
@@ -32,6 +38,97 @@ def test_transform_points_uses_pinned_isaac_lab_3_xyzw_order():
 
     assert SO101_RUNTIME_QUATERNION_ORDER == "xyzw"
     np.testing.assert_allclose(transformed, [[1.0, 3.0, 3.0]], atol=1e-7)
+
+
+def test_capture_aperture_reference_matches_exact_mesh_anchors():
+    for jaw_position, expected_reference in SO101_CAPTURE_APERTURE_CALIBRATION:
+        np.testing.assert_allclose(
+            so101_capture_aperture_reference(jaw_position),
+            expected_reference,
+            atol=1e-8,
+        )
+
+
+def test_capture_aperture_reference_preserves_30mm_path_and_interpolates():
+    reference_12 = SO101_CAPTURE_APERTURE_CALIBRATION[0][1]
+    reference_14 = SO101_CAPTURE_APERTURE_CALIBRATION[1][1]
+
+    # The validated 30 mm approach uses 0.9 rad but the production aperture
+    # reference was calibrated at 1.2 rad; preserve that path exactly.
+    np.testing.assert_allclose(so101_capture_aperture_reference(0.9), reference_12)
+    np.testing.assert_allclose(
+        so101_capture_aperture_reference(1.3),
+        (reference_12 + reference_14) / 2.0,
+        atol=1e-8,
+    )
+
+
+def test_capture_aperture_reference_returns_copy_and_validates_joint_limit():
+    first = so101_capture_aperture_reference(1.7)
+    first[:] = 0.0
+    assert np.linalg.norm(so101_capture_aperture_reference(1.7)) > 0.0
+
+    for invalid in (float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="finite"):
+            so101_capture_aperture_reference(invalid)
+    for invalid in (-0.1747, 1.7454):
+        with pytest.raises(ValueError, match="pinned USD limits"):
+            so101_capture_aperture_reference(invalid)
+
+
+def test_capture_channel_is_horizontal_normalized_and_perpendicular():
+    orientation = np.asarray(
+        (-0.6417146921, 0.1408973038, 0.0826371983, -0.7493473291)
+    )
+    channel = so101_capture_channel_direction_world(orientation)
+    closing_world = (
+        quaternion_rotation_matrix_xyzw(orientation)
+        @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+    )
+
+    assert channel[2] == 0.0
+    assert np.linalg.norm(channel) == pytest.approx(1.0)
+    assert np.dot(channel, closing_world) == pytest.approx(0.0, abs=1e-7)
+    np.testing.assert_allclose(channel[:2], [-0.6689, -0.7434], atol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ([0.0, 0.0, 0.0], [0.0, 0.0, float("nan"), 1.0]),
+)
+def test_capture_channel_validates_orientation(invalid):
+    with pytest.raises(ValueError):
+        so101_capture_channel_direction_world(invalid)
+
+
+def test_level_capture_orientation_flattens_axis_and_preserves_channel():
+    orientation = np.asarray(
+        (-0.6417146921, 0.1408973038, 0.0826371983, -0.7493473291)
+    )
+    original_channel = so101_capture_channel_direction_world(orientation)
+
+    levelled = so101_level_capture_orientation_xyzw(orientation)
+    levelled_closing = (
+        quaternion_rotation_matrix_xyzw(levelled)
+        @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+    )
+
+    assert np.linalg.norm(levelled) == pytest.approx(1.0)
+    assert levelled_closing[2] == pytest.approx(0.0, abs=1e-7)
+    np.testing.assert_allclose(
+        so101_capture_channel_direction_world(levelled),
+        original_channel,
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]),
+)
+def test_level_capture_orientation_validates_input(invalid):
+    with pytest.raises(ValueError):
+        so101_level_capture_orientation_xyzw(invalid)
 
 
 def test_posture_diagnostic_aligns_aperture_without_using_link_origin():

@@ -443,7 +443,7 @@ class EpisodeRegistry:
         execution_status = run_state.get("execution_status") if run_state_valid else None
         if metadata_valid and metrics_valid:
             status = "PASS" if success is True else "FAIL"
-        elif execution_status == "FAILED":
+        elif execution_status in {"FAILED", "ABORTED"}:
             status = "FAIL"
         elif execution_status == "FINISHED":
             status = "PASS" if success is True else "FAIL"
@@ -621,6 +621,8 @@ class EpisodeRegistry:
         collection = manifest.get("schema_version") in {
             "farpoint.collection.v1",
             "farpoint.collection-run.v1",
+            "farpoint.collection.v2",
+            "farpoint.collection-selection.v1",
         }
         completed = int(
             manifest.get("completed_trials")
@@ -642,6 +644,8 @@ class EpisodeRegistry:
         accepted = manifest.get("accepted")
         if accepted is None:
             accepted = acceptance.get("accepted")
+        if accepted is None and manifest.get("quality_status") in {"PASS", "FAIL"}:
+            accepted = manifest.get("quality_status") == "PASS"
         if accepted is True:
             status = "PASS"
         elif manifest.get("execution_status") == "PILOT_COMPLETE":
@@ -650,6 +654,8 @@ class EpisodeRegistry:
             status = "FAIL"
         elif manifest.get("execution_status") == "RUNNING":
             status = "RUNNING"
+        elif manifest.get("execution_status") == "FINISHED":
+            status = "PASS" if manifest.get("quality_status") == "PASS" else "FAIL"
         elif manifest.get("finished_at") or runtime.get("finished_at"):
             status = "FAIL"
         elif completed:
@@ -671,7 +677,13 @@ class EpisodeRegistry:
             or ("cube_position_collection" if collection else None),
             "status": status,
             "created_at": manifest.get("created_at") or runtime.get("created_at"),
-            "finished_at": manifest.get("finished_at") or runtime.get("finished_at"),
+            "finished_at": manifest.get("finished_at")
+            or runtime.get("finished_at")
+            or (
+                manifest.get("updated_at")
+                if manifest.get("execution_status") in {"FINISHED", "ABORTED"}
+                else None
+            ),
             "planned_trials": planned,
             "completed_trials": completed,
             "passed_trials": int(
@@ -681,6 +693,7 @@ class EpisodeRegistry:
                 or runtime.get("task_successes")
                 or acceptance.get("observed_task_successes")
                 or acceptance.get("observed_successes")
+                or sum(bool(row.get("success")) for row in manifest.get("attempts", []))
                 or 0
             ),
             "success_rate": (
@@ -696,6 +709,20 @@ class EpisodeRegistry:
                             "observed_task_yield", acceptance.get("observed_success_rate")
                         ),
                     ),
+                )
+                if (
+                    manifest.get("task_yield") is not None
+                    or manifest.get("success_rate") is not None
+                    or runtime.get("task_yield") is not None
+                    or runtime.get("success_rate") is not None
+                    or acceptance.get("observed_task_yield") is not None
+                    or acceptance.get("observed_success_rate") is not None
+                )
+                else (
+                    sum(bool(row.get("success")) for row in manifest.get("attempts", []))
+                    / completed
+                    if completed
+                    else None
                 )
             ),
             "accepted": self._boolean(accepted),

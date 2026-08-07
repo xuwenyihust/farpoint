@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import re
+import signal
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,26 @@ from typing import Any
 
 SCHEMA_VERSION = "farpoint.collection.v2"
 _IDENTIFIER_PATTERN = re.compile(r"[A-Za-z0-9_.-]+")
+
+
+class CollectionSignalAbort(BaseException):
+    """Signal-safe escape used to unwind Isaac collection on SIGTERM."""
+
+    def __init__(self, signum: int):
+        self.signum = int(signum)
+        super().__init__(signal.Signals(self.signum).name)
+
+
+def raise_collection_signal_abort(signum: int, _frame: Any = None) -> None:
+    raise CollectionSignalAbort(signum)
+
+
+def collection_interruption_reason(error: BaseException) -> str:
+    if isinstance(error, KeyboardInterrupt):
+        return "SIGINT"
+    if isinstance(error, CollectionSignalAbort):
+        return signal.Signals(error.signum).name
+    raise ValueError("unsupported collection interruption")
 
 
 def _now() -> str:
@@ -330,12 +351,98 @@ def record_attempt(
     validate_manifest(manifest, plan)
 
 
+def abort_collection_manifest(manifest: dict[str, Any], reason: str) -> None:
+    """Mark an in-progress collection terminal without scoring its quality."""
+    message = str(reason).strip()
+    if not message:
+        raise ValueError("abort reason must be non-empty")
+    status = manifest.get("execution_status")
+    if status not in {"RUNNING", "ABORTED"}:
+        raise ValueError(f"cannot abort collection in {status!r} state")
+    manifest["execution_status"] = "ABORTED"
+    manifest["quality_status"] = "NOT_EVALUATED"
+    manifest["abort_reason"] = message
+    manifest["aborted_at"] = _now()
+    manifest["updated_at"] = manifest["aborted_at"]
+
+
+def finish_diagnostic_manifest(
+    manifest: dict[str, Any], diagnostic_name: str, *, succeeded: bool
+) -> None:
+    """Terminate a diagnostic-only manifest without scoring collection quality.
+
+    Isaac diagnostics share the collector startup path so signal handling and
+    environment construction remain identical to collection runs.  They do
+    not execute plan attempts, however, and therefore must end as ``ABORTED``
+    with ``NOT_EVALUATED`` quality instead of remaining spuriously ``RUNNING``
+    or claiming a collection result.
+    """
+    name = str(diagnostic_name).strip()
+    if not name:
+        raise ValueError("diagnostic_name must be non-empty")
+    outcome = "completed" if bool(succeeded) else "failed"
+    abort_collection_manifest(manifest, f"diagnostic_{outcome}:{name}")
+
+
+def abort_attempt_run_state(run_state: dict[str, Any], reason: str) -> None:
+    """Mark a live episode sidecar as interrupted and ineligible for data."""
+    message = str(reason).strip()
+    if not message:
+        raise ValueError("abort reason must be non-empty")
+    status = run_state.get("execution_status")
+    if status not in {"RUNNING", "ABORTED"}:
+        raise ValueError(f"cannot abort attempt in {status!r} state")
+    run_state["execution_status"] = "ABORTED"
+    run_state["outcome"] = {
+        "success": False,
+        "dataset_valid": False,
+        "failure_category": "interrupted",
+        "failure_reason": message,
+    }
+
+
 def write_manifest(path: str | Path, manifest: dict[str, Any]) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(destination.suffix + ".tmp")
     temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(destination)
+
+
+def abort_collection_artifacts(
+    manifest_path: str | Path,
+    episodes_root: str | Path,
+    reason: str,
+) -> dict[str, Any]:
+    """Atomically terminate live collection records without deleting artifacts."""
+    manifest_destination = Path(manifest_path)
+    manifest = json.loads(manifest_destination.read_text(encoding="utf-8"))
+    previous_manifest_status = manifest.get("execution_status")
+    abort_collection_manifest(manifest, reason)
+    aborted_episode_ids = []
+    for run_state_path in sorted(Path(episodes_root).glob("*/run-state.json")):
+        run_state = json.loads(run_state_path.read_text(encoding="utf-8"))
+        if run_state.get("execution_status") != "RUNNING":
+            continue
+        abort_attempt_run_state(run_state, reason)
+        write_manifest(run_state_path, run_state)
+        aborted_episode_ids.append(
+            (run_state.get("identity") or {}).get("episode_id")
+            or run_state_path.parent.name
+        )
+    write_manifest(manifest_destination, manifest)
+    return {
+        "schema_version": "farpoint.collection-abort-record.v1",
+        "collection_id": manifest.get("collection_id"),
+        "reason": str(reason).strip(),
+        "previous_manifest_status": previous_manifest_status,
+        "execution_status": manifest["execution_status"],
+        "completed_attempt_count": len(manifest.get("attempts") or []),
+        "selected_variation_count": len(manifest.get("selected_variations") or {}),
+        "aborted_episode_ids": aborted_episode_ids,
+        "manifest_path": str(manifest_destination),
+        "episodes_root": str(Path(episodes_root)),
+    }
 
 
 def build_export_selection(manifest: dict[str, Any], episodes_root: str = "outputs/episodes") -> dict:

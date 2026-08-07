@@ -4,6 +4,7 @@ import html
 import json
 import math
 import os
+import re
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -108,6 +109,36 @@ def normalize_manifest(manifest):
             "require_contact_only": True,
             "require_dataset": True,
         }
+    if normalized.get("schema_version") == "farpoint.collection-selection.v1":
+        normalized["report_kind"] = "collection"
+        normalized["benchmark_id"] = normalized.get("collection_id")
+        attempts = normalized.get("attempts", [])
+        normalized["trials"] = [
+            {
+                **attempt,
+                "success": bool(attempt.get("success")),
+                "split": attempt.get("split"),
+                "seed": attempt.get("attempt_seed"),
+                "origin": "selected",
+                "selected_for_dataset": attempt.get("selected_for_dataset", True),
+            }
+            for attempt in attempts
+        ]
+        normalized["planned_trials"] = int(normalized.get("required_successes", len(attempts)))
+        normalized["completed_trials"] = len(attempts)
+        normalized["passed_trials"] = sum(bool(attempt.get("success")) for attempt in attempts)
+        normalized["success_rate"] = (
+            normalized["passed_trials"] / len(attempts) if attempts else 0.0
+        )
+        normalized["accepted"] = normalized.get("quality_status") == "PASS"
+        normalized["acceptance"] = {
+            "min_success_rate": 1.0,
+            "max_final_target_xy_distance": 0.05,
+            "min_object_lift_height": 0.0,
+            "min_release_settle_frames": 0,
+            "require_dataset": True,
+            "selection_balance": normalized.get("balance") or {},
+        }
     acceptance = dict(normalized.get("acceptance") or {})
     if normalized.get("schema_version") == "farpoint.benchmark.v2":
         trials = normalized.get("trials", [])
@@ -195,7 +226,20 @@ def load_trial(trial, report_dir):
             row = load_run_row(episode_dir, REPORTS_ROOT, rebuild_reports=True)
 
     preview_images = sorted((episode_dir / "preview").glob("*.png")) if episode_dir else []
+    preview_directory = "preview"
+    if not preview_images and episode_dir:
+        preview_images = sorted((episode_dir / "rgb").glob("*.png"))
+        preview_directory = "rgb"
     preview = preview_images[len(preview_images) // 2] if preview_images else None
+    preview_name = preview.name if preview else None
+    recording = metadata.get("recording") or {}
+    cameras = recording.get("cameras") or []
+    frame_count = int(recording.get("frame_count") or 0)
+    if not preview_name and cameras and frame_count > 0:
+        camera_name = str(cameras[0]).rsplit(".", 1)[-1]
+        if re.fullmatch(r"[A-Za-z0-9_-]+", camera_name):
+            preview_directory = "rgb"
+            preview_name = f"{camera_name}_{frame_count // 2:06d}.png"
     resolved_position = (
         (metadata.get("variation") or {}).get("resolved", {}).get("object_position_m")
         or []
@@ -206,6 +250,13 @@ def load_trial(trial, report_dir):
         pick_object_xy = resolved_position[:2]
     if not pick_object_xy and len(planned_position) >= 2:
         pick_object_xy = planned_position[:2]
+    episode_report = REPORTS_ROOT / episode_id / "index.html" if episode_id else None
+    if episode_report and episode_report.is_file():
+        report_href = relative_path(episode_report, report_dir).as_posix()
+    elif episode_id and metadata.get("schema_version") == "farpoint.episode.v3":
+        report_href = f"/?view=episodes&search={quote(episode_id, safe='')}"
+    else:
+        report_href = None
     return {
         **trial,
         "success": bool(trial["success"] if "success" in trial else metrics.get("success")),
@@ -247,21 +298,17 @@ def load_trial(trial, report_dir):
         ),
         "dataset_observation_count": metrics.get(
             "dataset_observation_count",
-            trial.get("dataset_observation_count"),
+            metrics.get("observation_count", trial.get("dataset_observation_count")),
         ),
         "peak_gpu": row.get("peak_gpu"),
         "workload_memory": row.get("workload_memory"),
         "host_pressure": row.get("host_pressure"),
         "warning_count": row.get("warning_count"),
-        "report_href": (
-            relative_path(REPORTS_ROOT / episode_id / "index.html", report_dir).as_posix()
-            if episode_id
-            else None
-        ),
+        "report_href": report_href,
         "preview_href": (
-            f"/files/episodes/{quote(episode_id, safe='')}/preview/"
-            f"{quote(preview.name, safe='')}"
-            if preview and episode_id
+            f"/files/episodes/{quote(episode_id, safe='')}/{preview_directory}/"
+            f"{quote(preview_name, safe='')}"
+            if preview_name and episode_id
             else None
         ),
     }
@@ -377,29 +424,70 @@ def summarize(manifest, trials, reproducibility_trials=None):
     }
     if is_collection:
         nested = manifest.get("acceptance") or {}
-        selected_per_cell = nested.get("selected_per_cell") or {}
-        acceptance_checks["planned_trials_completed"] = (
-            None
-            if manifest.get("execution_status") == "PILOT_COMPLETE"
-            else manifest.get("execution_status") == "FINISHED"
-        )
-        acceptance_checks["selected_episode_target"] = (
-            nested.get("observed_selected_episodes")
-            == nested.get("required_selected_episodes")
-        )
-        acceptance_checks["grid_cell_coverage"] = (
-            nested.get("observed_covered_cells") == nested.get("required_cells")
-        )
-        acceptance_checks["balanced_cell_quota"] = bool(selected_per_cell) and set(
-            selected_per_cell.values()
-        ) == {nested.get("required_selected_per_cell")}
-        acceptance_checks["dataset_split_counts"] = (
-            nested.get("observed_splits") == nested.get("required_splits")
-        )
-        acceptance_checks["attempt_budget"] = (
-            nested.get("observed_task_attempts", completed)
-            <= nested.get("maximum_task_attempts", completed)
-        )
+        if manifest.get("schema_version") == "farpoint.collection-selection.v1":
+            balance = nested.get("selection_balance") or {}
+            acceptance_checks["successful_trials_meet_task_thresholds"] = bool(
+                quality_trials
+            ) and all(
+                bool(trial.get("success")) and bool(trial.get("dataset_valid"))
+                for trial in quality_trials
+            )
+            acceptance_checks["planned_trials_completed"] = (
+                manifest.get("execution_status") == "FINISHED"
+            )
+            acceptance_checks["selected_episode_target"] = completed == int(
+                manifest["planned_trials"]
+            )
+            acceptance_checks["grid_cell_coverage"] = len(
+                balance.get("workspace_cells") or {}
+            ) == 25
+            acceptance_checks["dataset_split_counts"] = balance.get("splits") == {
+                "train": 40,
+                "validation": 5,
+                "test": 5,
+            }
+            acceptance_checks["balanced_sizes"] = sorted(
+                (balance.get("sizes") or {}).values()
+            ) == [25, 25]
+            acceptance_checks["balanced_colors"] = sorted(
+                (balance.get("colors") or {}).values()
+            ) == [25, 25]
+            acceptance_checks["balanced_size_color"] = (
+                len(balance.get("size_color") or {}) == 4
+                and max((balance.get("size_color") or {}).values())
+                - min((balance.get("size_color") or {}).values())
+                <= 1
+            )
+            acceptance_checks["balanced_workspace_rows"] = set(
+                (balance.get("workspace_rows") or {}).values()
+            ) == {10}
+            acceptance_checks["balanced_workspace_columns"] = set(
+                (balance.get("workspace_columns") or {}).values()
+            ) == {10}
+        else:
+            selected_per_cell = nested.get("selected_per_cell") or {}
+            acceptance_checks["planned_trials_completed"] = (
+                None
+                if manifest.get("execution_status") == "PILOT_COMPLETE"
+                else manifest.get("execution_status") == "FINISHED"
+            )
+            acceptance_checks["selected_episode_target"] = (
+                nested.get("observed_selected_episodes")
+                == nested.get("required_selected_episodes")
+            )
+            acceptance_checks["grid_cell_coverage"] = (
+                nested.get("observed_covered_cells") == nested.get("required_cells")
+            )
+            acceptance_checks["balanced_cell_quota"] = bool(selected_per_cell) and set(
+                selected_per_cell.values()
+            ) == {nested.get("required_selected_per_cell")}
+            acceptance_checks["dataset_split_counts"] = (
+                nested.get("observed_splits") == nested.get("required_splits")
+            )
+            acceptance_checks["attempt_budget"] = (
+                nested.get("observed_task_attempts", completed)
+                <= nested.get("maximum_task_attempts", completed)
+            )
     if acceptance.get("max_perception_xy_error") is not None:
         acceptance_checks["perception_accuracy"] = bool(quality_trials) and all(
             trial.get("initial_object_perception_xy_error") is not None
@@ -511,21 +599,36 @@ def summarize(manifest, trials, reproducibility_trials=None):
         "report_kind": manifest.get("report_kind", "benchmark"),
         "execution_status": manifest.get("execution_status"),
         "collection": {
-            "selected_episodes": (manifest.get("acceptance") or {}).get(
-                "observed_selected_episodes", 0
+            "selected_episodes": (
+                (manifest.get("acceptance") or {}).get("selection_balance") or {}
+            ).get(
+                "total",
+                (manifest.get("acceptance") or {}).get("observed_selected_episodes", 0),
             ),
-            "required_selected_episodes": (manifest.get("acceptance") or {}).get(
-                "required_selected_episodes", 0
+            "required_selected_episodes": (
+                manifest.get("planned_trials")
+                if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+                else (manifest.get("acceptance") or {}).get("required_selected_episodes", 0)
             ),
-            "covered_cells": (manifest.get("acceptance") or {}).get(
-                "observed_covered_cells", 0
+            "covered_cells": len(
+                ((manifest.get("acceptance") or {}).get("selection_balance") or {}).get(
+                    "workspace_cells", {}
+                )
+            )
+            if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+            else (manifest.get("acceptance") or {}).get("observed_covered_cells", 0),
+            "required_cells": 25
+            if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+            else (manifest.get("acceptance") or {}).get("required_cells", 0),
+            "selected_per_cell": (
+                ((manifest.get("acceptance") or {}).get("selection_balance") or {}).get(
+                    "workspace_cells", {}
+                )
+                if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+                else (manifest.get("acceptance") or {}).get("selected_per_cell", {})
             ),
-            "required_cells": (manifest.get("acceptance") or {}).get(
-                "required_cells", 0
-            ),
-            "selected_per_cell": (manifest.get("acceptance") or {}).get(
-                "selected_per_cell", {}
-            ),
+            "variable_cell_quota": manifest.get("schema_version")
+            == "farpoint.collection-selection.v1",
             "imported_attempts": sum(
                 trial.get("origin") == "imported" for trial in trials
             ),
@@ -660,6 +763,11 @@ def build_report(manifest_path, display_name=None):
         "selected_episode_target": "Selected episode target is complete",
         "grid_cell_coverage": "All 25 grid cells are covered",
         "balanced_cell_quota": "Every cell contains exactly two selected episodes",
+        "balanced_sizes": "Object sizes are balanced 25 / 25",
+        "balanced_colors": "Object colors are balanced 25 / 25",
+        "balanced_size_color": "Size/color groups differ by at most one",
+        "balanced_workspace_rows": "Every workspace row contains 10 episodes",
+        "balanced_workspace_columns": "Every workspace column contains 10 episodes",
         "dataset_split_counts": "Dataset split counts are 34/8/8",
         "attempt_budget": "Task attempts remain within the resource budget",
     }
@@ -733,9 +841,15 @@ def build_report(manifest_path, display_name=None):
             for column in range(5):
                 cell_id = f"r{row:02d}_c{column:02d}"
                 count = int(collection["selected_per_cell"].get(cell_id, 0))
-                state = "complete" if count == 2 else ("partial" if count else "empty")
+                variable_quota = collection.get("variable_cell_quota")
+                state = (
+                    "complete"
+                    if (count > 0 if variable_quota else count == 2)
+                    else ("partial" if count else "empty")
+                )
+                count_label = str(count) if variable_quota else f"{count} / 2"
                 cells.append(
-                    f'<div class="cell {state}"><span>{cell_id}</span><strong>{count} / 2</strong></div>'
+                    f'<div class="cell {state}"><span>{cell_id}</span><strong>{count_label}</strong></div>'
                 )
         collection_grid = (
             '<section class="panel"><h2>Grid Cell Coverage</h2>'

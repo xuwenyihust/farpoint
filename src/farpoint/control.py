@@ -1,6 +1,70 @@
 import math
 
 
+def so101_approach_jaw_target(object_width_m):
+    """Return a size-aware open-jaw target for collision-free insertion."""
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    # A 40 mm cube at the frozen 45-degree yaw contacted the rotary jaw at
+    # 1.4 rad and ended DESCEND 10.6 mm short of the calibrated insertion
+    # target.  The 1.7 rad endpoint clears that leading corner while remaining
+    # below the pinned USD open limit (1.7453 rad).
+    return 0.90 + 0.80 * interpolation
+
+
+def settle_release_separation_target(
+    release_hold_position,
+    phase_steps,
+    *,
+    control_hz,
+    separation_speed_mps=0.015,
+    maximum_separation_m=0.020,
+):
+    """Ramp the open gripper upward so a released object cannot hang on one finger."""
+    if len(release_hold_position) != 3:
+        raise ValueError("release_hold_position must have three coordinates")
+    steps = int(phase_steps)
+    rate = float(control_hz)
+    speed = float(separation_speed_mps)
+    maximum = float(maximum_separation_m)
+    if steps < 0:
+        raise ValueError("phase_steps must be non-negative")
+    if rate <= 0.0 or speed <= 0.0 or maximum <= 0.0:
+        raise ValueError("release separation rates and limits must be positive")
+    distance = min(maximum, speed * (steps + 1) / rate)
+    return [
+        float(release_hold_position[0]),
+        float(release_hold_position[1]),
+        float(release_hold_position[2]) + distance,
+    ]
+
+
+def unsafe_so101_approach_contact(
+    phase,
+    has_contact,
+    descent_fraction=None,
+    *,
+    minimum_safe_descent_fraction=0.75,
+):
+    """Reject contact during routing or before the calibrated insertion window."""
+    if not bool(has_contact):
+        return False
+    phase_name = str(getattr(phase, "value", phase))
+    if phase_name == "pregrasp":
+        return True
+    if phase_name != "descend" or descent_fraction is None:
+        return False
+    fraction = float(descent_fraction)
+    threshold = float(minimum_safe_descent_fraction)
+    if not math.isfinite(fraction) or not math.isfinite(threshold):
+        raise ValueError("descent fractions must be finite")
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("minimum_safe_descent_fraction must be in [0, 1]")
+    return fraction < threshold
+
+
 def collision_safe_pregrasp_waypoints(
     home_position,
     final_position,
@@ -654,6 +718,48 @@ def force_controlled_rotary_jaw_target(
     )
     return {
         "position": open_value - float(update["position"]),
+        "action": update["action"],
+    }
+
+
+def advance_so101_slow_close_target(
+    previous_command_target,
+    measured_position,
+    left_force,
+    right_force,
+    *,
+    open_position,
+    closed_position,
+    min_force=2.0,
+    max_force=20.0,
+    close_step=0.001,
+    backoff_step=0.002,
+):
+    """Advance the persistent SO-101 jaw command during slow close.
+
+    ``previous_command_target`` is deliberately separate from the measured
+    joint position.  Rebasing the target to the measurement every tick leaves
+    only a 1 mrad servo error, which was too small to overcome the simulated
+    jaw load and made every workspace-recovery trial time out before bilateral
+    contact.
+    """
+    open_value = float(open_position)
+    closed_value = float(closed_position)
+    previous_target = _clamp(previous_command_target, closed_value, open_value)
+    update = force_controlled_rotary_jaw_target(
+        previous_target,
+        measured_position,
+        left_force,
+        right_force,
+        open_position=open_value,
+        closed_position=closed_value,
+        min_force=min_force,
+        max_force=max_force,
+        close_step=close_step,
+        backoff_step=backoff_step,
+    )
+    return {
+        "position": _clamp(update["position"], closed_value, open_value),
         "action": update["action"],
     }
 
