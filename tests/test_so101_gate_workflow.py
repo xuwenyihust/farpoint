@@ -227,3 +227,53 @@ def test_mass_feasibility_profile_uses_special_report_and_completion(tmp_path):
         encoding="utf-8",
     )
     assert evaluate_so101_gate_workflow(path)["status"] == "FEASIBILITY_COMPLETE"
+
+
+def test_candidate_mass_workspace_profile_freezes_five_trials(tmp_path):
+    config = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    policy = load_watchdog_policy(
+        ROOT / "configs/workflows/so101_watchdog_p0.json"
+    )
+    baselines = [
+        {
+            "episode_id": f"episode_baseline_{index}",
+            "position_xy_m": [0.15 + 0.02 * index, -0.11 + 0.02 * index],
+            "mass_kg": 0.04,
+            "success": True,
+        }
+        for index in range(5)
+    ]
+    profile = {
+        "schema_version": "farpoint.so101-gate-workflow-config.v1",
+        "completion_status": "PILOT_COMPLETE",
+        "stages": [
+            {
+                "stage_id": "candidate_workspace",
+                "kind": "cube_mass_workspace_pilot",
+                "candidate_mass_kg": 0.03,
+                "edge_m": 0.03,
+                "minimum_successes": 4,
+                "historical_baseline_commit": "b" * 40,
+                "historical_baseline_collection_id": "formal_v0_0_0",
+                "historical_baselines": baselines,
+            }
+        ],
+    }
+    workflow, plans = build_so101_gate_workflow(
+        profile,
+        config,
+        policy,
+        workflow_id="candidate_workspace",
+        git_commit=GIT_COMMIT,
+    )
+    path = write_so101_gate_workflow(
+        tmp_path / "candidate_workspace", workflow, plans, policy
+    )
+    stage = workflow["stages"][0]
+
+    assert stage["maximum_attempts"] == 5
+    assert stage["report_kind"] == "mass_workspace_pilot"
+    status = evaluate_so101_gate_workflow(path)
+    assert status["next_action"]["command"][2:4] == ["--gate-plan", "--plan"]

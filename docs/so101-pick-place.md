@@ -183,6 +183,31 @@ threshold is met; otherwise it reports either insufficient evidence or no
 measurable signal. `FEASIBILITY_COMPLETE` does not authorize a formal
 collection or dataset release.
 
+After the fixed-pose profile passes, use the candidate-only workspace pilot to
+avoid recollecting baseline demonstrations already present in v0.0.0:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/cube_mass_003_workspace_pilot \
+  --workflow-id cube_mass_003_workspace_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_cube_mass_003_workspace_pilot.json
+```
+
+This second profile runs only the 0.03 kg, 30 mm red cube at five positions
+whose corresponding 0.04 kg episodes succeeded in the v0.0.0 collection. The
+historical episode IDs, positions, mass, collection ID, and generating commit
+are frozen into the plan. Four of five candidate successes are required and no
+retry budget is added. Every new episode must still pass the actual PhysX mass
+audit.
+
+The historical episodes establish only that the selected positions were
+previously solvable. Because their generating commit differs from the candidate
+pilot, they are not a contemporaneous control and must not be used to claim a
+causal trajectory difference between 0.04 and 0.03 kg. A passing report supports
+adding 0.03 kg as a dataset variation axis; it does not authorize formal
+collection.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two

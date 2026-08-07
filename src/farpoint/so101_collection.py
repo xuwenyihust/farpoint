@@ -245,6 +245,32 @@ def create_gate_manifest(
             "frame_count_absolute",
         } or any(float(value) < 0.0 for value in thresholds.values()):
             raise ValueError("mass feasibility behavior thresholds are invalid")
+    elif kind == "cube_mass_workspace_pilot":
+        if len(trials) != 5 or maximum_attempts != 5:
+            raise ValueError("mass workspace pilot requires exactly five trials")
+        minimum_successes = int(gate.get("minimum_successes", 0))
+        if required_successes != minimum_successes or not 0 < minimum_successes <= 5:
+            raise ValueError("mass workspace pilot success threshold is invalid")
+        candidate_mass = float(gate.get("candidate_mass_kg", 0.0))
+        if candidate_mass <= 0.0 or {
+            float(trial["resolved"]["mass_kg"]) for trial in trials
+        } != {candidate_mass}:
+            raise ValueError("mass workspace pilot candidate mass is inconsistent")
+        positions = [
+            tuple(float(value) for value in trial["resolved"]["position_m"][:2])
+            for trial in trials
+        ]
+        if len(set(positions)) != 5 or positions != [
+            tuple(float(value) for value in position)
+            for position in gate.get("positions_xy_m", [])
+        ]:
+            raise ValueError("mass workspace pilot positions are inconsistent")
+        historical = (gate.get("historical_baseline") or {}).get("episodes") or []
+        if len(historical) != 5 or any(
+            trial.get("historical_baseline") != baseline
+            for trial, baseline in zip(trials, historical)
+        ):
+            raise ValueError("mass workspace historical baselines are inconsistent")
     else:
         raise ValueError("unsupported gate kind")
     return _new_manifest(

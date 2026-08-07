@@ -13,7 +13,10 @@ from farpoint.so101_gate import (
     build_fixed_cube_gate_plan,
 )
 from farpoint.so101_pilot import build_so101_pilot_plan
-from farpoint.so101_mass_feasibility import build_cube_mass_feasibility_plan
+from farpoint.so101_mass_feasibility import (
+    build_cube_mass_feasibility_plan,
+    build_cube_mass_workspace_pilot_plan,
+)
 from farpoint.so101_watchdog import validate_watchdog_policy
 
 
@@ -50,6 +53,7 @@ def validate_gate_workflow_config(config: dict[str, Any]) -> None:
         "fixed_cube_repeatability",
         "cube_workspace_matrix",
         "cube_mass_feasibility",
+        "cube_mass_workspace_pilot",
         "stratified_success_pilot",
     }
     for stage in stages:
@@ -118,6 +122,23 @@ def build_so101_gate_workflow(
             )
             collector_mode = "gate"
             report_kind = "mass_feasibility"
+        elif kind == "cube_mass_workspace_pilot":
+            plan = build_cube_mass_workspace_pilot_plan(
+                variation_config,
+                pilot_id=plan_id,
+                candidate_mass_kg=float(stage_config["candidate_mass_kg"]),
+                edge_m=float(stage_config["edge_m"]),
+                historical_baseline_commit=str(
+                    stage_config["historical_baseline_commit"]
+                ),
+                historical_baseline_collection_id=str(
+                    stage_config["historical_baseline_collection_id"]
+                ),
+                historical_baselines=stage_config["historical_baselines"],
+                minimum_successes=int(stage_config.get("minimum_successes", 4)),
+            )
+            collector_mode = "gate"
+            report_kind = "mass_workspace_pilot"
         else:
             plan = build_so101_pilot_plan(
                 variation_config,
@@ -231,6 +252,7 @@ def _stage_action(
             "gate": "scripts/report_so101_gate.py",
             "pilot": "scripts/report_so101_pilot.py",
             "mass_feasibility": "scripts/report_so101_mass_feasibility.py",
+            "mass_workspace_pilot": "scripts/report_so101_mass_workspace_pilot.py",
         }
         script = scripts[stage["report_kind"]]
         return {
@@ -335,6 +357,7 @@ def evaluate_so101_gate_workflow(
                         "gate": "gate_status",
                         "pilot": "pilot_status",
                         "mass_feasibility": "feasibility_status",
+                        "mass_workspace_pilot": "pilot_status",
                     }[stage["report_kind"]]
                     if report.get("plan_sha256") != stage["plan_sha256"]:
                         raise ValueError("report plan hash does not match workflow")
