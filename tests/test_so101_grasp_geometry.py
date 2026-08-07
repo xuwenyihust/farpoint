@@ -1,13 +1,16 @@
 import numpy as np
 import pytest
 
+from farpoint.grasp_oracle import quaternion_rotation_matrix_xyzw
 from farpoint.so101_grasp_geometry import (
     SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
     SO101_CAPTURE_APERTURE_CALIBRATION,
+    SO101_CAPTURE_CLOSING_AXIS_LOCAL,
     SO101_RUNTIME_QUATERNION_ORDER,
     aabb_corners,
     posture_geometry_diagnostics,
     so101_capture_aperture_reference,
+    so101_capture_channel_direction_world,
     transform_points_xyzw,
 )
 
@@ -70,6 +73,31 @@ def test_capture_aperture_reference_returns_copy_and_validates_joint_limit():
     for invalid in (-0.1747, 1.7454):
         with pytest.raises(ValueError, match="pinned USD limits"):
             so101_capture_aperture_reference(invalid)
+
+
+def test_capture_channel_is_horizontal_normalized_and_perpendicular():
+    orientation = np.asarray(
+        (-0.6417146921, 0.1408973038, 0.0826371983, -0.7493473291)
+    )
+    channel = so101_capture_channel_direction_world(orientation)
+    closing_world = (
+        quaternion_rotation_matrix_xyzw(orientation)
+        @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+    )
+
+    assert channel[2] == 0.0
+    assert np.linalg.norm(channel) == pytest.approx(1.0)
+    assert np.dot(channel, closing_world) == pytest.approx(0.0, abs=1e-7)
+    np.testing.assert_allclose(channel[:2], [-0.6689, -0.7434], atol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ([0.0, 0.0, 0.0], [0.0, 0.0, float("nan"), 1.0]),
+)
+def test_capture_channel_validates_orientation(invalid):
+    with pytest.raises(ValueError):
+        so101_capture_channel_direction_world(invalid)
 
 
 def test_posture_diagnostic_aligns_aperture_without_using_link_origin():

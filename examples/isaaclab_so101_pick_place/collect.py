@@ -141,11 +141,13 @@ from farpoint.scene_entities import bind_scene_entities  # noqa: E402
 from farpoint.so101 import LEROBOT_JOINT_NAMES, SIM_JOINT_NAMES, mapping_metadata  # noqa: E402
 from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+    SO101_CAPTURE_CLOSING_AXIS_LOCAL,
     SO101_RUNTIME_QUATERNION_ORDER,
     SO101_WORKSHOP_ASSET_SHA256,
     SO101_WORKSHOP_COMMIT,
     posture_geometry_diagnostics,
     so101_capture_aperture_reference,
+    so101_capture_channel_direction_world,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -1236,36 +1238,40 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         (0.0, 0.0, np.sin(np.pi / 8.0), np.cos(np.pi / 8.0)),
         dtype=np.float32,
     )
-    posture_target = np.asarray((0.50, 0.50), dtype=np.float32)
     jaw_preshape = so101_approach_jaw_target(0.040)
     aperture_reference = so101_capture_aperture_reference(jaw_preshape)
     outside_distance_m = 0.080
     vertical_clearance_m = 0.080
     contact_threshold_n = 0.10
-    root_two = float(np.sqrt(0.5))
-    candidates = (
-        ("world_pos_x_pos_y", (root_two, root_two, 0.0)),
-        ("world_neg_x_neg_y", (-root_two, -root_two, 0.0)),
-        ("world_pos_x_neg_y", (root_two, -root_two, 0.0)),
-        ("world_neg_x_pos_y", (-root_two, root_two, 0.0)),
-        ("world_pos_x", (1.0, 0.0, 0.0)),
-        ("world_neg_x", (-1.0, 0.0, 0.0)),
-        ("world_pos_y", (0.0, 1.0, 0.0)),
-        ("world_neg_y", (0.0, -1.0, 0.0)),
+    # Exact jaw=1.7 mesh contact-pair direction in the gripper frame.  The
+    # first path screen showed that the horizontal channel perpendicular to
+    # this axis is the only route that gets close to the 40 mm cube.  This
+    # second screen varies wrist roll around the zero-tilt solution and the
+    # requested aperture height instead of testing unrelated world axes.
+    candidates = tuple(
+        (roll, aperture_height_offset_m)
+        for roll in (0.25, 0.33, 0.40)
+        for aperture_height_offset_m in (-0.010, 0.0, 0.010)
     )
     destination = output_root / "grasp_path_diagnostic"
     destination.mkdir(parents=True, exist_ok=True)
     results = []
 
-    def live_aligned_target():
+    def live_aligned_target(aperture_height_offset_m):
         pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
         cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
         return gripper_target_for_object_local_offset(
-            cube, pose[3:7], aperture_reference
+            cube
+            + np.asarray(
+                (0.0, 0.0, aperture_height_offset_m), dtype=np.float32
+            ),
+            pose[3:7],
+            aperture_reference,
         )
 
-    for candidate_index, (label, direction_values) in enumerate(candidates):
-        direction = np.asarray(direction_values, dtype=np.float32)
+    for candidate_index, (roll, aperture_height_offset_m) in enumerate(candidates):
+        posture_target = np.asarray((0.50, roll), dtype=np.float32)
+        label = f"roll_{roll:+.2f}_height_{aperture_height_offset_m:+.3f}"
         env.farpoint_active_cube = active_name
         env.reset(seed=0)
         for index, name in enumerate(inactive):
@@ -1282,6 +1288,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         first_contact_fraction = None
         first_contact_forces = (0.0, 0.0)
         contacts = (scene["contact_jaw"], scene["contact_gripper"])
+        orientation_target = None
 
         def advance_segment(segment, steps, target_for_fraction):
             nonlocal command
@@ -1302,6 +1309,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
                     body_index,
                     device,
                     posture_target=posture_target,
+                    orientation_target=orientation_target,
                     max_joint_step=0.01,
                 )
                 action[0, 5] = jaw_preshape
@@ -1327,12 +1335,25 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         contact_free = advance_segment(
             "safe_posture", 180, lambda _fraction: safe_target
         )
+        safe_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
+        orientation_target = safe_pose[3:7].copy()
+        closing_axis_world = (
+            quaternion_rotation_matrix_xyzw(orientation_target)
+            @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+        )
+        # Use the side that v9 showed to be reachable.  The opposite side
+        # drove the arm across the cube during the outside descent.
+        direction = so101_capture_channel_direction_world(
+            orientation_target
+        )
         if contact_free:
             contact_free = advance_segment(
                 "above_outside",
                 180,
                 lambda _fraction: (
-                    live_aligned_target()
+                    live_aligned_target(aperture_height_offset_m)
                     + outside_distance_m * direction
                     + np.asarray((0.0, 0.0, vertical_clearance_m), dtype=np.float32)
                 ),
@@ -1342,7 +1363,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
                 "outside_descent",
                 180,
                 lambda fraction: (
-                    live_aligned_target()
+                    live_aligned_target(aperture_height_offset_m)
                     + outside_distance_m * direction
                     + np.asarray(
                         (0.0, 0.0, vertical_clearance_m * (1.0 - fraction)),
@@ -1355,7 +1376,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
                 "lateral_insert",
                 240,
                 lambda fraction: (
-                    live_aligned_target()
+                    live_aligned_target(aperture_height_offset_m)
                     + outside_distance_m * (1.0 - fraction) * direction
                 ),
             )
@@ -1365,7 +1386,12 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         ).copy()
         final_cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
         final_target = gripper_target_for_object_local_offset(
-            final_cube, final_pose[3:7], aperture_reference
+            final_cube
+            + np.asarray(
+                (0.0, 0.0, aperture_height_offset_m), dtype=np.float32
+            ),
+            final_pose[3:7],
+            aperture_reference,
         )
         final_position_error_m = float(
             np.linalg.norm(final_target - final_pose[:3])
@@ -1373,6 +1399,9 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         record = {
             "candidate_index": candidate_index,
             "label": label,
+            "posture_target_rad": posture_target.tolist(),
+            "aperture_height_offset_m": aperture_height_offset_m,
+            "closing_axis_world_at_safe": closing_axis_world.tolist(),
             "outside_direction_world": direction.tolist(),
             "contact_free": bool(contact_free and final_position_error_m < 0.010),
             "first_contact_segment": first_contact_segment,
@@ -1389,7 +1418,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         print("SO101_GRASP_PATH " + json.dumps(record, sort_keys=True), flush=True)
 
     report = {
-        "schema_version": "farpoint.so101_grasp_path_diagnostic.v1",
+        "schema_version": "farpoint.so101_grasp_path_diagnostic.v2",
         "git_commit": os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
         "asset_sha256": SO101_WORKSHOP_ASSET_SHA256,
         "camera_features": ["front"],
@@ -1398,6 +1427,7 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         "object_orientation_xyzw": object_orientation.tolist(),
         "jaw_preshape_rad": jaw_preshape,
         "aperture_center_local_m": aperture_reference.tolist(),
+        "closing_axis_local": SO101_CAPTURE_CLOSING_AXIS_LOCAL.tolist(),
         "outside_distance_m": outside_distance_m,
         "vertical_clearance_m": vertical_clearance_m,
         "contact_threshold_n": contact_threshold_n,
