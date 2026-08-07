@@ -86,6 +86,72 @@ The selected-success split can differ from 8/1/1 if a validation or test trial
 fails and a fallback reaches the success target first. Report that as a pilot
 coverage limitation; do not relabel or rebalance episodes after collection.
 
+## P0 collection watchdog and gate workflow
+
+Long SO-101 runs should use the frozen P0 watchdog policy rather than relying
+on an operator to notice an unrecoverable collection. The watchdog evaluates
+only persisted state: the plan, collection manifest, episode run-state
+sidecars, the remaining attempt budget, and stable failure classes. It never
+changes scene parameters, controller thresholds, trial ordering, splits, or
+the attempt budget.
+
+Its decisions are `CONTINUE`, `STOP`, `COMPLETE`, and `INVALID`. A stop is
+required when the success target is mathematically unreachable, one structural
+failure class repeats beyond the frozen window, a live episode becomes stale,
+or the collection itself stops making progress. The collector evaluates this
+policy after an attempt and its manifest are fully written. On `STOP` or
+`INVALID`, it preserves every artifact, marks a still-running manifest
+`ABORTED` with the watchdog reason, and does not start the next attempt.
+
+Initialize the complete stage sequence before using Isaac:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/oracle_gate_v1 \
+  --workflow-id so101_oracle_gate_v1 \
+  --git-commit "$(git rev-parse HEAD)"
+
+python scripts/run_so101_gate_workflow.py status \
+  artifacts/so101/oracle_gate_v1/workflow.json
+```
+
+Keep the artifact root repository-relative so the same action paths resolve in
+the `/workspace/project` container mount and after syncing to DGX Spark.
+
+The status JSON exposes exactly one admissible `next_action`, including the
+required `FARPOINT_GIT_COMMIT`, command arguments, plan, manifest, episode
+root, and copied watchdog policy. Run it from the repository root. Re-run
+`status` after collection or evidence reporting; do not skip a locked stage.
+
+The frozen P0 sequence is:
+
+1. 20-of-20 fixed 30 mm repeatability gate.
+2. 20-of-20 fixed 40 mm repeatability gate.
+3. Two-size by five-position workspace matrix at a 90% threshold.
+4. Ten-success stratified pilot with a 15-attempt ceiling.
+
+Every completed stage needs a `PASS` evidence report before the next stage is
+unlocked. A watchdog abort, failed report, invalid evidence, altered plan or
+policy, or mismatched Git commit blocks the workflow. Passing all four stages
+produces `READY_FOR_FORMAL_REVIEW`; it does not authorize or launch a formal
+collection. Formal collection still requires merged `main`, a new frozen
+collection identity, and the normal owner-reviewed workflow.
+
+For an existing collection, the read-only one-shot check is:
+
+```bash
+python scripts/watch_so101_collection.py \
+  --plan artifacts/so101/gate/plan.json \
+  --manifest artifacts/so101/gate/manifest.json \
+  --episodes-root artifacts/so101/gate/episodes \
+  --output artifacts/so101/gate/watchdog.json
+```
+
+The command exits 0 for `CONTINUE` or `COMPLETE`, 2 for `STOP`, and 3 for
+`INVALID`. The one-shot CLI does not mutate the collection; safe automatic
+stopping is enabled by passing `--watchdog-policy` to the long-lived collector,
+as emitted by the gate workflow.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two

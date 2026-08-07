@@ -20,6 +20,7 @@ mkdir -p "${DATA_ROOT}"
 
 docker_args=(
   --rm --gpus all --network host
+  -w /workspace/project
   -e ACCEPT_EULA=Y -e PRIVACY_CONSENT=Y
   -e FARPOINT_GIT_COMMIT="${FARPOINT_GIT_COMMIT:-unknown}"
   -e FARPOINT_SO101_USD="${CONTAINER_ASSET}"
