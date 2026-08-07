@@ -124,6 +124,7 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_minimum_safe_descent_fraction,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
@@ -2400,11 +2401,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             phase,
             has_contact,
             descent_fraction,
-            # The production cube is fixed at 45-degree yaw, so its leading
-            # corner intentionally reaches the moving finger at about 79%
-            # insertion. This low-force contact starts alignment; PREGRASP
-            # contact or substantially earlier insertion contact is a sweep.
-            minimum_safe_descent_fraction=0.75,
+            # The fixed 45-degree yaw makes the leading corner of a 40 mm cube
+            # reach the moving finger earlier than a 30 mm cube. The frozen
+            # size-aware threshold keeps PREGRASP contact unsafe while allowing
+            # low-force DESCEND contact to hand off to calibrated slow close.
+            minimum_safe_descent_fraction=so101_minimum_safe_descent_fraction(
+                object_spec["dimensions_m"][0]
+            ),
         )
         cube_dropped = (
             cube_was_lifted

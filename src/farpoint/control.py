@@ -14,6 +14,20 @@ def so101_approach_jaw_target(object_width_m):
     return 0.90 + 0.80 * interpolation
 
 
+def so101_minimum_safe_descent_fraction(object_width_m):
+    """Return the size-aware insertion fraction where cube contact is expected."""
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    # The 40 mm gate at merged commit 5277dd4 produced repeatable first-corner
+    # contact at 68--70% insertion with an unmoved cube and a fully open
+    # 1.7-rad jaw.  Keeping the 30 mm threshold at its proven 75% while
+    # lowering the large-cube endpoint to 60% distinguishes that intended
+    # alignment contact from an actual pregrasp sweep.
+    return 0.75 - 0.15 * interpolation
+
+
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
