@@ -73,6 +73,7 @@ def parse_args():
     )
     parser.add_argument("--diagnose-grasp-offsets", action="store_true")
     parser.add_argument("--diagnose-grasp-grid", action="store_true")
+    parser.add_argument("--diagnose-grasp-paths", action="store_true")
     parser.add_argument("--diagnose-calibrated-grasp", action="store_true")
     parser.add_argument(
         "--enable-wrist-camera",
@@ -145,7 +146,6 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_WORKSHOP_COMMIT,
     posture_geometry_diagnostics,
     so101_capture_aperture_reference,
-    so101_capture_feed_axis_local,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -666,7 +666,6 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     )
     jaw_preshape = so101_approach_jaw_target(object_edge_m)
     aperture_reference = so101_capture_aperture_reference(jaw_preshape)
-    feed_axis_local = so101_capture_feed_axis_local(jaw_preshape)
     closed_jaw = float(np.deg2rad(-10.0))
     bilateral_threshold_n = 0.10
     seed = 0
@@ -721,12 +720,10 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             live_pose[3:7],
             aperture_reference,
         )
-        feed_axis_world = (
-            quaternion_rotation_matrix_xyzw(live_pose[3:7]) @ feed_axis_local
-        )
+        local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         above_target = (
             aligned_target
-            + feed_distance_m * feed_axis_world
+            + feed_distance_m * local_z_world
             + np.asarray((0.0, 0.0, 0.070), dtype=np.float32)
         )
         action = _ik_action(
@@ -752,10 +749,8 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             live_pose[3:7],
             aperture_reference,
         )
-        feed_axis_world = (
-            quaternion_rotation_matrix_xyzw(live_pose[3:7]) @ feed_axis_local
-        )
-        pregrasp_target = aligned_target + feed_distance_m * feed_axis_world
+        local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
+        pregrasp_target = aligned_target + feed_distance_m * local_z_world
         action = _ik_action(
             robot,
             scene["ee_frame"],
@@ -783,11 +778,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             live_pose[3:7],
             aperture_reference,
         )
-        feed_axis_world = (
-            quaternion_rotation_matrix_xyzw(live_pose[3:7]) @ feed_axis_local
-        )
+        local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         target = aligned_target + (
-            feed_distance_m * (1.0 - fraction) * feed_axis_world
+            feed_distance_m * (1.0 - fraction) * local_z_world
         )
         action = _ik_action(
             robot,
@@ -920,7 +913,6 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         "object_edge_m": object_edge_m,
         "object_orientation_xyzw": object_orientation.tolist(),
         "aperture_center_local_m": aperture_reference.tolist(),
-        "feed_axis_local": feed_axis_local.tolist(),
         "posture_target_rad": posture_target.tolist(),
         "expected_safe_orientation_xyzw": expected_safe_orientation.tolist(),
         "measured_safe_pose_xyzw": safe_pose.tolist(),
@@ -1222,6 +1214,201 @@ def run_grasp_grid_diagnostic(env, output_root: Path) -> None:
     _write_json(destination / "results.json", {"candidates": results})
 
 
+def run_grasp_path_diagnostic(env, output_root: Path) -> None:
+    """Screen two-stage 40 mm insertion paths before contact-only closing."""
+    scene = env.scene
+    robot = scene["robot"]
+    body_index = _body_index(robot)
+    device = env.device
+    active_name = "cube_large_blue"
+    inactive = [
+        name
+        for name in (
+            "cube_small_red",
+            "cube_small_blue",
+            "cube_large_red",
+            "cube_large_blue",
+        )
+        if name != active_name
+    ]
+    object_position = np.asarray((0.1589218, -0.1071630, 0.052), dtype=np.float32)
+    object_orientation = np.asarray(
+        (0.0, 0.0, np.sin(np.pi / 8.0), np.cos(np.pi / 8.0)),
+        dtype=np.float32,
+    )
+    posture_target = np.asarray((0.50, 0.50), dtype=np.float32)
+    jaw_preshape = so101_approach_jaw_target(0.040)
+    aperture_reference = so101_capture_aperture_reference(jaw_preshape)
+    outside_distance_m = 0.080
+    vertical_clearance_m = 0.080
+    contact_threshold_n = 0.10
+    root_two = float(np.sqrt(0.5))
+    candidates = (
+        ("world_pos_x_pos_y", (root_two, root_two, 0.0)),
+        ("world_neg_x_neg_y", (-root_two, -root_two, 0.0)),
+        ("world_pos_x_neg_y", (root_two, -root_two, 0.0)),
+        ("world_neg_x_pos_y", (-root_two, root_two, 0.0)),
+        ("world_pos_x", (1.0, 0.0, 0.0)),
+        ("world_neg_x", (-1.0, 0.0, 0.0)),
+        ("world_pos_y", (0.0, 1.0, 0.0)),
+        ("world_neg_y", (0.0, -1.0, 0.0)),
+    )
+    destination = output_root / "grasp_path_diagnostic"
+    destination.mkdir(parents=True, exist_ok=True)
+    results = []
+
+    def live_aligned_target():
+        pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+        cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+        return gripper_target_for_object_local_offset(
+            cube, pose[3:7], aperture_reference
+        )
+
+    for candidate_index, (label, direction_values) in enumerate(candidates):
+        direction = np.asarray(direction_values, dtype=np.float32)
+        env.farpoint_active_cube = active_name
+        env.reset(seed=0)
+        for index, name in enumerate(inactive):
+            _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
+        _move_object(
+            scene[active_name], object_position, device, object_orientation
+        )
+        _aim_front_camera(scene, device)
+        command = SO101_HOME_JOINTS.copy()
+        action = torch.tensor(command[None, :], dtype=torch.float32, device=device)
+        env.step(action)
+        cube_start = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+        first_contact_segment = None
+        first_contact_fraction = None
+        first_contact_forces = (0.0, 0.0)
+        contacts = (scene["contact_jaw"], scene["contact_gripper"])
+
+        def advance_segment(segment, steps, target_for_fraction):
+            nonlocal command
+            nonlocal first_contact_segment
+            nonlocal first_contact_fraction
+            nonlocal first_contact_forces
+            segment_start_cube = _numpy(
+                scene[active_name].data.root_pos_w[0, :3]
+            ).copy()
+            for step in range(steps):
+                fraction = (step + 1) / steps
+                target = target_for_fraction(fraction)
+                action = _ik_action(
+                    robot,
+                    scene["ee_frame"],
+                    target,
+                    command,
+                    body_index,
+                    device,
+                    posture_target=posture_target,
+                    max_joint_step=0.01,
+                )
+                action[0, 5] = jaw_preshape
+                command = _numpy(action[0]).astype(np.float32).copy()
+                env.step(action)
+                forces = _cube_contact_forces(contacts)
+                if max(forces) >= contact_threshold_n:
+                    first_contact_segment = segment
+                    first_contact_fraction = fraction
+                    first_contact_forces = forces
+                    return False
+                cube_now = _numpy(
+                    scene[active_name].data.root_pos_w[0, :3]
+                ).copy()
+                if float(np.linalg.norm(cube_now - segment_start_cube)) >= 0.003:
+                    first_contact_segment = segment
+                    first_contact_fraction = fraction
+                    first_contact_forces = forces
+                    return False
+            return True
+
+        safe_target = np.asarray((0.165, -0.11, 0.18), dtype=np.float32)
+        contact_free = advance_segment(
+            "safe_posture", 180, lambda _fraction: safe_target
+        )
+        if contact_free:
+            contact_free = advance_segment(
+                "above_outside",
+                180,
+                lambda _fraction: (
+                    live_aligned_target()
+                    + outside_distance_m * direction
+                    + np.asarray((0.0, 0.0, vertical_clearance_m), dtype=np.float32)
+                ),
+            )
+        if contact_free:
+            contact_free = advance_segment(
+                "outside_descent",
+                180,
+                lambda fraction: (
+                    live_aligned_target()
+                    + outside_distance_m * direction
+                    + np.asarray(
+                        (0.0, 0.0, vertical_clearance_m * (1.0 - fraction)),
+                        dtype=np.float32,
+                    )
+                ),
+            )
+        if contact_free:
+            contact_free = advance_segment(
+                "lateral_insert",
+                240,
+                lambda fraction: (
+                    live_aligned_target()
+                    + outside_distance_m * (1.0 - fraction) * direction
+                ),
+            )
+
+        final_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
+        final_cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+        final_target = gripper_target_for_object_local_offset(
+            final_cube, final_pose[3:7], aperture_reference
+        )
+        final_position_error_m = float(
+            np.linalg.norm(final_target - final_pose[:3])
+        )
+        record = {
+            "candidate_index": candidate_index,
+            "label": label,
+            "outside_direction_world": direction.tolist(),
+            "contact_free": bool(contact_free and final_position_error_m < 0.010),
+            "first_contact_segment": first_contact_segment,
+            "first_contact_fraction": first_contact_fraction,
+            "first_contact_forces_n": list(first_contact_forces),
+            "final_position_error_m": final_position_error_m,
+            "cube_displacement_m": (final_cube - cube_start).tolist(),
+            "final_contact": _contact_debug(contacts),
+        }
+        results.append(record)
+        Image.fromarray(_image(scene["front_camera"], device), mode="RGB").save(
+            destination / f"candidate_{candidate_index:02d}_{label}_front.png"
+        )
+        print("SO101_GRASP_PATH " + json.dumps(record, sort_keys=True), flush=True)
+
+    report = {
+        "schema_version": "farpoint.so101_grasp_path_diagnostic.v1",
+        "git_commit": os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+        "asset_sha256": SO101_WORKSHOP_ASSET_SHA256,
+        "camera_features": ["front"],
+        "wrist_camera_enabled": False,
+        "object_edge_m": 0.040,
+        "object_orientation_xyzw": object_orientation.tolist(),
+        "jaw_preshape_rad": jaw_preshape,
+        "aperture_center_local_m": aperture_reference.tolist(),
+        "outside_distance_m": outside_distance_m,
+        "vertical_clearance_m": vertical_clearance_m,
+        "contact_threshold_n": contact_threshold_n,
+        "successful_candidate_labels": [
+            item["label"] for item in results if item["contact_free"]
+        ],
+        "candidates": results,
+    }
+    _write_json(destination / "results.json", report)
+
+
 def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: str):
     device = env.device
     scene = env.scene
@@ -1277,7 +1464,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
-    capture_feed_axis_local = so101_capture_feed_axis_local(approach_jaw)
     target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
     target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
@@ -1484,14 +1670,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 live_gripper_pose[3:7],
                 capture_object_in_gripper,
             )
-            capture_feed_axis_world = (
-                quaternion_rotation_matrix_xyzw(live_gripper_pose[3:7])
-                @ capture_feed_axis_local
-            )
+            local_z_world = quaternion_rotation_matrix_xyzw(
+                live_gripper_pose[3:7]
+            )[:, 2]
             feed_distance_m = 0.070
-            distal_pregrasp = (
-                capture_target + feed_distance_m * capture_feed_axis_world
-            )
+            distal_pregrasp = capture_target + feed_distance_m * local_z_world
             if phase is OraclePhase.PREGRASP:
                 final_target = distal_pregrasp
             else:
@@ -1500,9 +1683,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     1.0, (machine.phase_steps + 1) / insertion_steps
                 )
                 final_target = capture_target + (
-                    feed_distance_m
-                    * (1.0 - descent_fraction)
-                    * capture_feed_axis_world
+                    feed_distance_m * (1.0 - descent_fraction) * local_z_world
                 )
                 phase_motion_complete = descent_fraction >= 1.0
             if phase is OraclePhase.PREGRASP and pregrasp_route_index < 3:
@@ -2261,7 +2442,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 "capture_aperture_reference_local_m": (
                     capture_object_in_gripper.tolist()
                 ),
-                "capture_feed_axis_local": capture_feed_axis_local.tolist(),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),
                 "transport_lift_actual_m": (
@@ -2563,6 +2743,11 @@ def main():
         if args_cli.diagnose_grasp_grid:
             run_grasp_grid_diagnostic(env, args_cli.output_root)
             finish_diagnostic_manifest(manifest, "grasp_grid", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
+            return
+        if args_cli.diagnose_grasp_paths:
+            run_grasp_path_diagnostic(env, args_cli.output_root)
+            finish_diagnostic_manifest(manifest, "grasp_paths", succeeded=True)
             write_manifest(args_cli.manifest, manifest)
             return
         for _ in range(args_cli.max_attempts_this_run):
