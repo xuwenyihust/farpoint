@@ -55,6 +55,23 @@ class BenchmarkReportTests(unittest.TestCase):
         self.assertEqual(result["planned_trials"], 50)
         self.assertEqual(result["passed_trials"], 50)
         self.assertEqual(result["acceptance"]["selection_balance"], balance)
+
+        trials = [
+            {
+                **trial,
+                "dataset_observation_count": 2,
+                "final_target_xy_distance": None,
+                "object_lift_height": None,
+                "release_settle_frames": None,
+            }
+            for trial in result["trials"]
+        ]
+        summary = summarize(result, trials)
+        self.assertTrue(summary["accepted"])
+        self.assertTrue(
+            summary["acceptance_checks"]["successful_trials_meet_task_thresholds"]
+        )
+        self.assertTrue(summary["acceptance_checks"]["dataset_valid"])
     def test_report_links_do_not_follow_snapshot_symlinks(self):
         from tempfile import TemporaryDirectory
 

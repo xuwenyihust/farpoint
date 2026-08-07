@@ -119,6 +119,7 @@ def normalize_manifest(manifest):
                 "split": attempt.get("split"),
                 "seed": attempt.get("attempt_seed"),
                 "origin": "selected",
+                "selected_for_dataset": attempt.get("selected_for_dataset", True),
             }
             for attempt in attempts
         ]
@@ -276,7 +277,7 @@ def load_trial(trial, report_dir):
         ),
         "dataset_observation_count": metrics.get(
             "dataset_observation_count",
-            trial.get("dataset_observation_count"),
+            metrics.get("observation_count", trial.get("dataset_observation_count")),
         ),
         "peak_gpu": row.get("peak_gpu"),
         "workload_memory": row.get("workload_memory"),
@@ -408,6 +409,12 @@ def summarize(manifest, trials, reproducibility_trials=None):
         nested = manifest.get("acceptance") or {}
         if manifest.get("schema_version") == "farpoint.collection-selection.v1":
             balance = nested.get("selection_balance") or {}
+            acceptance_checks["successful_trials_meet_task_thresholds"] = bool(
+                quality_trials
+            ) and all(
+                bool(trial.get("success")) and bool(trial.get("dataset_valid"))
+                for trial in quality_trials
+            )
             acceptance_checks["planned_trials_completed"] = (
                 manifest.get("execution_status") == "FINISHED"
             )
