@@ -69,7 +69,10 @@ def build_attempt_run_state(
             "trial_id": attempt["trial_id"],
             "task_id": "so101_cube_pick_place",
             "split": attempt["split"],
-            "episode_seed": int(attempt["attempt_seed"]) % (2**32),
+            "episode_seed": int(
+                attempt.get("environment_seed", attempt["attempt_seed"])
+            )
+            % (2**32),
         },
         "provenance": {
             "collection_id": collection_id,
@@ -200,6 +203,48 @@ def create_gate_manifest(
             raise ValueError("matrix gate must run each frozen trial exactly once")
         if required_successes != math.ceil(minimum_success_rate * len(trials)):
             raise ValueError("matrix gate required_successes does not match its threshold")
+    elif kind == "cube_mass_feasibility":
+        repetitions = int(gate.get("repetitions_per_mass", 0))
+        minimum_per_mass = int(gate.get("minimum_successes_per_mass", 0))
+        if repetitions <= 0 or len(trials) != repetitions * 2:
+            raise ValueError("mass feasibility gate requires two trials per pair")
+        if not 0 < minimum_per_mass <= repetitions:
+            raise ValueError("invalid mass feasibility success threshold")
+        if maximum_attempts != len(trials):
+            raise ValueError("mass feasibility gate must run every frozen trial")
+        if required_successes != minimum_per_mass * 2:
+            raise ValueError("mass feasibility total threshold is inconsistent")
+        masses = {
+            float(trial["resolved"]["mass_kg"])
+            for trial in trials
+        }
+        if masses != {
+            float(gate["baseline_mass_kg"]),
+            float(gate["candidate_mass_kg"]),
+        }:
+            raise ValueError("mass feasibility trials do not match frozen masses")
+        pair_counts = Counter(trial.get("mass_pair_id") for trial in trials)
+        if len(pair_counts) != repetitions or set(pair_counts.values()) != {2}:
+            raise ValueError("mass feasibility pairs must contain two trials")
+        for pair_id in pair_counts:
+            pair = [trial for trial in trials if trial.get("mass_pair_id") == pair_id]
+            if {trial.get("mass_role") for trial in pair} != {
+                "baseline",
+                "candidate",
+            }:
+                raise ValueError("mass feasibility pair roles are invalid")
+            if len({trial.get("environment_seed") for trial in pair}) != 1:
+                raise ValueError("mass feasibility pairs must share an environment seed")
+        tolerance = float(gate.get("actual_mass_tolerance_kg", -1.0))
+        if not math.isfinite(tolerance) or tolerance < 0.0:
+            raise ValueError("mass feasibility actual-mass tolerance is invalid")
+        thresholds = gate.get("behavior_change_thresholds") or {}
+        if set(thresholds) != {
+            "action_path_relative",
+            "mean_lift_bilateral_force_relative",
+            "frame_count_absolute",
+        } or any(float(value) < 0.0 for value in thresholds.values()):
+            raise ValueError("mass feasibility behavior thresholds are invalid")
     else:
         raise ValueError("unsupported gate kind")
     return _new_manifest(

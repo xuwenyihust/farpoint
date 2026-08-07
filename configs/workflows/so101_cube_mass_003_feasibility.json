@@ -1,0 +1,16 @@
+{
+  "schema_version": "farpoint.so101-gate-workflow-config.v1",
+  "completion_status": "FEASIBILITY_COMPLETE",
+  "stages": [
+    {
+      "stage_id": "cube_mass_30g",
+      "kind": "cube_mass_feasibility",
+      "baseline_mass_kg": 0.04,
+      "candidate_mass_kg": 0.03,
+      "edge_m": 0.03,
+      "position_xy_m": [0.20, -0.095],
+      "repetitions_per_mass": 5,
+      "minimum_successes_per_mass": 4
+    }
+  ]
+}

@@ -162,3 +162,68 @@ def test_workflow_rejects_commit_drift(tmp_path):
 
     assert status["status"] == "INVALID"
     assert "manifest git commit does not match workflow" in status["errors"][0]
+
+
+def test_mass_feasibility_profile_uses_special_report_and_completion(tmp_path):
+    config = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    policy = load_watchdog_policy(
+        ROOT / "configs/workflows/so101_watchdog_p0.json"
+    )
+    profile = {
+        "schema_version": "farpoint.so101-gate-workflow-config.v1",
+        "completion_status": "FEASIBILITY_COMPLETE",
+        "stages": [
+            {
+                "stage_id": "cube_mass_30g",
+                "kind": "cube_mass_feasibility",
+                "repetitions_per_mass": 1,
+                "minimum_successes_per_mass": 1,
+            }
+        ],
+    }
+    workflow, plans = build_so101_gate_workflow(
+        profile,
+        config,
+        policy,
+        workflow_id="mass_workflow",
+        git_commit=GIT_COMMIT,
+    )
+    path = write_so101_gate_workflow(
+        tmp_path / "mass_workflow", workflow, plans, policy
+    )
+    stage = workflow["stages"][0]
+    assert stage["report_kind"] == "mass_feasibility"
+    manifest = create_gate_manifest(
+        plans[stage["stage_id"]],
+        collection_id=plans[stage["stage_id"]]["plan_id"],
+        git_commit=GIT_COMMIT,
+    )
+    for _ in range(2):
+        attempt = next_attempt(manifest, plans[stage["stage_id"]])
+        record_attempt(
+            manifest,
+            plans[stage["stage_id"]],
+            attempt,
+            episode_id=f"episode_{attempt['attempt_id']}",
+            success=True,
+            dataset_valid=True,
+        )
+    write_manifest(path.parent / stage["manifest_path"], manifest)
+    needs_report = evaluate_so101_gate_workflow(path)
+    assert needs_report["next_action"]["command"][1] == (
+        "scripts/report_so101_mass_feasibility.py"
+    )
+    report_path = path.parent / stage["report_json_path"]
+    report_path.write_text(
+        json.dumps(
+            {
+                "plan_sha256": stage["plan_sha256"],
+                "git_commit": GIT_COMMIT,
+                "feasibility_status": "PASS",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert evaluate_so101_gate_workflow(path)["status"] == "FEASIBILITY_COMPLETE"
