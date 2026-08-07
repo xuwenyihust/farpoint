@@ -294,6 +294,38 @@ def unilateral_contact_recenter_target(
     }
 
 
+def so101_rotary_jaw_recenter_target(
+    commanded_position,
+    nominal_position,
+    jaw_bounds,
+    fixed_finger_bounds,
+    jaw_force,
+    fixed_finger_force,
+    *,
+    min_force=0.2,
+    step=0.00025,
+    max_correction=0.02,
+):
+    """Recenter an asymmetric SO-101 grasp away from the loaded finger.
+
+    Moving the whole arm toward an already-loaded rotary jaw pushes a cube
+    across the table with the jaw.  Moving away unloads that side while the
+    opposing fixed finger approaches the object and slow-close continues.
+    """
+    return unilateral_contact_recenter_target(
+        commanded_position,
+        nominal_position,
+        jaw_bounds,
+        fixed_finger_bounds,
+        jaw_force,
+        fixed_finger_force,
+        min_force=min_force,
+        step=step,
+        max_correction=max_correction,
+        move_toward_contact=False,
+    )
+
+
 def track_observed_pick_target(
     object_position_estimate,
     object_grasp_offset,

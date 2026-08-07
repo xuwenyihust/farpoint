@@ -119,8 +119,8 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_rotary_jaw_recenter_target,
     so101_unilateral_recenter_limit,
-    unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
 from farpoint.grasp_oracle import (  # noqa: E402
@@ -1435,7 +1435,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             gripper_center = _numpy(
                 robot.data.body_link_pose_w.torch[0, body_index, :3]
             )
-            recenter = unilateral_contact_recenter_target(
+            recenter = so101_rotary_jaw_recenter_target(
                 grasp_hold_pose,
                 grasp_hold_nominal_pose,
                 {"center": jaw_center.tolist()},
@@ -1450,7 +1450,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                         object_spec["dimensions_m"][0]
                     )
                 ),
-                move_toward_contact=True,
             )
             grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)
             recenter_active = bool(recenter["active"])

@@ -26,6 +26,7 @@ from farpoint.control import (
     settle_release_separation_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
+    so101_rotary_jaw_recenter_target,
     so101_unilateral_recenter_limit,
     tactile_contact_hold_target,
     tactile_search_active,
@@ -701,7 +702,7 @@ def test_40mm_unilateral_recenter_accumulates_to_size_aware_bound():
     nominal = list(commanded)
     limit = so101_unilateral_recenter_limit(0.04)
     for _ in range(200):
-        update = unilateral_contact_recenter_target(
+        update = so101_rotary_jaw_recenter_target(
             commanded,
             nominal,
             {"center": [1.0, 0.2, 0.42]},
@@ -713,8 +714,34 @@ def test_40mm_unilateral_recenter_accumulates_to_size_aware_bound():
         )
         commanded = update["position"]
 
-    assert commanded == pytest.approx([1.0, 0.25 - 0.009, 0.54])
+    assert commanded == pytest.approx([1.0, 0.25 + 0.009, 0.54])
     assert update["active"] is True
+
+
+def test_so101_rotary_jaw_recenter_moves_away_from_loaded_side():
+    jaw_loaded = so101_rotary_jaw_recenter_target(
+        [1.0, 0.25, 0.54],
+        [1.0, 0.25, 0.54],
+        {"center": [1.0, 0.2, 0.42]},
+        {"center": [1.0, 0.3, 0.41]},
+        1.0,
+        0.0,
+        step=0.001,
+    )
+    fixed_loaded = so101_rotary_jaw_recenter_target(
+        [1.0, 0.25, 0.54],
+        [1.0, 0.25, 0.54],
+        {"center": [1.0, 0.2, 0.42]},
+        {"center": [1.0, 0.3, 0.41]},
+        0.0,
+        1.0,
+        step=0.001,
+    )
+
+    assert jaw_loaded["position"] == pytest.approx([1.0, 0.251, 0.54])
+    assert jaw_loaded["contact_side"] == "left"
+    assert fixed_loaded["position"] == pytest.approx([1.0, 0.249, 0.54])
+    assert fixed_loaded["contact_side"] == "right"
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():
