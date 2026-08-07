@@ -16,6 +16,45 @@ from build_benchmark_report import (
 
 
 class BenchmarkReportTests(unittest.TestCase):
+    def test_balanced_so101_selection_normalizes_as_collection(self):
+        balance = {
+            "total": 50,
+            "splits": {"train": 40, "validation": 5, "test": 5},
+            "workspace_cells": {f"r{row:02d}_c{column:02d}": 2 for row in range(5) for column in range(5)},
+            "workspace_rows": {f"r{row:02d}": 10 for row in range(5)},
+            "workspace_columns": {f"c{column:02d}": 10 for column in range(5)},
+            "sizes": {"size_0": 25, "size_1": 25},
+            "colors": {"color_0": 25, "color_1": 25},
+            "size_color": {"a": 12, "b": 13, "c": 13, "d": 12},
+        }
+        result = normalize_manifest(
+            {
+                "schema_version": "farpoint.collection-selection.v1",
+                "collection_id": "balanced50",
+                "task_id": "so101_cube_pick_place",
+                "execution_status": "FINISHED",
+                "quality_status": "PASS",
+                "required_successes": 50,
+                "attempts": [
+                    {
+                        "attempt_id": str(index),
+                        "trial_id": str(index),
+                        "episode_id": f"episode_{index}",
+                        "split": "train" if index < 40 else "validation" if index < 45 else "test",
+                        "success": True,
+                        "dataset_valid": True,
+                    }
+                    for index in range(50)
+                ],
+                "balance": balance,
+            }
+        )
+
+        self.assertEqual(result["report_kind"], "collection")
+        self.assertEqual(result["benchmark_id"], "balanced50")
+        self.assertEqual(result["planned_trials"], 50)
+        self.assertEqual(result["passed_trials"], 50)
+        self.assertEqual(result["acceptance"]["selection_balance"], balance)
     def test_report_links_do_not_follow_snapshot_symlinks(self):
         from tempfile import TemporaryDirectory
 
