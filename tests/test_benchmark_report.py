@@ -56,27 +56,27 @@ class BenchmarkReportTests(unittest.TestCase):
             "/?view=episodes&search=episode_so101__cube%2001",
         )
 
-    def test_v3_trial_uses_middle_rgb_frame_when_preview_directory_is_missing(self):
+    def test_v3_trial_infers_middle_rgb_frame_from_recording_metadata(self):
         from tempfile import TemporaryDirectory
 
         with TemporaryDirectory() as directory:
             root = Path(directory)
             episode_id = "episode_so101__cube 01"
             episode = root / "episodes" / episode_id
-            rgb = episode / "rgb"
-            rgb.mkdir(parents=True)
+            episode.mkdir(parents=True)
             (episode / "metadata.json").write_text(
                 json.dumps(
                     {
                         "schema_version": "farpoint.episode.v3",
                         "identity": {"episode_id": episode_id},
+                        "recording": {
+                            "cameras": ["observation.images.front"],
+                            "frame_count": 3,
+                        },
                     }
                 ),
                 encoding="utf-8",
             )
-            (rgb / "front_000000.png").touch()
-            (rgb / "front_000001.png").touch()
-            (rgb / "front_000002.png").touch()
             previous_episodes = build_benchmark_report.EPISODES_ROOT
             previous_reports = build_benchmark_report.REPORTS_ROOT
             build_benchmark_report.EPISODES_ROOT = root / "episodes"

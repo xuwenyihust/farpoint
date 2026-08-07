@@ -4,6 +4,7 @@ import html
 import json
 import math
 import os
+import re
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -230,6 +231,15 @@ def load_trial(trial, report_dir):
         preview_images = sorted((episode_dir / "rgb").glob("*.png"))
         preview_directory = "rgb"
     preview = preview_images[len(preview_images) // 2] if preview_images else None
+    preview_name = preview.name if preview else None
+    recording = metadata.get("recording") or {}
+    cameras = recording.get("cameras") or []
+    frame_count = int(recording.get("frame_count") or 0)
+    if not preview_name and cameras and frame_count > 0:
+        camera_name = str(cameras[0]).rsplit(".", 1)[-1]
+        if re.fullmatch(r"[A-Za-z0-9_-]+", camera_name):
+            preview_directory = "rgb"
+            preview_name = f"{camera_name}_{frame_count // 2:06d}.png"
     resolved_position = (
         (metadata.get("variation") or {}).get("resolved", {}).get("object_position_m")
         or []
@@ -297,8 +307,8 @@ def load_trial(trial, report_dir):
         "report_href": report_href,
         "preview_href": (
             f"/files/episodes/{quote(episode_id, safe='')}/{preview_directory}/"
-            f"{quote(preview.name, safe='')}"
-            if preview and episode_id
+            f"{quote(preview_name, safe='')}"
+            if preview_name and episode_id
             else None
         ),
     }
