@@ -15,12 +15,52 @@ from farpoint.so101_collection import (
     create_manifest,
     collection_interruption_reason,
     episode_id_for_attempt,
+    finish_diagnostic_manifest,
     load_manifest,
     next_attempt,
     record_attempt,
     raise_collection_signal_abort,
     write_manifest,
 )
+
+
+@pytest.mark.parametrize(
+    ("succeeded", "expected_reason"),
+    [
+        (True, "diagnostic_completed:calibrated_grasp"),
+        (False, "diagnostic_failed:calibrated_grasp"),
+    ],
+)
+def test_diagnostic_manifest_is_terminal_without_collection_score(
+    succeeded,
+    expected_reason,
+):
+    variation_plan = plan()
+    manifest = create_manifest(
+        variation_plan,
+        collection_id="diagnostic_manifest_test",
+        git_commit="abc123",
+    )
+
+    finish_diagnostic_manifest(
+        manifest, "calibrated_grasp", succeeded=succeeded
+    )
+
+    assert manifest["execution_status"] == "ABORTED"
+    assert manifest["quality_status"] == "NOT_EVALUATED"
+    assert manifest["abort_reason"] == expected_reason
+    assert manifest["attempts"] == []
+
+
+def test_diagnostic_manifest_rejects_empty_name():
+    variation_plan = plan()
+    manifest = create_manifest(
+        variation_plan,
+        collection_id="diagnostic_manifest_test",
+        git_commit="abc123",
+    )
+    with pytest.raises(ValueError, match="non-empty"):
+        finish_diagnostic_manifest(manifest, " ", succeeded=True)
 
 
 ROOT = Path(__file__).resolve().parents[1]

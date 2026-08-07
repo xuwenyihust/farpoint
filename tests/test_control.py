@@ -3,7 +3,6 @@ import unittest
 import pytest
 
 from farpoint.control import (
-    advance_unilateral_contact_crossover,
     advance_so101_slow_close_target,
     apply_place_hover_guard,
     bilateral_grasp_ready,
@@ -27,8 +26,6 @@ from farpoint.control import (
     settle_release_separation_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
-    so101_rotary_jaw_recenter_target,
-    so101_unilateral_recenter_limit,
     tactile_contact_hold_target,
     tactile_search_active,
     temporal_contact_confirmed,
@@ -673,165 +670,10 @@ def test_so101_slow_close_force_actions_preserve_limits():
         open_position=1.7453,
         closed_position=-0.1746,
     )
-    loaded_unilateral = advance_so101_slow_close_target(
-        0.45,
-        0.51,
-        19.0,
-        0.0,
-        open_position=1.7453,
-        closed_position=-0.1746,
-    )
-
     assert unilateral == {"position": pytest.approx(0.499), "action": "close"}
     assert bilateral == {"position": pytest.approx(0.499), "action": "hold"}
     assert high_force == {"position": pytest.approx(-0.168), "action": "backoff"}
-    assert loaded_unilateral == {
-        "position": pytest.approx(0.509),
-        "action": "unilateral_rebase_close",
-    }
     assert -0.1746 <= high_force["position"] <= 1.7453
-
-
-def test_so101_loaded_unilateral_rebase_discards_servo_preload_until_unloaded():
-    target = 1.00
-    measured = 1.04
-    for _ in range(20):
-        update = advance_so101_slow_close_target(
-            target,
-            measured,
-            18.0,
-            0.0,
-            open_position=1.7453,
-            closed_position=-0.1746,
-        )
-        target = update["position"]
-        assert update["action"] == "unilateral_rebase_close"
-        assert target == pytest.approx(measured - 0.001)
-        measured -= 0.0005
-
-    unloaded = advance_so101_slow_close_target(
-        target,
-        measured,
-        8.0,
-        0.0,
-        open_position=1.7453,
-        closed_position=-0.1746,
-    )
-    assert unloaded == {
-        "position": pytest.approx(target - 0.001),
-        "action": "close",
-    }
-
-
-@pytest.mark.parametrize("rebase_force", [1.0, 21.0])
-def test_so101_slow_close_rejects_rebase_force_outside_safety_band(rebase_force):
-    with pytest.raises(ValueError, match="between min_force and max_force"):
-        advance_so101_slow_close_target(
-            1.0,
-            1.0,
-            0.0,
-            0.0,
-            open_position=1.7453,
-            closed_position=-0.1746,
-            unilateral_rebase_force=rebase_force,
-        )
-
-
-@pytest.mark.parametrize(
-    ("object_width_m", "expected_limit_m"),
-    [(0.03, 0.004), (0.04, 0.009), (0.10, 0.012)],
-)
-def test_so101_unilateral_recenter_limit_scales_with_half_width(
-    object_width_m,
-    expected_limit_m,
-):
-    assert so101_unilateral_recenter_limit(object_width_m) == pytest.approx(
-        expected_limit_m
-    )
-
-
-@pytest.mark.parametrize("object_width_m", [0.0, -0.01, float("inf"), float("nan")])
-def test_so101_unilateral_recenter_limit_rejects_invalid_width(object_width_m):
-    with pytest.raises(ValueError, match="finite and positive"):
-        so101_unilateral_recenter_limit(object_width_m)
-
-
-def test_40mm_unilateral_recenter_accumulates_to_size_aware_bound():
-    commanded = [1.0, 0.25, 0.54]
-    nominal = list(commanded)
-    limit = so101_unilateral_recenter_limit(0.04)
-    for _ in range(200):
-        update = so101_rotary_jaw_recenter_target(
-            commanded,
-            nominal,
-            {"center": [1.0, 0.2, 0.42]},
-            {"center": [1.0, 0.3, 0.41]},
-            1.0,
-            0.0,
-            step=0.000125,
-            max_correction=limit,
-        )
-        commanded = update["position"]
-
-    assert commanded == pytest.approx([1.0, 0.25 + 0.009, 0.54])
-    assert update["active"] is True
-
-
-def test_so101_rotary_jaw_recenter_moves_away_from_loaded_side():
-    jaw_loaded = so101_rotary_jaw_recenter_target(
-        [1.0, 0.25, 0.54],
-        [1.0, 0.25, 0.54],
-        {"center": [1.0, 0.2, 0.42]},
-        {"center": [1.0, 0.3, 0.41]},
-        1.0,
-        0.0,
-        step=0.001,
-    )
-    fixed_loaded = so101_rotary_jaw_recenter_target(
-        [1.0, 0.25, 0.54],
-        [1.0, 0.25, 0.54],
-        {"center": [1.0, 0.2, 0.42]},
-        {"center": [1.0, 0.3, 0.41]},
-        0.0,
-        1.0,
-        step=0.001,
-    )
-
-    assert jaw_loaded["position"] == pytest.approx([1.0, 0.251, 0.54])
-    assert jaw_loaded["contact_side"] == "left"
-    assert fixed_loaded["position"] == pytest.approx([1.0, 0.249, 0.54])
-    assert fixed_loaded["contact_side"] == "right"
-
-
-def test_unilateral_contact_crossover_latches_on_first_side_transfer():
-    state = advance_unilateral_contact_crossover(None, 0.0, 1.7)
-    assert state == {"contact_side": "right", "crossed": False}
-
-    no_contact = advance_unilateral_contact_crossover(
-        state["contact_side"], 0.1, 0.1
-    )
-    assert no_contact == {"contact_side": "right", "crossed": False}
-
-    crossover = advance_unilateral_contact_crossover(
-        no_contact["contact_side"], 0.6, 0.0
-    )
-    assert crossover == {"contact_side": "left", "crossed": True}
-
-    same_side = advance_unilateral_contact_crossover(
-        crossover["contact_side"], 1.0, 0.0
-    )
-    assert same_side == {"contact_side": "left", "crossed": False}
-
-
-def test_unilateral_contact_crossover_ignores_bilateral_samples():
-    assert advance_unilateral_contact_crossover("right", 1.0, 1.0) == {
-        "contact_side": "right",
-        "crossed": False,
-    }
-    with pytest.raises(ValueError, match="left, right, or None"):
-        advance_unilateral_contact_crossover("unknown", 0.0, 0.0)
-    with pytest.raises(ValueError, match="finite and positive"):
-        advance_unilateral_contact_crossover(None, 0.0, 0.0, min_force=0.0)
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():

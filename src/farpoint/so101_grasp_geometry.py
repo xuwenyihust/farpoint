@@ -58,6 +58,65 @@ SO101_APERTURE_REFERENCE_IN_GRIPPER_M = np.asarray(
     (0.0190589216, -0.0084643856, -0.0578673638), dtype=np.float32
 )
 
+# Production aperture centers from the exact collision meshes at the frozen
+# wrist posture (pitch=0.5 rad, roll=0.5 rad) and 45-degree cube yaw.  The
+# 1.2-rad point is the reference used by the validated 30 mm episodes.  The
+# larger openings were recomputed from the pinned workshop USD after the
+# 40 mm slow-close regression showed that reusing the 1.2-rad point at a
+# 1.7-rad approach leaves the cube 12.7 mm too deep in the finger throat.
+SO101_CAPTURE_APERTURE_CALIBRATION = (
+    (
+        1.2,
+        np.asarray((0.0214971882, -0.0084643886, -0.0546656502), dtype=np.float32),
+    ),
+    (
+        1.4,
+        np.asarray(
+            (0.0224196905, -0.0086327176, -0.0479056704), dtype=np.float32
+        ),
+    ),
+    (
+        1.7,
+        np.asarray(
+            (0.0236281415, -0.0086327433, -0.0420040267), dtype=np.float32
+        ),
+    ),
+)
+
+
+def so101_capture_aperture_reference(jaw_position_rad: float) -> np.ndarray:
+    """Return the calibrated local aperture center for an approach opening.
+
+    Openings below 1.2 rad deliberately retain the validated 30 mm reference.
+    Between measured exact-mesh anchors the center is linearly interpolated;
+    the small interpolation error is bounded by the adjacent calibration
+    points instead of extrapolating rotary-jaw geometry.  Values above the
+    largest production anchor retain the 1.7-rad reference up to the pinned
+    USD open limit.
+    """
+    jaw_position = float(jaw_position_rad)
+    if not np.isfinite(jaw_position):
+        raise ValueError("jaw_position_rad must be finite")
+    if not -0.1746 <= jaw_position <= 1.7453:
+        raise ValueError("jaw_position_rad must be within pinned USD limits")
+
+    positions = np.asarray(
+        [position for position, _reference in SO101_CAPTURE_APERTURE_CALIBRATION],
+        dtype=np.float64,
+    )
+    references = np.asarray(
+        [reference for _position, reference in SO101_CAPTURE_APERTURE_CALIBRATION],
+        dtype=np.float64,
+    )
+    calibrated_position = float(np.clip(jaw_position, positions[0], positions[-1]))
+    return np.asarray(
+        [
+            np.interp(calibrated_position, positions, references[:, axis])
+            for axis in range(3)
+        ],
+        dtype=np.float32,
+    )
+
 
 def _vector(value, *, length: int, name: str) -> np.ndarray:
     result = np.asarray(value, dtype=np.float64)

@@ -366,6 +366,24 @@ def abort_collection_manifest(manifest: dict[str, Any], reason: str) -> None:
     manifest["updated_at"] = manifest["aborted_at"]
 
 
+def finish_diagnostic_manifest(
+    manifest: dict[str, Any], diagnostic_name: str, *, succeeded: bool
+) -> None:
+    """Terminate a diagnostic-only manifest without scoring collection quality.
+
+    Isaac diagnostics share the collector startup path so signal handling and
+    environment construction remain identical to collection runs.  They do
+    not execute plan attempts, however, and therefore must end as ``ABORTED``
+    with ``NOT_EVALUATED`` quality instead of remaining spuriously ``RUNNING``
+    or claiming a collection result.
+    """
+    name = str(diagnostic_name).strip()
+    if not name:
+        raise ValueError("diagnostic_name must be non-empty")
+    outcome = "completed" if bool(succeeded) else "failed"
+    abort_collection_manifest(manifest, f"diagnostic_{outcome}:{name}")
+
+
 def abort_attempt_run_state(run_state: dict[str, Any], reason: str) -> None:
     """Mark a live episode sidecar as interrupted and ineligible for data."""
     message = str(reason).strip()

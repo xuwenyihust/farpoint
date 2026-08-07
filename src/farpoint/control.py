@@ -14,19 +14,6 @@ def so101_approach_jaw_target(object_width_m):
     return 0.90 + 0.80 * interpolation
 
 
-def so101_unilateral_recenter_limit(object_width_m):
-    """Return the bounded close-phase recenter range for the object width.
-
-    The 30 mm calibration needs 4 mm of Cartesian correction.  A wider cube
-    moves the first-contact face outward by half of the added width, so grant
-    that same half-width increment while retaining a hard 12 mm safety cap.
-    """
-    width = float(object_width_m)
-    if not math.isfinite(width) or width <= 0.0:
-        raise ValueError("object_width_m must be finite and positive")
-    return min(0.012, 0.004 + max(0.0, width - 0.03) * 0.5)
-
-
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
@@ -295,63 +282,6 @@ def unilateral_contact_recenter_target(
         "active": True,
         "contact_side": "left" if left_active else "right",
         "axis_xy": axis_xy,
-    }
-
-
-def so101_rotary_jaw_recenter_target(
-    commanded_position,
-    nominal_position,
-    jaw_bounds,
-    fixed_finger_bounds,
-    jaw_force,
-    fixed_finger_force,
-    *,
-    min_force=0.2,
-    step=0.00025,
-    max_correction=0.02,
-):
-    """Recenter an asymmetric SO-101 grasp away from the loaded finger.
-
-    Moving the whole arm toward an already-loaded rotary jaw pushes a cube
-    across the table with the jaw.  Moving away unloads that side while the
-    opposing fixed finger approaches the object and slow-close continues.
-    """
-    return unilateral_contact_recenter_target(
-        commanded_position,
-        nominal_position,
-        jaw_bounds,
-        fixed_finger_bounds,
-        jaw_force,
-        fixed_finger_force,
-        min_force=min_force,
-        step=step,
-        max_correction=max_correction,
-        move_toward_contact=False,
-    )
-
-
-def advance_unilateral_contact_crossover(
-    previous_contact_side,
-    left_force,
-    right_force,
-    *,
-    min_force=0.5,
-):
-    """Detect the first transfer between unilateral gripper contact sides."""
-    previous = None if previous_contact_side is None else str(previous_contact_side)
-    if previous not in {None, "left", "right"}:
-        raise ValueError("previous_contact_side must be left, right, or None")
-    threshold = float(min_force)
-    if not math.isfinite(threshold) or threshold <= 0.0:
-        raise ValueError("min_force must be finite and positive")
-    left_active = float(left_force) >= threshold
-    right_active = float(right_force) >= threshold
-    if left_active == right_active:
-        return {"contact_side": previous, "crossed": False}
-    current = "left" if left_active else "right"
-    return {
-        "contact_side": current,
-        "crossed": previous is not None and current != previous,
     }
 
 
@@ -802,7 +732,6 @@ def advance_so101_slow_close_target(
     closed_position,
     min_force=2.0,
     max_force=20.0,
-    unilateral_rebase_force=10.0,
     close_step=0.001,
     backoff_step=0.002,
 ):
@@ -814,26 +743,9 @@ def advance_so101_slow_close_target(
     jaw load and made every workspace-recovery trial time out before bilateral
     contact.
     """
-    minimum_force = float(min_force)
-    maximum_force = float(max_force)
-    rebase_force = float(unilateral_rebase_force)
-    if not minimum_force <= rebase_force <= maximum_force:
-        raise ValueError("unilateral_rebase_force must be between min_force and max_force")
     open_value = float(open_position)
     closed_value = float(closed_position)
     previous_target = _clamp(previous_command_target, closed_value, open_value)
-    lower_force = min(float(left_force), float(right_force))
-    upper_force = max(float(left_force), float(right_force))
-    unilateral_rebase = (
-        lower_force < minimum_force
-        and rebase_force <= upper_force <= maximum_force
-    )
-    if unilateral_rebase:
-        # Preserve the small closing step required by the grasp contract, but
-        # discard accumulated servo preload while Cartesian recentering unloads
-        # the contacted finger. Persistent accumulation resumes automatically
-        # once the unilateral force falls below this band.
-        previous_target = _clamp(measured_position, closed_value, open_value)
     update = force_controlled_rotary_jaw_target(
         previous_target,
         measured_position,
@@ -841,18 +753,14 @@ def advance_so101_slow_close_target(
         right_force,
         open_position=open_value,
         closed_position=closed_value,
-        min_force=minimum_force,
-        max_force=maximum_force,
+        min_force=min_force,
+        max_force=max_force,
         close_step=close_step,
         backoff_step=backoff_step,
     )
     return {
         "position": _clamp(update["position"], closed_value, open_value),
-        "action": (
-            "unilateral_rebase_close"
-            if unilateral_rebase and update["action"] == "close"
-            else update["action"]
-        ),
+        "action": update["action"],
     }
 
 

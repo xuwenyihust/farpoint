@@ -3,9 +3,11 @@ import pytest
 
 from farpoint.so101_grasp_geometry import (
     SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+    SO101_CAPTURE_APERTURE_CALIBRATION,
     SO101_RUNTIME_QUATERNION_ORDER,
     aabb_corners,
     posture_geometry_diagnostics,
+    so101_capture_aperture_reference,
     transform_points_xyzw,
 )
 
@@ -32,6 +34,42 @@ def test_transform_points_uses_pinned_isaac_lab_3_xyzw_order():
 
     assert SO101_RUNTIME_QUATERNION_ORDER == "xyzw"
     np.testing.assert_allclose(transformed, [[1.0, 3.0, 3.0]], atol=1e-7)
+
+
+def test_capture_aperture_reference_matches_exact_mesh_anchors():
+    for jaw_position, expected_reference in SO101_CAPTURE_APERTURE_CALIBRATION:
+        np.testing.assert_allclose(
+            so101_capture_aperture_reference(jaw_position),
+            expected_reference,
+            atol=1e-8,
+        )
+
+
+def test_capture_aperture_reference_preserves_30mm_path_and_interpolates():
+    reference_12 = SO101_CAPTURE_APERTURE_CALIBRATION[0][1]
+    reference_14 = SO101_CAPTURE_APERTURE_CALIBRATION[1][1]
+
+    # The validated 30 mm approach uses 0.9 rad but the production aperture
+    # reference was calibrated at 1.2 rad; preserve that path exactly.
+    np.testing.assert_allclose(so101_capture_aperture_reference(0.9), reference_12)
+    np.testing.assert_allclose(
+        so101_capture_aperture_reference(1.3),
+        (reference_12 + reference_14) / 2.0,
+        atol=1e-8,
+    )
+
+
+def test_capture_aperture_reference_returns_copy_and_validates_joint_limit():
+    first = so101_capture_aperture_reference(1.7)
+    first[:] = 0.0
+    assert np.linalg.norm(so101_capture_aperture_reference(1.7)) > 0.0
+
+    for invalid in (float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="finite"):
+            so101_capture_aperture_reference(invalid)
+    for invalid in (-0.1747, 1.7454):
+        with pytest.raises(ValueError, match="pinned USD limits"):
+            so101_capture_aperture_reference(invalid)
 
 
 def test_posture_diagnostic_aligns_aperture_without_using_link_origin():

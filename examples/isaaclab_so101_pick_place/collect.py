@@ -33,14 +33,6 @@ SO101_HOME_JOINTS = np.asarray(
 )
 SO101_GRASP_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
 SO101_CAPTURE_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
-# Exact-mesh aperture candidate at jaw=1.2 rad for the production variation's
-# fixed 45-degree cube yaw.  The shallower jaw=1.0 candidate was physically
-# validated in debug_calibrated_grasp_v6, but contacts the rotated cube at only
-# 79% insertion.  This paired point preserves 4.8 mm exact table clearance and
-# increases the open mesh gap from 62.9 mm to 69.3 mm.
-SO101_CAPTURE_OBJECT_IN_GRIPPER = np.asarray(
-    [0.0214971882, -0.0084643886, -0.0546656502], dtype=np.float32
-)
 # Safe-height reference only.  The 5-DOF arm cannot preserve a full world
 # quaternion throughout translation, so production targeting uses the current
 # measured orientation and gripper-local aperture on every control step.
@@ -113,15 +105,13 @@ from farpoint_so101_env.mdp import (  # noqa: E402
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
 from farpoint.control import (  # noqa: E402
-    advance_unilateral_contact_crossover,
     advance_so101_slow_close_target,
     bounded_position_target,
     collision_safe_pregrasp_waypoints,
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
-    so101_rotary_jaw_recenter_target,
-    so101_unilateral_recenter_limit,
+    unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
 from farpoint.grasp_oracle import (  # noqa: E402
@@ -154,6 +144,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_WORKSHOP_ASSET_SHA256,
     SO101_WORKSHOP_COMMIT,
     posture_geometry_diagnostics,
+    so101_capture_aperture_reference,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -166,6 +157,7 @@ from farpoint.so101_collection import (  # noqa: E402
     create_pilot_manifest,
     collection_interruption_reason,
     episode_id_for_attempt,
+    finish_diagnostic_manifest,
     load_manifest,
     next_attempt,
     record_attempt,
@@ -644,7 +636,7 @@ def run_grasp_posture_diagnostic(env, output_root: Path) -> None:
 
 
 def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
-    """Run one contact-only slow-close and proof-lift calibration attempt."""
+    """Run the production 40 mm slow-close and proof-lift calibration."""
     scene = env.scene
     robot = scene["robot"]
     body_index = _body_index(robot)
@@ -662,12 +654,19 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         if name != active_name
     ]
     object_position = np.asarray((0.1589218, -0.1071630, 0.052), dtype=np.float32)
+    object_orientation = np.asarray(
+        (0.0, 0.0, np.sin(np.pi / 8.0), np.cos(np.pi / 8.0)),
+        dtype=np.float32,
+    )
+    object_edge_m = 0.040
     posture_target = np.asarray((0.50, 0.50), dtype=np.float32)
     expected_safe_orientation = np.asarray(
         (-0.6417147, 0.1408973, 0.0826372, -0.7493473), dtype=np.float32
     )
-    jaw_preshape = 1.0
+    jaw_preshape = so101_approach_jaw_target(object_edge_m)
+    aperture_reference = so101_capture_aperture_reference(jaw_preshape)
     closed_jaw = float(np.deg2rad(-10.0))
+    bilateral_threshold_n = 0.10
     seed = 0
     destination = output_root / "calibrated_grasp_diagnostic"
     destination.mkdir(parents=True, exist_ok=True)
@@ -678,7 +677,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     env.reset(seed=seed)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
-    _move_object(scene[active_name], object_position, device)
+    _move_object(
+        scene[active_name], object_position, device, object_orientation
+    )
     _aim_front_camera(scene, device)
     command = SO101_HOME_JOINTS.copy()
     action = torch.tensor(command[None, :], dtype=torch.float32, device=device)
@@ -704,7 +705,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     safe_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
     settled_cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
     aligned_target = gripper_target_for_object_local_offset(
-        settled_cube, safe_pose[3:7], SO101_APERTURE_REFERENCE_IN_GRIPPER_M
+        settled_cube, safe_pose[3:7], aperture_reference
     )
     feed_distance_m = 0.070
     # Route above a distal, tip-first pregrasp.  The fixed finger extends along
@@ -716,7 +717,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
-            SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+            aperture_reference,
         )
         local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         above_target = (
@@ -745,7 +746,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
-            SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+            aperture_reference,
         )
         local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         pregrasp_target = aligned_target + feed_distance_m * local_z_world
@@ -774,7 +775,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
-            SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
+            aperture_reference,
         )
         local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
         target = aligned_target + (
@@ -820,7 +821,11 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             overload = max(forces) > 30.0
             if overload:
                 break
-            bilateral_steps = bilateral_steps + 1 if min(forces) > 2.0 else 0
+            bilateral_steps = (
+                bilateral_steps + 1
+                if min(forces) >= bilateral_threshold_n
+                else 0
+            )
             if bilateral_steps >= 15:
                 contact_jaw_target = float(command[5])
                 break
@@ -858,7 +863,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             action[0, 5] = contact_jaw_target
             command = _numpy(action[0]).astype(np.float32).copy()
             env.step(action)
-            if _bilateral_contact(contacts):
+            if _bilateral_contact(contacts, threshold_n=bilateral_threshold_n):
                 hold_bilateral_steps += 1
 
     lift_start_cube = _numpy(scene[active_name].data.root_pos_w[0]).copy()
@@ -881,7 +886,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             action[0, 5] = contact_jaw_target
             command = _numpy(action[0]).astype(np.float32).copy()
             env.step(action)
-            if _bilateral_contact(contacts):
+            if _bilateral_contact(contacts, threshold_n=bilateral_threshold_n):
                 lift_bilateral_steps += 1
 
     final_cube = _numpy(scene[active_name].data.root_pos_w[0]).copy()
@@ -904,7 +909,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         "camera_features": ["front"],
         "wrist_camera_enabled": False,
         "asset_sha256": SO101_WORKSHOP_ASSET_SHA256,
-        "aperture_center_local_m": SO101_APERTURE_REFERENCE_IN_GRIPPER_M.tolist(),
+        "object_edge_m": object_edge_m,
+        "object_orientation_xyzw": object_orientation.tolist(),
+        "aperture_center_local_m": aperture_reference.tolist(),
         "posture_target_rad": posture_target.tolist(),
         "expected_safe_orientation_xyzw": expected_safe_orientation.tolist(),
         "measured_safe_pose_xyzw": safe_pose.tolist(),
@@ -912,6 +919,7 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             np.linalg.norm(safe_pose[3:7] - expected_safe_orientation)
         ),
         "jaw_preshape_rad": jaw_preshape,
+        "bilateral_threshold_n": bilateral_threshold_n,
         "aligned_target_m": np.asarray(aligned_target).tolist(),
         "alignment_pose_xyzw": alignment_pose.tolist(),
         "jaw_pose_xyzw": _numpy(
@@ -1259,6 +1267,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     closed_jaw = float(np.deg2rad(-10.0))
     object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
+    capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
     target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
     target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
@@ -1289,10 +1298,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         static_hold_s=0.20,
         proof_lift_hold_s=0.10,
         phase_timeout_s=20.0,
-        # Bilateral contact on the rotary SO-101 jaw occurs at the crossover
-        # between moving-finger and fixed-finger load. Give the bounded
-        # force/recenter controller time to restore the missing side; stable
-        # timers still reset on every unilateral sample.
+        # Give the bounded force/recenter controller time to restore a missing
+        # side after first contact; stable timers still reset on every
+        # unilateral sample.
         maximum_contact_loss_s=0.20,
     )
     commanded_joints = _numpy(initial_joints[0]).astype(np.float32).copy()
@@ -1323,9 +1331,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     grasp_relative_reference = None
     previous_object_in_gripper = None
     descent_lateral_correction = 0.0
-    unilateral_contact_side = None
-    tactile_crossover_latched = False
-    tactile_crossover_target = None
     pregrasp_route_index = 0
     rows = []
     root = output_root / episode_id_for_attempt(collection_id, trial["attempt_id"])
@@ -1431,23 +1436,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             and balanced_forces is not None
             and min(balanced_forces) < 0.5 <= max(balanced_forces)
         ):
-            crossover = advance_unilateral_contact_crossover(
-                unilateral_contact_side,
-                *balanced_forces,
-                min_force=0.5,
-            )
-            unilateral_contact_side = crossover["contact_side"]
-            if (
-                closing_alignment
-                and crossover["crossed"]
-                and not tactile_crossover_latched
-            ):
-                tactile_crossover_latched = True
-                tactile_crossover_target = ee_position.copy()
-                grasp_hold_pose = tactile_crossover_target.copy()
-                jaw_command = float(commanded_joints[5])
-                commanded_joints = _numpy(current).astype(np.float32).copy()
-                commanded_joints[5] = jaw_command
             jaw_center = _numpy(
                 robot.data.body_link_pose_w.torch[
                     0, robot.body_names.index("jaw"), :3
@@ -1456,25 +1444,19 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             gripper_center = _numpy(
                 robot.data.body_link_pose_w.torch[0, body_index, :3]
             )
-            if not tactile_crossover_latched:
-                recenter = so101_rotary_jaw_recenter_target(
-                    grasp_hold_pose,
-                    grasp_hold_nominal_pose,
-                    {"center": jaw_center.tolist()},
-                    {"center": gripper_center.tolist()},
-                    *balanced_forces,
-                    min_force=0.5,
-                    step=(0.0000625 if settling_capture else 0.000125),
-                    max_correction=(
-                        0.002
-                        if settling_capture
-                        else so101_unilateral_recenter_limit(
-                            object_spec["dimensions_m"][0]
-                        )
-                    ),
-                )
-                grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)
-                recenter_active = bool(recenter["active"])
+            recenter = unilateral_contact_recenter_target(
+                grasp_hold_pose,
+                grasp_hold_nominal_pose,
+                {"center": jaw_center.tolist()},
+                {"center": gripper_center.tolist()},
+                *balanced_forces,
+                min_force=0.5,
+                step=(0.0000625 if settling_capture else 0.000125),
+                max_correction=(0.002 if settling_capture else 0.004),
+                move_toward_contact=True,
+            )
+            grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)
+            recenter_active = bool(recenter["active"])
         if phase is OraclePhase.HOME:
             target = home_ee
             jaw = open_jaw
@@ -1490,7 +1472,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             capture_target = gripper_target_for_object_local_offset(
                 object_world,
                 live_gripper_pose[3:7],
-                SO101_CAPTURE_OBJECT_IN_GRIPPER,
+                capture_object_in_gripper,
             )
             local_z_world = quaternion_rotation_matrix_xyzw(
                 live_gripper_pose[3:7]
@@ -1893,8 +1875,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             gripper_control = f"force_{jaw_force_action}"
         if recenter_active:
             gripper_control += "+recenter"
-        elif tactile_crossover_latched and phase is OraclePhase.CLOSE:
-            gripper_control += "+tactile_crossover_hold"
         if control_step == 0:
             print(
                 f"SO101_ORACLE_START phase={phase.value} "
@@ -2115,7 +2095,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 right_force_n=float(contact_forces[1]),
                 aperture_aligned=float(
                     np.linalg.norm(
-                        object_in_gripper - SO101_CAPTURE_OBJECT_IN_GRIPPER
+                        object_in_gripper - capture_object_in_gripper
                     )
                 )
                 <= 0.025,
@@ -2262,12 +2242,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                         - np.asarray(grasp_hold_nominal_pose[:2])
                     ).tolist()
                 ),
-                "tactile_crossover_latched": tactile_crossover_latched,
-                "tactile_crossover_contact_side": unilateral_contact_side,
-                "tactile_crossover_target_m": (
-                    None
-                    if tactile_crossover_target is None
-                    else tactile_crossover_target.tolist()
+                "approach_jaw_target_rad": approach_jaw,
+                "capture_aperture_reference_local_m": (
+                    capture_object_in_gripper.tolist()
                 ),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),
@@ -2519,36 +2496,58 @@ def main():
         env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
         if args_cli.diagnose_jacobian:
             run_jacobian_diagnostic(env)
+            finish_diagnostic_manifest(manifest, "jacobian", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_grasp_postures:
             try:
                 run_grasp_posture_diagnostic(env, args_cli.output_root)
-            except BaseException as error:
+            except Exception as error:
                 details = traceback.format_exc()
                 print("SO101_GRASP_POSTURE_ERROR\n" + details, flush=True)
                 _write_json(
                     args_cli.output_root / "diagnostic_error.json",
                     {"error": repr(error), "traceback": details},
                 )
+                finish_diagnostic_manifest(
+                    manifest, "grasp_postures", succeeded=False
+                )
+                write_manifest(args_cli.manifest, manifest)
                 raise
+            finish_diagnostic_manifest(
+                manifest, "grasp_postures", succeeded=True
+            )
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_calibrated_grasp:
             try:
                 run_calibrated_grasp_diagnostic(env, args_cli.output_root)
-            except BaseException as error:
+            except Exception as error:
                 details = traceback.format_exc()
                 print("SO101_CALIBRATED_GRASP_ERROR\n" + details, flush=True)
                 _write_json(
                     args_cli.output_root / "diagnostic_error.json",
                     {"error": repr(error), "traceback": details},
                 )
+                finish_diagnostic_manifest(
+                    manifest, "calibrated_grasp", succeeded=False
+                )
+                write_manifest(args_cli.manifest, manifest)
                 raise
+            finish_diagnostic_manifest(
+                manifest, "calibrated_grasp", succeeded=True
+            )
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_grasp_offsets:
             run_grasp_offset_diagnostic(env, args_cli.output_root)
+            finish_diagnostic_manifest(manifest, "grasp_offsets", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_grasp_grid:
             run_grasp_grid_diagnostic(env, args_cli.output_root)
+            finish_diagnostic_manifest(manifest, "grasp_grid", succeeded=True)
+            write_manifest(args_cli.manifest, manifest)
             return
         for _ in range(args_cli.max_attempts_this_run):
             attempt = next_attempt(manifest, plan)
