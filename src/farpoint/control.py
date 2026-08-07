@@ -773,6 +773,7 @@ def advance_so101_slow_close_target(
     closed_position,
     min_force=2.0,
     max_force=20.0,
+    unilateral_rebase_force=10.0,
     close_step=0.001,
     backoff_step=0.002,
 ):
@@ -784,9 +785,26 @@ def advance_so101_slow_close_target(
     jaw load and made every workspace-recovery trial time out before bilateral
     contact.
     """
+    minimum_force = float(min_force)
+    maximum_force = float(max_force)
+    rebase_force = float(unilateral_rebase_force)
+    if not minimum_force <= rebase_force <= maximum_force:
+        raise ValueError("unilateral_rebase_force must be between min_force and max_force")
     open_value = float(open_position)
     closed_value = float(closed_position)
     previous_target = _clamp(previous_command_target, closed_value, open_value)
+    lower_force = min(float(left_force), float(right_force))
+    upper_force = max(float(left_force), float(right_force))
+    unilateral_rebase = (
+        lower_force < minimum_force
+        and rebase_force <= upper_force <= maximum_force
+    )
+    if unilateral_rebase:
+        # Preserve the small closing step required by the grasp contract, but
+        # discard accumulated servo preload while Cartesian recentering unloads
+        # the contacted finger. Persistent accumulation resumes automatically
+        # once the unilateral force falls below this band.
+        previous_target = _clamp(measured_position, closed_value, open_value)
     update = force_controlled_rotary_jaw_target(
         previous_target,
         measured_position,
@@ -794,14 +812,18 @@ def advance_so101_slow_close_target(
         right_force,
         open_position=open_value,
         closed_position=closed_value,
-        min_force=min_force,
-        max_force=max_force,
+        min_force=minimum_force,
+        max_force=maximum_force,
         close_step=close_step,
         backoff_step=backoff_step,
     )
     return {
         "position": _clamp(update["position"], closed_value, open_value),
-        "action": update["action"],
+        "action": (
+            "unilateral_rebase_close"
+            if unilateral_rebase and update["action"] == "close"
+            else update["action"]
+        ),
     }
 
 

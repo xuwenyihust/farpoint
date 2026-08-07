@@ -671,11 +671,68 @@ def test_so101_slow_close_force_actions_preserve_limits():
         open_position=1.7453,
         closed_position=-0.1746,
     )
+    loaded_unilateral = advance_so101_slow_close_target(
+        0.45,
+        0.51,
+        19.0,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+    )
 
     assert unilateral == {"position": pytest.approx(0.499), "action": "close"}
     assert bilateral == {"position": pytest.approx(0.499), "action": "hold"}
     assert high_force == {"position": pytest.approx(-0.168), "action": "backoff"}
+    assert loaded_unilateral == {
+        "position": pytest.approx(0.509),
+        "action": "unilateral_rebase_close",
+    }
     assert -0.1746 <= high_force["position"] <= 1.7453
+
+
+def test_so101_loaded_unilateral_rebase_discards_servo_preload_until_unloaded():
+    target = 1.00
+    measured = 1.04
+    for _ in range(20):
+        update = advance_so101_slow_close_target(
+            target,
+            measured,
+            18.0,
+            0.0,
+            open_position=1.7453,
+            closed_position=-0.1746,
+        )
+        target = update["position"]
+        assert update["action"] == "unilateral_rebase_close"
+        assert target == pytest.approx(measured - 0.001)
+        measured -= 0.0005
+
+    unloaded = advance_so101_slow_close_target(
+        target,
+        measured,
+        8.0,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+    )
+    assert unloaded == {
+        "position": pytest.approx(target - 0.001),
+        "action": "close",
+    }
+
+
+@pytest.mark.parametrize("rebase_force", [1.0, 21.0])
+def test_so101_slow_close_rejects_rebase_force_outside_safety_band(rebase_force):
+    with pytest.raises(ValueError, match="between min_force and max_force"):
+        advance_so101_slow_close_target(
+            1.0,
+            1.0,
+            0.0,
+            0.0,
+            open_position=1.7453,
+            closed_position=-0.1746,
+            unilateral_rebase_force=rebase_force,
+        )
 
 
 @pytest.mark.parametrize(
