@@ -49,6 +49,10 @@ def parse_args():
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "outputs/episodes")
     parser.add_argument("--max-attempts-this-run", type=int, default=150)
     parser.add_argument(
+        "--collection-id",
+        help="Explicit identity for a non-gate collection; required for formal profiles.",
+    )
+    parser.add_argument(
         "--watchdog-policy",
         type=Path,
         help=(
@@ -2798,7 +2802,15 @@ def main():
                 git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
             )
         else:
-            manifest = create_manifest(plan, collection_id="so101_cube_pick_place_pilot", git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"))
+            if plan.get("collection") and not args_cli.collection_id:
+                raise ValueError("formal collection profiles require --collection-id")
+            manifest = create_manifest(
+                plan,
+                collection_id=(
+                    args_cli.collection_id or "so101_cube_pick_place_pilot"
+                ),
+                git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+            )
     # Persist RUNNING before Isaac environment construction. A SIGINT/SIGTERM
     # during the expensive RTX startup must still leave a terminal manifest.
     write_manifest(args_cli.manifest, manifest)

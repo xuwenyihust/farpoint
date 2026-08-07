@@ -208,6 +208,76 @@ causal trajectory difference between 0.04 and 0.03 kg. A passing report supports
 adding 0.03 kg as a dataset variation axis; it does not authorize formal
 collection.
 
+The 40 mm admission gate uses the same candidate-only contract with five
+historically successful large-cube positions:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/cube_mass_003_workspace_gate_40mm \
+  --workflow-id cube_mass_003_workspace_gate_40mm_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_cube_mass_003_workspace_gate_40mm.json
+```
+
+At least four of five attempts must pass, including the actual PhysX mass
+audit. Passing the earlier 30 mm pilot does not substitute for this large-cube
+gate.
+
+## v0.0.1 mirrored mass collection
+
+The formal 0.03 kg collection mirrors the exact 50 trial identities selected
+for the v0.0.0 balanced50 candidate. It therefore freezes the same XY samples,
+25/25 size balance, 25/25 color balance, 40/5/5 split, and coverage of every
+workspace cell. Only `entities.pick_object.physics.mass_kg` changes. The
+collection requires 50 eligible successes and has a hard ceiling of 150
+attempts; failed attempts remain in the raw manifest and episode root.
+
+Formal collection must use an exact commit already merged to `main` and an
+owner-approved collection ID:
+
+```bash
+python scripts/create_so101_mass_collection_plan.py \
+  artifacts/so101/mass_v0_0_1/plan.json
+
+FARPOINT_GIT_COMMIT="$(git rev-parse HEAD)" \
+scripts/run_so101_isaaclab.sh headless \
+  --plan artifacts/so101/mass_v0_0_1/plan.json \
+  --manifest artifacts/so101/mass_v0_0_1/manifest.json \
+  --output-root artifacts/so101/mass_v0_0_1/episodes \
+  --collection-id so101_cube_mass_003_formal_v0_0_1_<date>_<sha> \
+  --max-attempts-this-run 150 \
+  --watchdog-policy configs/workflows/so101_watchdog_p0.json
+
+python scripts/report_so101_mass_collection.py \
+  --plan artifacts/so101/mass_v0_0_1/plan.json \
+  --manifest artifacts/so101/mass_v0_0_1/manifest.json \
+  --episodes-root artifacts/so101/mass_v0_0_1/episodes \
+  --json-output artifacts/so101/mass_v0_0_1/report.json \
+  --markdown-output artifacts/so101/mass_v0_0_1/report.md
+```
+
+The report rejects missing raw artifacts, balance drift, sidecar disagreement,
+or any selected episode whose requested, resolved, and actual PhysX masses do
+not agree within `1e-6 kg`. After it passes, combine the existing 0.04 kg
+balanced50 selection and the new collection without relabeling splits:
+
+```bash
+python scripts/create_so101_mass_dataset_candidate.py \
+  --baseline-manifest <balanced50-manifest.json> \
+  --candidate-manifest artifacts/so101/mass_v0_0_1/manifest.json \
+  --candidate-plan artifacts/so101/mass_v0_0_1/plan.json \
+  --baseline-episodes-root <v0.0.0-episodes> \
+  --candidate-episodes-root artifacts/so101/mass_v0_0_1/episodes \
+  --collection-id farpoint_so101_v0_0_1_candidate_<date>_<sha> \
+  --manifest-output artifacts/so101/mass_v0_0_1/candidate/manifest.json \
+  --selection-output artifacts/so101/mass_v0_0_1/candidate/export-selection.json
+```
+
+The resulting candidate contains 100 episodes: 50 at 0.04 kg and 50 at
+0.03 kg, with an 80/10/10 split and 50 exact mirrored trial pairs. Export,
+Dashboard registration, release-candidate staging, and Hugging Face publishing
+remain separate validation and owner-approval steps.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two
