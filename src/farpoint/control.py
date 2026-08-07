@@ -2,16 +2,17 @@ import math
 
 
 def so101_approach_jaw_target(object_width_m):
-    """Return a size-aware open-jaw target for collision-free insertion."""
+    """Return the validated open-jaw target for the supported cube sizes."""
     width = float(object_width_m)
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-    # A 40 mm cube at the frozen 45-degree yaw contacted the rotary jaw at
-    # 1.4 rad and ended DESCEND 10.6 mm short of the calibrated insertion
-    # target.  The 1.7 rad endpoint clears that leading corner while remaining
-    # below the pinned USD open limit (1.7453 rad).
-    return 0.90 + 0.80 * interpolation
+    # The balanced50 source demonstrations used the 1.2-rad exact-mesh
+    # calibration for 40 mm cubes.  A later 1.7-rad recovery profile changed
+    # the aperture center and produced position-dependent unilateral wedging
+    # in the mirrored 0.03 kg gate.  Preserve the validated 0.9-rad 30 mm path
+    # while returning 40 mm cubes to the source collection geometry.
+    return 0.90 + 0.30 * interpolation
 
 
 def so101_minimum_safe_descent_fraction(object_width_m):
