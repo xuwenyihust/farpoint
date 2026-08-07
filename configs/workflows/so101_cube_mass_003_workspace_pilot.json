@@ -1,0 +1,47 @@
+{
+  "schema_version": "farpoint.so101-gate-workflow-config.v1",
+  "completion_status": "PILOT_COMPLETE",
+  "stages": [
+    {
+      "stage_id": "cube_mass_30g_workspace",
+      "kind": "cube_mass_workspace_pilot",
+      "candidate_mass_kg": 0.03,
+      "edge_m": 0.03,
+      "minimum_successes": 4,
+      "historical_baseline_commit": "b5c924e2fdf20106b2a480de533e5b3f8e9abc4a",
+      "historical_baseline_collection_id": "so101_cube_pick_place_formal_v0_0_0_20260806_b5c924e",
+      "historical_baselines": [
+        {
+          "episode_id": "episode_so101_cube_pick_place_formal_v0_0_0_20260806_b5c924e__cube_r00_c00_s0_k0__attempt00",
+          "position_xy_m": [0.1589218, -0.107163034],
+          "mass_kg": 0.04,
+          "success": true
+        },
+        {
+          "episode_id": "episode_so101_cube_pick_place_formal_v0_0_0_20260806_b5c924e__cube_r00_c04_s0_k0__attempt00",
+          "position_xy_m": [0.2463932, -0.112173505],
+          "mass_kg": 0.04,
+          "success": true
+        },
+        {
+          "episode_id": "episode_so101_cube_pick_place_formal_v0_0_0_20260806_b5c924e__cube_r03_c02_s0_k0__attempt00",
+          "position_xy_m": [0.193634179, -0.04690686],
+          "mass_kg": 0.04,
+          "success": true
+        },
+        {
+          "episode_id": "episode_so101_cube_pick_place_formal_v0_0_0_20260806_b5c924e__cube_r04_c00_s0_k0__attempt00",
+          "position_xy_m": [0.157225848, -0.024055967],
+          "mass_kg": 0.04,
+          "success": true
+        },
+        {
+          "episode_id": "episode_so101_cube_pick_place_formal_v0_0_0_20260806_b5c924e__cube_r04_c04_s0_k0__attempt00",
+          "position_xy_m": [0.243682917, -0.033744451],
+          "mass_kg": 0.04,
+          "success": true
+        }
+      ]
+    }
+  ]
+}

@@ -152,6 +152,62 @@ The command exits 0 for `CONTINUE` or `COMPLETE`, 2 for `STOP`, and 3 for
 stopping is enabled by passing `--watchdog-policy` to the long-lived collector,
 as emitted by the gate workflow.
 
+## Cube-mass feasibility profile
+
+Before adding mass as a dataset variation axis, run the bounded paired profile:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/cube_mass_003_feasibility \
+  --workflow-id cube_mass_003_feasibility_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_cube_mass_003_feasibility.json
+
+python scripts/run_so101_gate_workflow.py status \
+  artifacts/so101/cube_mass_003_feasibility/workflow.json
+```
+
+This profile runs five matched pairs (ten attempts total) at the proven 30 mm
+red-cube pose. Each pair shares its environment seed and compares the existing
+0.04 kg baseline with the proposed 0.03 kg mass. Both masses must achieve at
+least four successes; the workflow never expands the attempt budget.
+
+The collector applies the requested mass to the active rigid body after every
+reset and reads the value back from the PhysX rigid-body view. Requested,
+resolved, and actual values are stored in the episode sidecars. A mismatch
+beyond `1e-6 kg` is a runner failure, so changing metadata alone cannot pass the
+profile. The report also compares successful pairs using action-path length,
+frame count, and bilateral lift force. It recommends a larger
+physics-robustness pilot only when feasibility passes and a frozen behavior
+threshold is met; otherwise it reports either insufficient evidence or no
+measurable signal. `FEASIBILITY_COMPLETE` does not authorize a formal
+collection or dataset release.
+
+After the fixed-pose profile passes, use the candidate-only workspace pilot to
+avoid recollecting baseline demonstrations already present in v0.0.0:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/cube_mass_003_workspace_pilot \
+  --workflow-id cube_mass_003_workspace_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_cube_mass_003_workspace_pilot.json
+```
+
+This second profile runs only the 0.03 kg, 30 mm red cube at five positions
+whose corresponding 0.04 kg episodes succeeded in the v0.0.0 collection. The
+historical episode IDs, positions, mass, collection ID, and generating commit
+are frozen into the plan. Four of five candidate successes are required and no
+retry budget is added. Every new episode must still pass the actual PhysX mass
+audit.
+
+The historical episodes establish only that the selected positions were
+previously solvable. Because their generating commit differs from the candidate
+pilot, they are not a contemporaneous control and must not be used to claim a
+causal trajectory difference between 0.04 and 0.03 kg. A passing report supports
+adding 0.03 kg as a dataset variation axis; it does not authorize formal
+collection.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two

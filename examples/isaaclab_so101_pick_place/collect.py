@@ -1507,6 +1507,8 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
 
 
 def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: str):
+    from farpoint.so101_mass_feasibility import audit_resolved_mass
+
     device = env.device
     scene = env.scene
     robot = scene["robot"]
@@ -1516,10 +1518,42 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     inactive = [name for name in ("cube_small_red", "cube_small_blue", "cube_large_red", "cube_large_blue") if name != active_name]
     env.farpoint_active_cube = active_name
     episode_seed = int(trial["attempt_seed"])
-    environment_seed = episode_seed % (2**32)
+    environment_seed = int(trial.get("environment_seed", episode_seed)) % (2**32)
+    root = output_root / episode_id_for_attempt(collection_id, trial["attempt_id"])
+    if root.exists():
+        raise FileExistsError(f"episode output already exists: {root}")
+    run_state = build_attempt_run_state(
+        trial, collection_id=collection_id, git_commit=git_commit
+    )
+    _write_json(root / "run-state.json", run_state)
     np.random.seed(environment_seed)
     torch.manual_seed(environment_seed)
     env.reset(seed=environment_seed)
+    object_spec = trial["resolved"]
+    active_object = scene[active_name]
+    resolved_mass_kg = float(object_spec["mass_kg"])
+    active_object.set_masses_index(
+        masses=torch.tensor(
+            [[resolved_mass_kg]], dtype=torch.float32, device=device
+        )
+    )
+    physx_actual_mass_kg = float(active_object.data.body_mass.torch[0, 0].item())
+    mass_audit = audit_resolved_mass(
+        requested_mass_kg=float(trial["requested"]["mass_kg"]),
+        resolved_mass_kg=resolved_mass_kg,
+        physx_actual_mass_kg=physx_actual_mass_kg,
+        tolerance_kg=float(trial.get("mass_audit_tolerance_kg", 1e-6)),
+    )
+    run_state["physics_audit"] = {"mass": copy.deepcopy(mass_audit)}
+    _write_json(root / "run-state.json", run_state)
+    if not mass_audit["verified"]:
+        raise RuntimeError(
+            "PhysX cube mass audit failed: "
+            f"requested={mass_audit['requested_mass_kg']}, "
+            f"resolved={mass_audit['resolved_mass_kg']}, "
+            f"actual={mass_audit['physx_actual_mass_kg']}, "
+            f"tolerance={mass_audit['tolerance_kg']}"
+        )
     # Hold the configured workshop pose on the first physics step.  Starting
     # from the authored all-zero pose leaves the arm horizontal and produces a
     # large gravity transient before the oracle receives its first observation.
@@ -1531,7 +1565,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     print(f"SO101_RESET_DEBUG after_reset={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
-    object_spec = trial["resolved"]
     _move_object(
         scene[active_name],
         object_spec["position_m"],
@@ -1626,13 +1659,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
     rows = []
-    root = output_root / episode_id_for_attempt(collection_id, trial["attempt_id"])
-    if root.exists():
-        raise FileExistsError(f"episode output already exists: {root}")
-    run_state = build_attempt_run_state(
-        trial, collection_id=collection_id, git_commit=git_commit
-    )
-    _write_json(root / "run-state.json", run_state)
     for control_step in range(schedule.steps_for_seconds(120.0)):
         phase = machine.phase
         phase_motion_complete = True
@@ -2692,6 +2718,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         "static_friction": object_spec["static_friction"],
         "dynamic_friction": object_spec["dynamic_friction"],
         "restitution": object_spec["restitution"],
+        "mass_audit": copy.deepcopy(mass_audit),
     }
     scene_target = {
         "target_id": "green_rectangular_pad_v1",
@@ -2711,6 +2738,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     if "entities" not in requested_variation:
         requested_variation = bind_scene_entities(requested_variation, scene_target)
     resolved_variation = bind_scene_entities(object_spec, scene_target)
+    resolved_variation["entities"]["pick_object"]["physics"]["mass_audit"] = (
+        copy.deepcopy(mass_audit)
+    )
     metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
@@ -2732,7 +2762,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         )
     _write_json(root / "metadata.json", metadata)
     (root / "observations.jsonl").write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
-    _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows)})
+    _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows), "physics_audit": {"mass": mass_audit}})
     run_state["execution_status"] = "FINISHED"
     run_state["recording"]["frame_count"] = len(rows)
     run_state["outcome"] = copy.deepcopy(metadata["outcome"])

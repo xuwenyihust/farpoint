@@ -13,6 +13,10 @@ from farpoint.so101_gate import (
     build_fixed_cube_gate_plan,
 )
 from farpoint.so101_pilot import build_so101_pilot_plan
+from farpoint.so101_mass_feasibility import (
+    build_cube_mass_feasibility_plan,
+    build_cube_mass_workspace_pilot_plan,
+)
 from farpoint.so101_watchdog import validate_watchdog_policy
 
 
@@ -34,6 +38,9 @@ def validate_gate_workflow_config(config: dict[str, Any]) -> None:
         raise ValueError(
             f"gate workflow config must use {WORKFLOW_CONFIG_SCHEMA_VERSION}"
         )
+    completion_status = config.get("completion_status", "READY_FOR_FORMAL_REVIEW")
+    if not isinstance(completion_status, str) or not completion_status:
+        raise ValueError("gate workflow completion_status must be non-empty")
     stages = config.get("stages")
     if not isinstance(stages, list) or not stages:
         raise ValueError("gate workflow config requires stages")
@@ -45,6 +52,8 @@ def validate_gate_workflow_config(config: dict[str, Any]) -> None:
     supported = {
         "fixed_cube_repeatability",
         "cube_workspace_matrix",
+        "cube_mass_feasibility",
+        "cube_mass_workspace_pilot",
         "stratified_success_pilot",
     }
     for stage in stages:
@@ -94,6 +103,42 @@ def build_so101_gate_workflow(
             )
             collector_mode = "gate"
             report_kind = "gate"
+        elif kind == "cube_mass_feasibility":
+            plan = build_cube_mass_feasibility_plan(
+                variation_config,
+                profile_id=plan_id,
+                baseline_mass_kg=float(stage_config.get("baseline_mass_kg", 0.04)),
+                candidate_mass_kg=float(stage_config.get("candidate_mass_kg", 0.03)),
+                edge_m=float(stage_config.get("edge_m", 0.03)),
+                position_xy_m=tuple(
+                    stage_config.get("position_xy_m", (0.20, -0.095))
+                ),
+                repetitions_per_mass=int(
+                    stage_config.get("repetitions_per_mass", 5)
+                ),
+                minimum_successes_per_mass=int(
+                    stage_config.get("minimum_successes_per_mass", 4)
+                ),
+            )
+            collector_mode = "gate"
+            report_kind = "mass_feasibility"
+        elif kind == "cube_mass_workspace_pilot":
+            plan = build_cube_mass_workspace_pilot_plan(
+                variation_config,
+                pilot_id=plan_id,
+                candidate_mass_kg=float(stage_config["candidate_mass_kg"]),
+                edge_m=float(stage_config["edge_m"]),
+                historical_baseline_commit=str(
+                    stage_config["historical_baseline_commit"]
+                ),
+                historical_baseline_collection_id=str(
+                    stage_config["historical_baseline_collection_id"]
+                ),
+                historical_baselines=stage_config["historical_baselines"],
+                minimum_successes=int(stage_config.get("minimum_successes", 4)),
+            )
+            collector_mode = "gate"
+            report_kind = "mass_workspace_pilot"
         else:
             plan = build_so101_pilot_plan(
                 variation_config,
@@ -133,6 +178,9 @@ def build_so101_gate_workflow(
         "workflow_config_sha256": _sha256(workflow_config),
         "watchdog_policy_sha256": _sha256(watchdog_policy),
         "watchdog_policy_path": "watchdog-policy.json",
+        "completion_status": str(
+            workflow_config.get("completion_status", "READY_FOR_FORMAL_REVIEW")
+        ),
         "stages": stages,
         "formal_collection_policy": (
             "outside_workflow_requires_merged_main_and_owner_authorization"
@@ -200,11 +248,13 @@ def _stage_action(
             ],
         }
     if stage["state"] == "NEEDS_REPORT":
-        script = (
-            "scripts/report_so101_gate.py"
-            if stage["report_kind"] == "gate"
-            else "scripts/report_so101_pilot.py"
-        )
+        scripts = {
+            "gate": "scripts/report_so101_gate.py",
+            "pilot": "scripts/report_so101_pilot.py",
+            "mass_feasibility": "scripts/report_so101_mass_feasibility.py",
+            "mass_workspace_pilot": "scripts/report_so101_mass_workspace_pilot.py",
+        }
+        script = scripts[stage["report_kind"]]
         return {
             "kind": "REPORT",
             "working_directory": "farpoint_repository_root",
@@ -303,9 +353,12 @@ def evaluate_so101_gate_workflow(
             elif execution_status == "FINISHED":
                 try:
                     report = _read_json(report_path)
-                    status_key = (
-                        "gate_status" if stage["report_kind"] == "gate" else "pilot_status"
-                    )
+                    status_key = {
+                        "gate": "gate_status",
+                        "pilot": "pilot_status",
+                        "mass_feasibility": "feasibility_status",
+                        "mass_workspace_pilot": "pilot_status",
+                    }[stage["report_kind"]]
                     if report.get("plan_sha256") != stage["plan_sha256"]:
                         raise ValueError("report plan hash does not match workflow")
                     if report.get("git_commit") != workflow.get("git_commit"):
@@ -339,7 +392,7 @@ def evaluate_so101_gate_workflow(
     if errors:
         status = "INVALID"
     elif all(stage["state"] == "PASS" for stage in stage_results):
-        status = "READY_FOR_FORMAL_REVIEW"
+        status = workflow.get("completion_status", "READY_FOR_FORMAL_REVIEW")
     elif active_stage is None:
         status = "INVALID"
         errors.append("missing_active_stage")
