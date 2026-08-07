@@ -7,7 +7,11 @@ def so101_approach_jaw_target(object_width_m):
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-    return 0.90 + 0.50 * interpolation
+    # A 40 mm cube at the frozen 45-degree yaw contacted the rotary jaw at
+    # 1.4 rad and ended DESCEND 10.6 mm short of the calibrated insertion
+    # target.  The 1.7 rad endpoint clears that leading corner while remaining
+    # below the pinned USD open limit (1.7453 rad).
+    return 0.90 + 0.80 * interpolation
 
 
 def so101_unilateral_recenter_limit(object_width_m):

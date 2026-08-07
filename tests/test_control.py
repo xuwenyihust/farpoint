@@ -63,8 +63,9 @@ def test_collision_safe_pregrasp_waypoints_reject_unsafe_clearance():
 
 def test_so101_approach_jaw_widens_for_large_cube():
     assert so101_approach_jaw_target(0.03) == pytest.approx(0.90)
-    assert so101_approach_jaw_target(0.035) == pytest.approx(1.15)
-    assert so101_approach_jaw_target(0.04) == pytest.approx(1.40)
+    assert so101_approach_jaw_target(0.035) == pytest.approx(1.30)
+    assert so101_approach_jaw_target(0.04) == pytest.approx(1.70)
+    assert so101_approach_jaw_target(0.10) < 1.7453
     with pytest.raises(ValueError, match="finite and positive"):
         so101_approach_jaw_target(0.0)
 
@@ -622,7 +623,7 @@ def test_so101_slow_close_accumulates_command_under_actuator_lag():
     assert target - measured == pytest.approx(-0.096)
 
 
-@pytest.mark.parametrize("approach_target", [0.90, 1.40])
+@pytest.mark.parametrize("approach_target", [0.90, 1.70])
 def test_so101_slow_close_reaches_mechanical_limit_inside_phase_budget(
     approach_target,
 ):
