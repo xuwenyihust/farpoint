@@ -55,6 +55,59 @@ def test_coverage_first_collection_release_is_accepted_without_yield_acceptance(
     assert release_dataset.evidence_accepted(evidence) is True
 
 
+def test_balanced_selection_candidate_is_accepted_as_release_evidence():
+    evidence = {
+        "schema_version": "farpoint.collection-selection.v1",
+        "execution_status": "FINISHED",
+        "quality_status": "PASS",
+        "release_status": "CANDIDATE",
+        "required_successes": 1,
+        "selected_variations": {"cube_r00_c00_s0_k0": "attempt00"},
+        "attempts": [
+            {
+                "episode_id": "episode-0",
+                "selected_for_dataset": True,
+                "success": True,
+                "dataset_valid": True,
+                "split": "train",
+            }
+        ],
+    }
+
+    assert release_dataset.evidence_accepted(evidence) is True
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("execution_status", "RUNNING"),
+        ("quality_status", "FAIL"),
+        ("release_status", "EXPERIMENTAL"),
+    ],
+)
+def test_balanced_selection_rejects_non_candidate_states(field, value):
+    evidence = {
+        "schema_version": "farpoint.collection-selection.v1",
+        "execution_status": "FINISHED",
+        "quality_status": "PASS",
+        "release_status": "CANDIDATE",
+        "required_successes": 1,
+        "selected_variations": {"cube_r00_c00_s0_k0": "attempt00"},
+        "attempts": [
+            {
+                "episode_id": "episode-0",
+                "selected_for_dataset": True,
+                "success": True,
+                "dataset_valid": True,
+                "split": "train",
+            }
+        ],
+    }
+    evidence[field] = value
+
+    assert release_dataset.evidence_accepted(evidence) is False
+
+
 def test_public_release_audit_requires_dataset_card(tmp_path, monkeypatch):
     monkeypatch.setattr(
         release_dataset,

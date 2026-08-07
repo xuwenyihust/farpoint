@@ -10,6 +10,14 @@ from check_release_version import check_versions  # noqa: E402
 from farpoint.release_spec import load_release_spec
 
 
+SO101_RELEASE_SPEC = (
+    Path(__file__).resolve().parents[1]
+    / "configs"
+    / "datasets"
+    / "farpoint-so101.toml"
+)
+
+
 def test_current_release_spec_is_consistent():
     spec = load_release_spec()
     assert spec["dataset_tag"] == f"v{spec['dataset_version']}"
@@ -26,6 +34,29 @@ def test_current_dataset_card_separates_frames_from_metadata_in_viewer():
     assert 'path: "data/**/*.parquet"' in card
     assert "config_name: episode_metadata" in card
     assert 'path: "meta/episode_metadata.parquet"' in card
+
+
+def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
+    spec = load_release_spec(SO101_RELEASE_SPEC)
+
+    assert spec["dataset_id"] == "farpoint_so101"
+    assert spec["hf_repo_id"] == "wenyixu101/farpoint-so101"
+    assert spec["dataset_tag"] == "v0.0.0"
+    assert spec["dataset_schema"] == "farpoint.dataset.v3"
+    assert spec["variation_schema"] == "farpoint.variation.v3"
+    assert check_versions(SO101_RELEASE_SPEC) == []
+
+
+def test_so101_dataset_card_documents_viewer_and_v0_policy_features():
+    spec = load_release_spec(SO101_RELEASE_SPEC)
+    project_root = Path(__file__).resolve().parents[1]
+    card = project_root.joinpath(spec["dataset_card"]).read_text(encoding="utf-8")
+
+    assert 'path: "data/**/*.parquet"' in card
+    assert 'path: "meta/episode_metadata.parquet"' in card
+    assert "40 train, 5 validation, and 5 test" in card
+    assert "There is no wrist-camera feature" in card
+    assert "future cylinders, meshes, toys, boxes" in card
 
 
 def test_release_spec_rejects_prefixed_version(tmp_path):

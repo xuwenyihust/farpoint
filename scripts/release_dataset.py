@@ -117,6 +117,25 @@ def file_sha256(path: Path) -> str:
 def evidence_accepted(evidence: dict | None) -> bool:
     if not isinstance(evidence, dict):
         return False
+    if evidence.get("schema_version") == "farpoint.collection-selection.v1":
+        attempts = evidence.get("attempts") or []
+        required = int(evidence.get("required_successes") or 0)
+        selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
+        return (
+            evidence.get("execution_status") == "FINISHED"
+            and evidence.get("quality_status") == "PASS"
+            and evidence.get("release_status") == "CANDIDATE"
+            and required > 0
+            and len(selected) == required
+            and len(evidence.get("selected_variations") or {}) == required
+            and all(
+                attempt.get("success") is True
+                and attempt.get("dataset_valid") is True
+                and bool(attempt.get("episode_id"))
+                and attempt.get("split") in {"train", "validation", "test"}
+                for attempt in selected
+            )
+        )
     if evidence.get("schema_version") in {
         "farpoint.benchmark.v2",
         "farpoint.collection.v1",
