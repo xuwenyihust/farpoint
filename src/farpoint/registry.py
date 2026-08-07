@@ -443,7 +443,7 @@ class EpisodeRegistry:
         execution_status = run_state.get("execution_status") if run_state_valid else None
         if metadata_valid and metrics_valid:
             status = "PASS" if success is True else "FAIL"
-        elif execution_status == "FAILED":
+        elif execution_status in {"FAILED", "ABORTED"}:
             status = "FAIL"
         elif execution_status == "FINISHED":
             status = "PASS" if success is True else "FAIL"

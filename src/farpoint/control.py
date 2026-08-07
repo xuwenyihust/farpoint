@@ -718,6 +718,48 @@ def force_controlled_rotary_jaw_target(
     }
 
 
+def advance_so101_slow_close_target(
+    previous_command_target,
+    measured_position,
+    left_force,
+    right_force,
+    *,
+    open_position,
+    closed_position,
+    min_force=2.0,
+    max_force=20.0,
+    close_step=0.001,
+    backoff_step=0.002,
+):
+    """Advance the persistent SO-101 jaw command during slow close.
+
+    ``previous_command_target`` is deliberately separate from the measured
+    joint position.  Rebasing the target to the measurement every tick leaves
+    only a 1 mrad servo error, which was too small to overcome the simulated
+    jaw load and made every workspace-recovery trial time out before bilateral
+    contact.
+    """
+    open_value = float(open_position)
+    closed_value = float(closed_position)
+    previous_target = _clamp(previous_command_target, closed_value, open_value)
+    update = force_controlled_rotary_jaw_target(
+        previous_target,
+        measured_position,
+        left_force,
+        right_force,
+        open_position=open_value,
+        closed_position=closed_value,
+        min_force=min_force,
+        max_force=max_force,
+        close_step=close_step,
+        backoff_step=backoff_step,
+    )
+    return {
+        "position": _clamp(update["position"], closed_value, open_value),
+        "action": update["action"],
+    }
+
+
 def filtered_contact_force(
     contacts,
     required_body_path,

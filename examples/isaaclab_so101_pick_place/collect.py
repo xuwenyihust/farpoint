@@ -7,6 +7,7 @@ import argparse
 import copy
 import json
 import os
+import signal
 import sys
 import traceback
 from pathlib import Path
@@ -112,6 +113,7 @@ from farpoint_so101_env.mdp import (  # noqa: E402
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
 from farpoint.control import (  # noqa: E402
+    advance_so101_slow_close_target,
     bounded_position_target,
     collision_safe_pregrasp_waypoints,
     force_controlled_rotary_jaw_target,
@@ -152,15 +154,20 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     posture_geometry_diagnostics,
 )
 from farpoint.so101_collection import (  # noqa: E402
+    CollectionSignalAbort,
+    abort_attempt_run_state,
+    abort_collection_manifest,
     build_attempt_run_state,
     build_export_selection,
     create_gate_manifest,
     create_manifest,
     create_pilot_manifest,
+    collection_interruption_reason,
     episode_id_for_attempt,
     load_manifest,
     next_attempt,
     record_attempt,
+    raise_collection_signal_abort,
     write_manifest,
 )
 
@@ -1605,16 +1612,12 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # Continuing to chase the displaced cube recreates the old
                 # unilateral wedge failure.
                 target = grasp_hold_pose
-                jaw_update = force_controlled_rotary_jaw_target(
-                    float(current[5].item()),
+                jaw_update = advance_so101_slow_close_target(
+                    float(commanded_joints[5]),
                     float(current[5].item()),
                     *finger_forces,
                     open_position=open_jaw,
                     closed_position=closed_jaw,
-                    min_force=2.0,
-                    max_force=20.0,
-                    close_step=0.001,
-                    backoff_step=0.002,
                 )
                 jaw = float(jaw_update["position"])
                 gripper_control = f"calibrated_slow_{jaw_update['action']}"
@@ -2454,22 +2457,29 @@ def main():
             )
         else:
             manifest = create_manifest(plan, collection_id="so101_cube_pick_place_pilot", git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"))
-    # Isaac Lab 3.0 keeps the config entry point in the Gym registration, but
-    # Gymnasium does not instantiate that config automatically.  Construct it
-    # explicitly so this works both from the launcher and from Python callers.
-    from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
+    # Persist RUNNING before Isaac environment construction. A SIGINT/SIGTERM
+    # during the expensive RTX startup must still leave a terminal manifest.
+    write_manifest(args_cli.manifest, manifest)
+    previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
-    env_cfg = SO101CubePickPlaceEnvCfg()
-    # Seed the construction path as well as every reset.  Isaac Lab warns and
-    # may initialize manager state nondeterministically when this remains None.
-    env_cfg.seed = 0
-    if not args_cli.enable_wrist_camera:
-        # Setting both entries to None before environment construction means
-        # Isaac Lab neither spawns nor renders the wrist sensor in v0.
-        env_cfg.scene.wrist_camera = None
-        env_cfg.observations.policy.wrist_rgb = None
-    env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
+    signal.signal(signal.SIGTERM, raise_collection_signal_abort)
+    env = None
+    active_attempt = None
     try:
+        # Isaac Lab 3.0 keeps the config entry point in the Gym registration,
+        # but Gymnasium does not instantiate that config automatically.
+        from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
+
+        env_cfg = SO101CubePickPlaceEnvCfg()
+        # Seed the construction path as well as every reset. Isaac Lab warns
+        # and may initialize manager state nondeterministically when this is None.
+        env_cfg.seed = 0
+        if not args_cli.enable_wrist_camera:
+            # Both entries are removed before construction, so v0 neither
+            # spawns nor renders the wrist sensor.
+            env_cfg.scene.wrist_camera = None
+            env_cfg.observations.policy.wrist_rgb = None
+        env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
         if args_cli.diagnose_jacobian:
             run_jacobian_diagnostic(env)
             return
@@ -2507,6 +2517,7 @@ def main():
             attempt = next_attempt(manifest, plan)
             if attempt is None:
                 break
+            active_attempt = attempt
             try:
                 episode_id, success, valid, category, reason = run_attempt(
                     env,
@@ -2567,8 +2578,34 @@ def main():
             record_attempt(manifest, plan, attempt, episode_id=episode_id, success=success, dataset_valid=valid, failure_category=category, failure_reason=reason)
             write_manifest(args_cli.manifest, manifest)
             print(f"SO101_ATTEMPT {attempt['attempt_id']} success={success} phase={category or 'complete'}", flush=True)
+            active_attempt = None
+    except (KeyboardInterrupt, CollectionSignalAbort) as error:
+        reason = collection_interruption_reason(error)
+        if manifest.get("execution_status") == "RUNNING":
+            abort_collection_manifest(manifest, reason)
+        if active_attempt is not None:
+            interrupted_episode_id = episode_id_for_attempt(
+                manifest["collection_id"], active_attempt["attempt_id"]
+            )
+            run_state_path = (
+                args_cli.output_root / interrupted_episode_id / "run-state.json"
+            )
+            if run_state_path.exists():
+                interrupted_run_state = _read_json(run_state_path)
+                if interrupted_run_state.get("execution_status") == "RUNNING":
+                    abort_attempt_run_state(interrupted_run_state, reason)
+                    _write_json(run_state_path, interrupted_run_state)
+        write_manifest(args_cli.manifest, manifest)
+        print(
+            f"SO101_COLLECTION_ABORTED reason={reason} "
+            f"attempt={None if active_attempt is None else active_attempt['attempt_id']}",
+            flush=True,
+        )
+        raise
     finally:
-        env.close()
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
+        if env is not None:
+            env.close()
         simulation_app.close()
     if manifest["quality_status"] == "PASS" and not args_cli.gate_plan:
         _write_json(args_cli.manifest.with_name("export_selection.json"), build_export_selection(manifest, str(args_cli.output_root)))

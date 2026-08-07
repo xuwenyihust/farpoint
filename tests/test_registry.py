@@ -121,12 +121,22 @@ def make_running_v3_episode(root, collection_id, episode_id, status="RUNNING"):
                 "cameras": ["observation.images.front"],
             },
             "outcome": {
-                "success": False if status == "FAILED" else None,
+                "success": False if status in {"FAILED", "ABORTED"} else None,
                 "dataset_valid": False,
-                "failure_category": "runner" if status == "FAILED" else None,
-                "failure_reason": "RuntimeError: simulation stopped"
-                if status == "FAILED"
-                else None,
+                "failure_category": (
+                    "interrupted"
+                    if status == "ABORTED"
+                    else "runner"
+                    if status == "FAILED"
+                    else None
+                ),
+                "failure_reason": (
+                    "SIGINT"
+                    if status == "ABORTED"
+                    else "RuntimeError: simulation stopped"
+                    if status == "FAILED"
+                    else None
+                ),
             },
         },
     )
@@ -151,6 +161,12 @@ class EpisodeRegistryTests(unittest.TestCase):
                 "episode_pilot_failed__trial_001",
                 status="FAILED",
             )
+            aborted = make_running_v3_episode(
+                external,
+                "pilot_aborted",
+                "episode_pilot_aborted__trial_001",
+                status="ABORTED",
+            )
 
             registry = EpisodeRegistry(outputs, episode_roots=[external])
             registry.scan()
@@ -167,6 +183,9 @@ class EpisodeRegistryTests(unittest.TestCase):
                 "RuntimeError: simulation stopped",
             )
             self.assertEqual(rows[failed.name]["dataset_valid"], 0)
+            self.assertEqual(rows[aborted.name]["status"], "FAIL")
+            self.assertEqual(rows[aborted.name]["failure_category"], "interrupted")
+            self.assertEqual(rows[aborted.name]["failure_reason"], "SIGINT")
 
     def test_collection_scoped_episode_ids_keep_repeated_attempts_distinct(self):
         with tempfile.TemporaryDirectory() as directory:

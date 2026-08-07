@@ -1,16 +1,24 @@
+import json
+import signal
 from pathlib import Path
 
 import pytest
 
 from farpoint.object_variation import generate_variation_plan, load_variation_config
 from farpoint.so101_collection import (
+    CollectionSignalAbort,
+    abort_collection_artifacts,
+    abort_attempt_run_state,
+    abort_collection_manifest,
     build_attempt_run_state,
     build_export_selection,
     create_manifest,
+    collection_interruption_reason,
     episode_id_for_attempt,
     load_manifest,
     next_attempt,
     record_attempt,
+    raise_collection_signal_abort,
     write_manifest,
 )
 
@@ -57,6 +65,114 @@ def test_attempt_run_state_preserves_live_collection_and_variation_context():
     assert state["variation"]["requested"] == attempt["requested"]
     assert state["variation"]["resolved"] == attempt["resolved"]
     assert state["recording"]["cameras"] == ["observation.images.front"]
+
+
+def test_abort_marks_manifest_and_live_episode_terminal_without_scoring_quality():
+    variation_plan = plan()
+    manifest = create_manifest(
+        variation_plan, collection_id="pilot_aborted", git_commit="a" * 40
+    )
+    attempt = next_attempt(manifest, variation_plan)
+    run_state = build_attempt_run_state(
+        attempt, collection_id="pilot_aborted", git_commit="a" * 40
+    )
+
+    abort_collection_manifest(manifest, "SIGINT")
+    abort_attempt_run_state(run_state, "SIGINT")
+
+    assert manifest["execution_status"] == "ABORTED"
+    assert manifest["quality_status"] == "NOT_EVALUATED"
+    assert manifest["abort_reason"] == "SIGINT"
+    assert manifest["aborted_at"] == manifest["updated_at"]
+    assert run_state["execution_status"] == "ABORTED"
+    assert run_state["outcome"] == {
+        "success": False,
+        "dataset_valid": False,
+        "failure_category": "interrupted",
+        "failure_reason": "SIGINT",
+    }
+
+
+def test_collection_interruptions_map_sigint_and_sigterm():
+    assert collection_interruption_reason(KeyboardInterrupt()) == "SIGINT"
+    with pytest.raises(CollectionSignalAbort) as raised:
+        raise_collection_signal_abort(signal.SIGTERM)
+    assert raised.value.signum == signal.SIGTERM
+    assert collection_interruption_reason(raised.value) == "SIGTERM"
+
+
+def test_abort_rejects_terminal_manifest_and_episode():
+    variation_plan = plan()
+    manifest = create_manifest(
+        variation_plan, collection_id="pilot_terminal", git_commit="a" * 40
+    )
+    manifest["execution_status"] = "FINISHED"
+    attempt = next_attempt(
+        create_manifest(
+            variation_plan, collection_id="pilot_live", git_commit="a" * 40
+        ),
+        variation_plan,
+    )
+    run_state = build_attempt_run_state(
+        attempt, collection_id="pilot_live", git_commit="a" * 40
+    )
+    run_state["execution_status"] = "FINISHED"
+
+    with pytest.raises(ValueError, match="cannot abort collection"):
+        abort_collection_manifest(manifest, "SIGTERM")
+    with pytest.raises(ValueError, match="cannot abort attempt"):
+        abort_attempt_run_state(run_state, "SIGTERM")
+
+
+def test_abort_collection_artifacts_preserves_finished_attempts(tmp_path):
+    variation_plan = plan()
+    manifest = create_manifest(
+        variation_plan, collection_id="pilot_interrupted", git_commit="a" * 40
+    )
+    first = next_attempt(manifest, variation_plan)
+    record_attempt(
+        manifest,
+        variation_plan,
+        first,
+        episode_id="episode_finished",
+        success=False,
+        dataset_valid=True,
+        failure_category="oracle",
+        failure_reason="grasp_phase_timeout:slow_close",
+    )
+    manifest_path = tmp_path / "manifest.json"
+    episodes_root = tmp_path / "episodes"
+    write_manifest(manifest_path, manifest)
+    finished = build_attempt_run_state(
+        first, collection_id="pilot_interrupted", git_commit="a" * 40
+    )
+    finished["execution_status"] = "FINISHED"
+    live_attempt = next_attempt(manifest, variation_plan)
+    live = build_attempt_run_state(
+        live_attempt, collection_id="pilot_interrupted", git_commit="a" * 40
+    )
+    finished_path = episodes_root / "episode_finished" / "run-state.json"
+    live_path = (
+        episodes_root
+        / live["identity"]["episode_id"]
+        / "run-state.json"
+    )
+    write_manifest(finished_path, finished)
+    write_manifest(live_path, live)
+
+    report = abort_collection_artifacts(
+        manifest_path, episodes_root, "SIGINT"
+    )
+
+    aborted_manifest = load_manifest(manifest_path, variation_plan)
+    assert aborted_manifest["execution_status"] == "ABORTED"
+    assert aborted_manifest["quality_status"] == "NOT_EVALUATED"
+    assert len(aborted_manifest["attempts"]) == 1
+    assert json.loads(finished_path.read_text())["execution_status"] == "FINISHED"
+    aborted_live = json.loads(live_path.read_text())
+    assert aborted_live["execution_status"] == "ABORTED"
+    assert report["completed_attempt_count"] == 1
+    assert report["aborted_episode_ids"] == [live["identity"]["episode_id"]]
 
 
 def plan():
