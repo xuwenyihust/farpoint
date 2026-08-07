@@ -1,5 +1,6 @@
 import json
 import sys
+from types import SimpleNamespace
 from argparse import Namespace
 from pathlib import Path
 
@@ -188,6 +189,45 @@ def test_upload_rc_uses_isolated_revision(tmp_path, successful_audits, monkeypat
     assert result["revision"] == revision
     assert calls == [(tmp_path / "public", spec["hf_repo_id"], revision)]
     assert json.loads((tmp_path / "rc.json").read_text())["commit"] == "hub-commit"
+
+
+def test_huggingface_rc_upload_can_resume_existing_branch(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeApi:
+        def create_branch(self, **kwargs):
+            calls.append(("create_branch", kwargs))
+
+        def upload_folder(self, **kwargs):
+            calls.append(("upload_folder", kwargs))
+            return SimpleNamespace(oid="hub-commit")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(HfApi=FakeApi),
+    )
+
+    result = release_dataset.upload_huggingface_rc(
+        tmp_path,
+        "owner/dataset",
+        "v0.0.0-rc1",
+    )
+
+    assert result == {"commit": "hub-commit", "revision": "v0.0.0-rc1"}
+    assert calls[0] == (
+        "create_branch",
+        {
+            "repo_id": "owner/dataset",
+            "repo_type": "dataset",
+            "branch": "v0.0.0-rc1",
+            "revision": "main",
+            "exist_ok": True,
+        },
+    )
+    assert calls[1][0] == "upload_folder"
+    assert calls[1][1]["revision"] == "v0.0.0-rc1"
+    assert calls[1][1]["delete_patterns"] == ["*"]
 
 
 def test_v2_release_requires_collection_or_benchmark_manifest(tmp_path, monkeypatch):

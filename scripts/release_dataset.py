@@ -81,20 +81,16 @@ def upload_huggingface_rc(package: Path, repo_id: str, revision: str) -> dict:
         repo_type="dataset",
         branch=revision,
         revision="main",
-        exist_ok=False,
+        exist_ok=True,
     )
-    try:
-        commit = api.upload_folder(
-            repo_id=repo_id,
-            repo_type="dataset",
-            revision=revision,
-            folder_path=str(package),
-            commit_message=f"Stage dataset release candidate {revision}",
-            delete_patterns=["*"],
-        )
-    except Exception:
-        api.delete_branch(repo_id=repo_id, repo_type="dataset", branch=revision)
-        raise
+    commit = api.upload_folder(
+        repo_id=repo_id,
+        repo_type="dataset",
+        revision=revision,
+        folder_path=str(package),
+        commit_message=f"Stage dataset release candidate {revision}",
+        delete_patterns=["*"],
+    )
     return {"commit": getattr(commit, "oid", str(commit)), "revision": revision}
 
 
