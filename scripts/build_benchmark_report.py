@@ -236,6 +236,13 @@ def load_trial(trial, report_dir):
         pick_object_xy = resolved_position[:2]
     if not pick_object_xy and len(planned_position) >= 2:
         pick_object_xy = planned_position[:2]
+    episode_report = REPORTS_ROOT / episode_id / "index.html" if episode_id else None
+    if episode_report and episode_report.is_file():
+        report_href = relative_path(episode_report, report_dir).as_posix()
+    elif episode_id and metadata.get("schema_version") == "farpoint.episode.v3":
+        report_href = f"/?view=episodes&search={quote(episode_id, safe='')}"
+    else:
+        report_href = None
     return {
         **trial,
         "success": bool(trial["success"] if "success" in trial else metrics.get("success")),
@@ -283,11 +290,7 @@ def load_trial(trial, report_dir):
         "workload_memory": row.get("workload_memory"),
         "host_pressure": row.get("host_pressure"),
         "warning_count": row.get("warning_count"),
-        "report_href": (
-            relative_path(REPORTS_ROOT / episode_id / "index.html", report_dir).as_posix()
-            if episode_id
-            else None
-        ),
+        "report_href": report_href,
         "preview_href": (
             f"/files/episodes/{quote(episode_id, safe='')}/preview/"
             f"{quote(preview.name, safe='')}"
