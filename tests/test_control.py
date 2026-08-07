@@ -26,6 +26,7 @@ from farpoint.control import (
     settle_release_separation_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
+    so101_unilateral_recenter_limit,
     tactile_contact_hold_target,
     tactile_search_active,
     temporal_contact_confirmed,
@@ -674,6 +675,46 @@ def test_so101_slow_close_force_actions_preserve_limits():
     assert bilateral == {"position": pytest.approx(0.499), "action": "hold"}
     assert high_force == {"position": pytest.approx(-0.168), "action": "backoff"}
     assert -0.1746 <= high_force["position"] <= 1.7453
+
+
+@pytest.mark.parametrize(
+    ("object_width_m", "expected_limit_m"),
+    [(0.03, 0.004), (0.04, 0.009), (0.10, 0.012)],
+)
+def test_so101_unilateral_recenter_limit_scales_with_half_width(
+    object_width_m,
+    expected_limit_m,
+):
+    assert so101_unilateral_recenter_limit(object_width_m) == pytest.approx(
+        expected_limit_m
+    )
+
+
+@pytest.mark.parametrize("object_width_m", [0.0, -0.01, float("inf"), float("nan")])
+def test_so101_unilateral_recenter_limit_rejects_invalid_width(object_width_m):
+    with pytest.raises(ValueError, match="finite and positive"):
+        so101_unilateral_recenter_limit(object_width_m)
+
+
+def test_40mm_unilateral_recenter_accumulates_to_size_aware_bound():
+    commanded = [1.0, 0.25, 0.54]
+    nominal = list(commanded)
+    limit = so101_unilateral_recenter_limit(0.04)
+    for _ in range(200):
+        update = unilateral_contact_recenter_target(
+            commanded,
+            nominal,
+            {"center": [1.0, 0.2, 0.42]},
+            {"center": [1.0, 0.3, 0.41]},
+            1.0,
+            0.0,
+            step=0.000125,
+            max_correction=limit,
+        )
+        commanded = update["position"]
+
+    assert commanded == pytest.approx([1.0, 0.25 - 0.009, 0.54])
+    assert update["active"] is True
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():

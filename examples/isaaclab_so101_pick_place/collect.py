@@ -119,6 +119,7 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_unilateral_recenter_limit,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
@@ -1442,7 +1443,13 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 *balanced_forces,
                 min_force=0.5,
                 step=(0.0000625 if settling_capture else 0.000125),
-                max_correction=(0.002 if settling_capture else 0.004),
+                max_correction=(
+                    0.002
+                    if settling_capture
+                    else so101_unilateral_recenter_limit(
+                        object_spec["dimensions_m"][0]
+                    )
+                ),
                 move_toward_contact=True,
             )
             grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)

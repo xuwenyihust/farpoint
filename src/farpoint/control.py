@@ -10,6 +10,19 @@ def so101_approach_jaw_target(object_width_m):
     return 0.90 + 0.50 * interpolation
 
 
+def so101_unilateral_recenter_limit(object_width_m):
+    """Return the bounded close-phase recenter range for the object width.
+
+    The 30 mm calibration needs 4 mm of Cartesian correction.  A wider cube
+    moves the first-contact face outward by half of the added width, so grant
+    that same half-width increment while retaining a hard 12 mm safety cap.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    return min(0.012, 0.004 + max(0.0, width - 0.03) * 0.5)
+
+
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
