@@ -82,22 +82,9 @@ There is no wrist-camera feature in `v0.0.0`.
 
 ## Variation coverage
 
-Every cell in the 5 x 5 stratified cube-position grid is represented.
-
-| Cube Y ↓ / Cube X → | X0 | X1 | X2 | X3 | X4 |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **Y0** | ● | ● | ● | ● | ● |
-| **Y1** | ● | ● | ● | ● | ● |
-| **Y2** | ● | ● | ● | ● | ● |
-| **Y3** | ● | ● | ● | ● | ● |
-| **Y4** | ● | ● | ● | ● | ● |
-
-**● = covered by selected demonstrations.** Cube centers span approximately
-`x = 0.147–0.255 m` and `y = -0.116–-0.024 m`.
-
 | Variation axis | Values in this release | Distribution |
 |---|---|---:|
-| Position | 5 x 5 stratified XY grid | 25 / 25 cells covered |
+| Position | 5 x 5 stratified XY grid; cube centers span approximately `x = 0.147–0.255 m` and `y = -0.116–-0.024 m` | 25 / 25 cells covered |
 | Cube edge length | 0.03 m, 0.04 m | 25 episodes each |
 | Cube color | Red, blue | 25 episodes each |
 | Cube mass | 0.04 kg | Fixed |
