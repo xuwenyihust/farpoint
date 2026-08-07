@@ -56,6 +56,45 @@ class BenchmarkReportTests(unittest.TestCase):
             "/?view=episodes&search=episode_so101__cube%2001",
         )
 
+    def test_v3_trial_uses_middle_rgb_frame_when_preview_directory_is_missing(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            episode_id = "episode_so101__cube 01"
+            episode = root / "episodes" / episode_id
+            rgb = episode / "rgb"
+            rgb.mkdir(parents=True)
+            (episode / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "farpoint.episode.v3",
+                        "identity": {"episode_id": episode_id},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (rgb / "front_000000.png").touch()
+            (rgb / "front_000001.png").touch()
+            (rgb / "front_000002.png").touch()
+            previous_episodes = build_benchmark_report.EPISODES_ROOT
+            previous_reports = build_benchmark_report.REPORTS_ROOT
+            build_benchmark_report.EPISODES_ROOT = root / "episodes"
+            build_benchmark_report.REPORTS_ROOT = root / "reports"
+            try:
+                result = load_trial(
+                    {"episode_id": episode_id, "success": True},
+                    root / "reports" / "benchmarks" / "collection",
+                )
+            finally:
+                build_benchmark_report.EPISODES_ROOT = previous_episodes
+                build_benchmark_report.REPORTS_ROOT = previous_reports
+
+        self.assertEqual(
+            result["preview_href"],
+            "/files/episodes/episode_so101__cube%2001/rgb/front_000001.png",
+        )
+
     def test_balanced_so101_selection_normalizes_as_collection(self):
         balance = {
             "total": 50,

@@ -225,6 +225,10 @@ def load_trial(trial, report_dir):
             row = load_run_row(episode_dir, REPORTS_ROOT, rebuild_reports=True)
 
     preview_images = sorted((episode_dir / "preview").glob("*.png")) if episode_dir else []
+    preview_directory = "preview"
+    if not preview_images and episode_dir:
+        preview_images = sorted((episode_dir / "rgb").glob("*.png"))
+        preview_directory = "rgb"
     preview = preview_images[len(preview_images) // 2] if preview_images else None
     resolved_position = (
         (metadata.get("variation") or {}).get("resolved", {}).get("object_position_m")
@@ -292,7 +296,7 @@ def load_trial(trial, report_dir):
         "warning_count": row.get("warning_count"),
         "report_href": report_href,
         "preview_href": (
-            f"/files/episodes/{quote(episode_id, safe='')}/preview/"
+            f"/files/episodes/{quote(episode_id, safe='')}/{preview_directory}/"
             f"{quote(preview.name, safe='')}"
             if preview and episode_id
             else None
