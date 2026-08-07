@@ -1,0 +1,17 @@
+{
+  "schema_version": "farpoint.so101-watchdog-policy.v1",
+  "recent_window_attempts": 5,
+  "minimum_recent_attempts": 5,
+  "recent_failure_fraction": 0.8,
+  "consecutive_failure_limit": 3,
+  "stale_run_state_seconds": 1800,
+  "stale_manifest_seconds": 3600,
+  "structural_failure_classes": [
+    "runner_error",
+    "contact_force_limit",
+    "bilateral_contact_lost",
+    "collision",
+    "object_dropped",
+    "phase_timeout"
+  ]
+}

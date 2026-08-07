@@ -48,6 +48,14 @@ def parse_args():
     parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "outputs/so101_collection/manifest.json")
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "outputs/episodes")
     parser.add_argument("--max-attempts-this-run", type=int, default=150)
+    parser.add_argument(
+        "--watchdog-policy",
+        type=Path,
+        help=(
+            "Evaluate a frozen SO-101 watchdog policy after each completed "
+            "attempt and stop before starting another attempt when required."
+        ),
+    )
     collection_mode = parser.add_mutually_exclusive_group()
     collection_mode.add_argument(
         "--gate-plan",
@@ -168,6 +176,10 @@ from farpoint.so101_collection import (  # noqa: E402
     raise_collection_signal_abort,
     write_manifest,
 )
+from farpoint.so101_watchdog import (  # noqa: E402
+    evaluate_so101_collection,
+    load_watchdog_policy,
+)
 
 
 CONTROL_RECORDING_SCHEDULE = ControlRecordingSchedule(
@@ -182,6 +194,29 @@ def _read_json(path: Path) -> dict:
 def _write_json(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _evaluate_watchdog(plan, manifest, policy):
+    report = evaluate_so101_collection(
+        plan,
+        manifest,
+        policy,
+        episodes_root=args_cli.output_root,
+    )
+    _write_json(args_cli.manifest.with_name("watchdog.json"), report)
+    decision = report["decision"]
+    print(
+        f"SO101_WATCHDOG decision={decision} "
+        f"reasons={','.join(report['reasons']) or 'none'}",
+        flush=True,
+    )
+    if decision in {"STOP", "INVALID"} and manifest.get("execution_status") == "RUNNING":
+        reason = ";".join(report["reasons"] or report["errors"]) or "watchdog_stop"
+        abort_collection_manifest(
+            manifest, f"watchdog:{decision.lower()}:{reason}"
+        )
+        write_manifest(args_cli.manifest, manifest)
+    return decision
 
 
 def _torch_pose(position, device, orientation_xyzw=(0.0, 0.0, 0.0, 1.0)):
@@ -2710,6 +2745,11 @@ def main():
 
     config = load_variation_config(PROJECT_ROOT / "configs/variations/so101_cube_pick_place_v1.json")
     plan = _read_json(args_cli.plan) if args_cli.plan.exists() else generate_variation_plan(config)
+    watchdog_policy = (
+        load_watchdog_policy(args_cli.watchdog_policy)
+        if args_cli.watchdog_policy is not None
+        else None
+    )
     args_cli.plan.parent.mkdir(parents=True, exist_ok=True)
     _write_json(args_cli.plan, plan)
     if args_cli.manifest.exists():
@@ -2812,7 +2852,14 @@ def main():
             finish_diagnostic_manifest(manifest, "grasp_paths", succeeded=True)
             write_manifest(args_cli.manifest, manifest)
             return
+        watchdog_decision = (
+            _evaluate_watchdog(plan, manifest, watchdog_policy)
+            if watchdog_policy is not None
+            else "CONTINUE"
+        )
         for _ in range(args_cli.max_attempts_this_run):
+            if watchdog_decision in {"STOP", "INVALID"}:
+                break
             attempt = next_attempt(manifest, plan)
             if attempt is None:
                 break
@@ -2878,6 +2925,12 @@ def main():
             write_manifest(args_cli.manifest, manifest)
             print(f"SO101_ATTEMPT {attempt['attempt_id']} success={success} phase={category or 'complete'}", flush=True)
             active_attempt = None
+            if watchdog_policy is not None:
+                watchdog_decision = _evaluate_watchdog(
+                    plan, manifest, watchdog_policy
+                )
+                if watchdog_decision in {"STOP", "INVALID"}:
+                    break
     except (KeyboardInterrupt, CollectionSignalAbort) as error:
         reason = collection_interruption_reason(error)
         if manifest.get("execution_status") == "RUNNING":
