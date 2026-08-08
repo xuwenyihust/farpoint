@@ -550,6 +550,41 @@ for that exact variation becomes the selected episode without changing its
 split. The formal report verifies balance, physical yaw and mass, terminal
 grasp evidence, video integrity, and the complete raw artifact set.
 
+### Balanced30 selection from an owner-aborted yaw collection
+
+An owner-aborted yaw collection remains immutable and does not become a passed
+50-episode collection. If its frozen artifacts contain the required evidence,
+the dedicated `so101_yaw0_30mm_balanced30_v1` policy may derive a separate
+30-episode candidate. The policy does not relabel splits or mutate source
+episodes. It binds the source manifest and abort record by SHA-256 and requires:
+
+- 24 train, 1 validation, and 5 test episodes (the only attainable split mix);
+- 15 episodes at each of 0.03 kg and 0.04 kg;
+- 15 episodes of each color and 7/7/8/8 mass-by-color coverage;
+- six episodes in every workspace row and 5/6/7/6/6 by column;
+- 23/25 workspace cells, with `r04_c00` and `r04_c01` explicitly absent;
+- front-camera, terminal grasp, settle, proof-lift, physical yaw, and PhysX mass
+  evidence validation for all 30 selected episodes.
+
+Run the selector only from a commit already merged to `main`, and write its
+outputs to a new candidate directory:
+
+```bash
+python scripts/create_so101_yaw_balanced30_selection.py \
+  --variation-plan <aborted-root>/plan.json \
+  --manifest <aborted-root>/manifest.json \
+  --abort-record <aborted-root>/abort_record.json \
+  --episodes-root <aborted-root>/episodes \
+  --output-dir <balanced30-candidate-root> \
+  --collection-id so101_cube_yaw0_30mm_balanced30_<date>_<sha> \
+  --dataset-id farpoint_so101 \
+  --git-commit "$(git rev-parse HEAD)"
+```
+
+The candidate manifest and export selection are emitted only after the full
+episode audit passes. A failed audit leaves only the JSON and Markdown
+validation reports in the new output directory.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two
