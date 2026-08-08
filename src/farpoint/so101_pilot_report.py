@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -26,7 +28,7 @@ def _pilot_status(
         return "INCOMPLETE"
     if acceptance_errors:
         return "FAIL"
-    if quality_status == "PASS" and selected_count == required_successes:
+    if quality_status == "PASS" and selected_count >= required_successes:
         return "PASS"
     return "FAIL"
 
@@ -49,6 +51,106 @@ def _expectation_errors(
         if not expected_success and attempt.get("failure_reason") != expected_reason:
             errors.append(f"{trial_id}:unexpected_failure_reason")
     return errors
+
+
+def _quaternions_equivalent(
+    actual: list[float], expected: list[float], *, tolerance: float = 1e-5
+) -> bool:
+    if len(actual) != 4 or len(expected) != 4:
+        return False
+    direct = math.sqrt(sum((float(a) - float(b)) ** 2 for a, b in zip(actual, expected)))
+    negated = math.sqrt(sum((float(a) + float(b)) ** 2 for a, b in zip(actual, expected)))
+    return min(direct, negated) <= tolerance
+
+
+def _yaw_pilot_audit(
+    plan: dict[str, Any],
+    attempts: list[dict[str, Any]],
+    by_name: dict[str, dict[str, Any]],
+    episodes_root: Path,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    pilot = plan.get("pilot") or {}
+    if pilot.get("kind") != "targeted_yaw_pilot":
+        return [], []
+    by_trial_id = {trial["trial_id"]: trial for trial in plan["trials"]}
+    audits = []
+    errors = []
+    for attempt in attempts:
+        episode_id = attempt.get("episode_id")
+        episode = by_name.get(episode_id)
+        trial = by_trial_id.get(attempt.get("trial_id"))
+        if episode is None or trial is None or not episode_id:
+            continue
+        root = episodes_root / episode_id
+        metadata = json.loads((root / "metadata.json").read_text(encoding="utf-8"))
+        metrics = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
+        expected_orientation = [
+            float(value) for value in trial["resolved"]["orientation_xyzw"]
+        ]
+        initial_orientation = [
+            float(value) for value in episode["initial_object_pose_xyzw"][3:]
+        ]
+        variation = metadata.get("variation") or {}
+        recorded_orientations = []
+        for role in ("requested", "resolved"):
+            payload = variation.get(role) or {}
+            recorded_orientations.append(payload.get("orientation_xyzw") or [])
+            recorded_orientations.append(
+                (((payload.get("entities") or {}).get("pick_object") or {}).get("pose") or {}).get(
+                    "orientation_xyzw"
+                )
+                or []
+            )
+        scene_orientation = (
+            ((metadata.get("scene") or {}).get("object") or {}).get("initial_pose") or {}
+        ).get("orientation_xyzw") or []
+        orientation_verified = _quaternions_equivalent(
+            initial_orientation, expected_orientation
+        ) and all(
+            _quaternions_equivalent(value, expected_orientation)
+            for value in [*recorded_orientations, scene_orientation]
+        )
+        if not orientation_verified:
+            errors.append(f"{episode_id}:yaw_orientation_audit_failed")
+
+        metric_mass = (metrics.get("physics_audit") or {}).get("mass")
+        metadata_mass = ((metadata.get("scene") or {}).get("object") or {}).get(
+            "mass_audit"
+        )
+        expected_mass = float(trial["resolved"]["mass_kg"])
+        mass_verified = (
+            isinstance(metric_mass, dict)
+            and metric_mass == metadata_mass
+            and metric_mass.get("verified") is True
+            and abs(float(metric_mass.get("requested_mass_kg", math.inf)) - expected_mass)
+            <= 1e-6
+            and abs(float(metric_mass.get("resolved_mass_kg", math.inf)) - expected_mass)
+            <= 1e-6
+            and abs(float(metric_mass.get("physx_actual_mass_kg", math.inf)) - expected_mass)
+            <= 1e-6
+        )
+        if not mass_verified:
+            errors.append(f"{episode_id}:mass_audit_failed")
+        audits.append(
+            {
+                "episode_id": episode_id,
+                "trial_id": attempt["trial_id"],
+                "expected_yaw_degrees": float(pilot["yaw_degrees"]),
+                "expected_orientation_xyzw": expected_orientation,
+                "initial_orientation_xyzw": initial_orientation,
+                "orientation_verified": orientation_verified,
+                "expected_mass_kg": expected_mass,
+                "physx_actual_mass_kg": (
+                    metric_mass.get("physx_actual_mass_kg")
+                    if isinstance(metric_mass, dict)
+                    else None
+                ),
+                "mass_verified": mass_verified,
+            }
+        )
+    if len(audits) != len([attempt for attempt in attempts if attempt.get("episode_id")]):
+        errors.append("yaw_audit_count_mismatch")
+    return audits, errors
 
 
 def build_so101_pilot_report(
@@ -78,6 +180,8 @@ def build_so101_pilot_report(
             errors.append(f"{attempt['episode_id']}:manifest_episode_success_mismatch")
         if episode["dataset_valid"] != bool(attempt["dataset_valid"]):
             errors.append(f"{attempt['episode_id']}:manifest_episode_validity_mismatch")
+    yaw_audits, yaw_errors = _yaw_pilot_audit(plan, attempts, by_name, root)
+    errors.extend(yaw_errors)
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
     for attempt in selected:
@@ -112,7 +216,10 @@ def build_so101_pilot_report(
     if variation_seed_count != len(attempts):
         errors.append("variation_seeds_not_unique")
     acceptance_errors = []
-    if len(selected) != int(manifest["required_successes"]):
+    if (plan.get("pilot") or {}).get("kind") == "targeted_yaw_pilot":
+        if len(selected) < int(manifest["required_successes"]):
+            acceptance_errors.append("selected_success_count_below_threshold")
+    elif len(selected) != int(manifest["required_successes"]):
         acceptance_errors.append("selected_success_count_mismatch")
     if len(attempts) > int(manifest["maximum_attempts"]):
         acceptance_errors.append("attempt_budget_exceeded")
@@ -149,6 +256,8 @@ def build_so101_pilot_report(
             {episode["metadata_sha256"] for episode in analysis["episodes"]}
         ),
         "failure_class_counts": dict(sorted(failures.items())),
+        "yaw_audit_count": len(yaw_audits),
+        "yaw_audits": yaw_audits,
         "evidence_errors": sorted(set(errors)),
         "acceptance_errors": sorted(set(acceptance_errors)),
         "minimum_selected_proof_lift_m": min(

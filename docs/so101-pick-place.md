@@ -368,6 +368,38 @@ The resulting candidate contains 100 episodes: 50 at 0.04 kg and 50 at
 Dashboard registration, release-candidate staging, and Hugging Face publishing
 remain separate validation and owner-approval steps.
 
+## Cube-yaw expansion pilot
+
+The first SO-101 orientation expansion changes only the cube's upright yaw
+from the v0.0.1 value of 45 degrees to 0 degrees. Before a dataset collection,
+run the frozen 12-attempt pilot:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/cube_yaw0_pilot_<sha> \
+  --workflow-id cube_yaw0_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_cube_yaw0_pilot.json
+```
+
+The pilot uses 12 historical-success trial identities from the v0.0.0/v0.0.1
+dataset: eight train, two validation, and two test; twelve distinct workspace
+cells; six trials per cube mass and size; six trials per color; and three of
+each size/color combination. All 12 attempts run even after ten successes.
+Passing requires at least 10/12 eligible successes, a verified 0-degree initial
+PhysX orientation in the observation truth and episode sidecars, and a verified
+actual PhysX mass for every attempt. Pilot episodes remain `PILOT` artifacts.
+
+A later v0.0.2 collection may add only 50 yaw=0 demonstrations rather than the
+full 100-trial Cartesian mirror. Freeze one 0.03 kg and one 0.04 kg trial in
+each of the 25 workspace cells, then choose the historically successful
+size/color identities so the aggregate remains 25/25 by size, 25/25 by color,
+40/5/5 by split, and 12/12/13/13 across size/color combinations. This is an
+explicit balanced fractional design: v0.0.2 would contain 150 total episodes
+and intentionally have 100 examples at 45 degrees versus 50 at 0 degrees. A
+future version can add the complementary 50 yaw=0 trials to reach a balanced
+200-episode, 100/100 yaw release without invalidating v0.0.2.
+
 ### Continuing an aborted mass collection
 
 An `ABORTED` manifest is immutable evidence and must not be changed back to

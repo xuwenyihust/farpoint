@@ -186,7 +186,7 @@ def create_pilot_manifest(
     required_successes = int(pilot.get("required_successes", 0))
     maximum_attempts = int(pilot.get("maximum_attempts", 0))
     kind = pilot.get("kind")
-    if kind == "targeted_mass_diagnostic_pilot":
+    if kind in {"targeted_mass_diagnostic_pilot", "targeted_yaw_pilot"}:
         frozen_ids = pilot.get("trial_ids") or []
         if len(trials) != 100:
             raise ValueError("targeted pilot plan must retain all 100 variations")
@@ -196,12 +196,25 @@ def create_pilot_manifest(
             raise ValueError("targeted pilot attempt budget must match its trial ids")
         if [trial["trial_id"] for trial in trials[:maximum_attempts]] != frozen_ids:
             raise ValueError("targeted pilot ordering does not match its frozen ids")
-        target_mass = float(pilot.get("target_mass_kg", 0.0))
-        if target_mass <= 0.0 or {
+        masses = {
             float(trial["resolved"]["mass_kg"])
             for trial in trials[:maximum_attempts]
-        } != {target_mass}:
-            raise ValueError("targeted pilot mass is inconsistent")
+        }
+        if kind == "targeted_mass_diagnostic_pilot":
+            target_mass = float(pilot.get("target_mass_kg", 0.0))
+            if target_mass <= 0.0 or masses != {target_mass}:
+                raise ValueError("targeted pilot mass is inconsistent")
+        else:
+            if maximum_attempts != 12 or required_successes != 10:
+                raise ValueError("yaw pilot must freeze a 10-of-12 acceptance gate")
+            if masses != {0.03, 0.04}:
+                raise ValueError("yaw pilot masses are inconsistent")
+            expected_orientation = pilot.get("orientation_xyzw")
+            if any(
+                trial["resolved"]["orientation_xyzw"] != expected_orientation
+                for trial in trials[:maximum_attempts]
+            ):
+                raise ValueError("yaw pilot orientation is inconsistent")
         return _new_manifest(
             plan,
             collection_id=collection_id,
