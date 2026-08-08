@@ -12,7 +12,10 @@ from farpoint.so101_gate import (
     build_cube_workspace_matrix_plan,
     build_fixed_cube_gate_plan,
 )
-from farpoint.so101_pilot import build_so101_pilot_plan
+from farpoint.so101_pilot import (
+    build_so101_pilot_plan,
+    build_targeted_mass_diagnostic_pilot_plan,
+)
 from farpoint.so101_mass_feasibility import (
     build_cube_mass_feasibility_plan,
     build_cube_mass_workspace_pilot_plan,
@@ -54,6 +57,7 @@ def validate_gate_workflow_config(config: dict[str, Any]) -> None:
         "cube_workspace_matrix",
         "cube_mass_feasibility",
         "cube_mass_workspace_pilot",
+        "targeted_mass_diagnostic_pilot",
         "stratified_success_pilot",
     }
     for stage in stages:
@@ -139,6 +143,17 @@ def build_so101_gate_workflow(
             )
             collector_mode = "gate"
             report_kind = "mass_workspace_pilot"
+        elif kind == "targeted_mass_diagnostic_pilot":
+            plan = build_targeted_mass_diagnostic_pilot_plan(
+                variation_config,
+                pilot_id=plan_id,
+                source_trial_ids=tuple(stage_config["source_trial_ids"]),
+                target_mass_kg=float(stage_config["target_mass_kg"]),
+                required_successes=int(stage_config["required_successes"]),
+                expectations=stage_config["expectations"],
+            )
+            collector_mode = "pilot"
+            report_kind = "pilot"
         else:
             plan = build_so101_pilot_plan(
                 variation_config,

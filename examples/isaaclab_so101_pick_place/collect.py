@@ -69,7 +69,7 @@ def parse_args():
     collection_mode.add_argument(
         "--pilot-plan",
         action="store_true",
-        help="Use a frozen 10-success/15-attempt code-review pilot plan.",
+        help="Use a frozen bounded code-review or diagnostic pilot plan.",
     )
     parser.add_argument("--diagnose-jacobian", action="store_true")
     parser.add_argument("--diagnose-grasp-postures", action="store_true")
@@ -124,6 +124,7 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
@@ -136,11 +137,13 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
+    unilateral_contact_requires_recenter,
 )
 from farpoint.oracle import (  # noqa: E402
     OracleObservation,
@@ -1605,12 +1608,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
     release_position = np.asarray([0.20, 0.10, 0.080], dtype=np.float32)
-    # Let both position actuators settle against the cube before commanding
-    # any lift; two 30 Hz samples only prove an impact, not a stable grasp.
-    # CLOSE performs its own three-frame bilateral-force confirmation before
-    # exposing ``stable_grasp_contact``.  The generic machine must consume
-    # that already-validated event immediately; asking it for three more
-    # samples duplicates the window after the aperture has been frozen.
+    # Separate capture admission from contact persistence. A 0.1 N bilateral
+    # sample is enough to preserve an already captured cube, but it is too
+    # weak to freeze the rotary jaw: light cubes can briefly touch both long
+    # fingers while still sliding out of the aperture. Require the same 2 N,
+    # three-tick confirmation used by CLOSE before entering bilateral settle.
     schedule = CONTROL_RECORDING_SCHEDULE
     machine = OracleStateMachine(
         phase_timeout_steps=schedule.steps_for_seconds(40.0),
@@ -1624,6 +1626,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         # The formal workspace run showed stable 30 mm captures oscillating
         # around 0.1--1.9 N before being rejected by the former 2 N floor.
         minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
         static_hold_s=0.20,
@@ -1758,7 +1762,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
             and balanced_forces is not None
-            and min(balanced_forces) < 0.5 <= max(balanced_forces)
+            and unilateral_contact_requires_recenter(
+                *balanced_forces,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )
         ):
             jaw_center = _numpy(
                 robot.data.body_link_pose_w.torch[
@@ -1774,7 +1781,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 {"center": jaw_center.tolist()},
                 {"center": gripper_center.tolist()},
                 *balanced_forces,
-                min_force=0.5,
+                # Recenter as soon as one side drops below the same 0.1 N
+                # persistence floor used by the grasp state machine. Waiting
+                # for 0.5 N missed the observed 0.12/0.0 N recovery window and
+                # let the light cube escape while the jaw only closed harder.
+                min_force=grasp_machine.minimum_contact_force_n,
                 step=(0.0000625 if settling_capture else 0.000125),
                 max_correction=(0.002 if settling_capture else 0.004),
                 move_toward_contact=True,
@@ -2339,6 +2350,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         has_contact = _contact(contact)
         bilateral_contact = _bilateral_contact(contact)
         contact_forces = _cube_contact_forces(contact)
+        descent_cube_contact = so101_cube_contact_handoff(*contact_forces)
         object_pose = _numpy(scene[active_name].data.root_pose_w[0])
         gripper_pose = _numpy(
             robot.data.body_link_pose_w.torch[0, body_index]
@@ -2419,12 +2431,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         grasp_evidence = GraspEvidence(
                 left_force_n=float(contact_forces[0]),
                 right_force_n=float(contact_forces[1]),
-                aperture_aligned=float(
-                    np.linalg.norm(
-                        object_in_gripper - capture_object_in_gripper
-                    )
-                )
-                <= 0.025,
+                # The SO-101 fingers are long along local Z. Enclosure needs
+                # tight alignment across the aperture plane; physical depth
+                # is validated separately by bilateral force, rigidity and
+                # proof lift. A 3-D norm incorrectly rejected stable fingertip
+                # captures at short-reach workspace positions.
+                aperture_aligned=capture_aperture_laterally_aligned(
+                    object_in_gripper,
+                    capture_object_in_gripper,
+                ),
                 relative_translation_error_m=relative_translation_error,
                 relative_speed_mps=relative_speed,
                 proof_lift_m=(
@@ -2645,7 +2660,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                         OraclePhase.PLACE_DESCEND,
                     }
                 )
-                or (phase is OraclePhase.DESCEND and has_contact)
+                # The generic contact signal requires 2 N and may include
+                # non-cube contacts. Stop insertion on the first cube-filtered
+                # fingertip contact so the jaw cannot push the object away
+                # while waiting for collision-level force.
+                or (phase is OraclePhase.DESCEND and descent_cube_contact)
                 # Under load, the 5-DOF arm can retain a small Cartesian pose
                 # residual even after the cube has ample target-pad clearance.
                 # Advance on the physical transport condition, not an

@@ -6,6 +6,7 @@ from farpoint.so101_pilot import (
     DEFAULT_FALLBACK_TRIAL_IDS,
     DEFAULT_PRIMARY_TRIAL_IDS,
     build_so101_pilot_plan,
+    build_targeted_mass_diagnostic_pilot_plan,
 )
 
 
@@ -113,4 +114,94 @@ def test_pilot_plan_rejects_unknown_or_duplicate_ids():
             _config(),
             pilot_id="bad",
             primary_trial_ids=("missing",) + DEFAULT_PRIMARY_TRIAL_IDS[1:],
+        )
+
+
+def test_targeted_mass_pilot_freezes_named_order_mass_and_budget():
+    source_ids = (
+        "cube_r03_c00_s1_k1",
+        "cube_r04_c01_s0_k0",
+        "cube_r02_c00_s1_k0",
+        "cube_r03_c03_s1_k0",
+        "cube_r01_c01_s0_k1",
+    )
+    expectations = {
+        source_ids[0]: {"success": False, "failure_reason": "collision"},
+        source_ids[1]: {
+            "success": False,
+            "failure_reason": "grasp_phase_timeout:slow_close",
+        },
+        source_ids[2]: {"success": True},
+        source_ids[3]: {"success": True},
+        source_ids[4]: {"success": True},
+    }
+    plan = build_targeted_mass_diagnostic_pilot_plan(
+        _config(),
+        pilot_id="capture_fix",
+        source_trial_ids=source_ids,
+        target_mass_kg=0.03,
+        required_successes=3,
+        expectations=expectations,
+    )
+
+    assert len(plan["trials"]) == 100
+    assert plan["pilot"] == {
+        "kind": "targeted_mass_diagnostic_pilot",
+        "required_successes": 3,
+        "maximum_attempts": 5,
+        "trial_ids": [f"{trial_id}_m030g" for trial_id in source_ids],
+        "source_trial_ids": list(source_ids),
+        "target_mass_kg": 0.03,
+        "actual_mass_tolerance_kg": 1e-6,
+        "expectations": {
+            f"{trial_id}_m030g": expectations[trial_id]
+            for trial_id in source_ids
+        },
+    }
+    assert [trial["source_trial_id"] for trial in plan["trials"][:5]] == list(
+        source_ids
+    )
+    assert {
+        trial["requested"]["entities"]["pick_object"]["physics"]["mass_kg"]
+        for trial in plan["trials"]
+    } == {0.03}
+    assert {trial["resolved"]["mass_kg"] for trial in plan["trials"]} == {0.03}
+
+    manifest = create_pilot_manifest(
+        plan, collection_id=plan["plan_id"], git_commit="a" * 40
+    )
+    assert manifest["required_successes"] == 3
+    assert manifest["maximum_attempts"] == 5
+    assert manifest["completion_policy"] == "all_planned_trials"
+    assert manifest["stop_when_success_target_unreachable"] is False
+    assert next_attempt(manifest, plan)["trial_id"] == f"{source_ids[0]}_m030g"
+
+
+def test_targeted_mass_pilot_rejects_unknown_and_invalid_threshold():
+    with pytest.raises(ValueError, match="unknown"):
+        build_targeted_mass_diagnostic_pilot_plan(
+            _config(),
+            pilot_id="bad",
+            source_trial_ids=("missing",),
+            target_mass_kg=0.03,
+            required_successes=1,
+        )
+    with pytest.raises(ValueError, match="fit"):
+        build_targeted_mass_diagnostic_pilot_plan(
+            _config(),
+            pilot_id="bad",
+            source_trial_ids=("cube_r03_c00_s1_k1",),
+            target_mass_kg=0.03,
+            required_successes=2,
+        )
+
+
+def test_targeted_mass_pilot_requires_role_expectations():
+    with pytest.raises(ValueError, match="expectations"):
+        build_targeted_mass_diagnostic_pilot_plan(
+            _config(),
+            pilot_id="bad",
+            source_trial_ids=("cube_r03_c00_s1_k1",),
+            target_mass_kg=0.03,
+            required_successes=1,
         )

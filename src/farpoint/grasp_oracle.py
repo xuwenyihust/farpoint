@@ -30,6 +30,25 @@ def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
     }
 
 
+def capture_aperture_laterally_aligned(
+    object_in_gripper_m,
+    aperture_reference_m,
+    *,
+    maximum_lateral_error_m: float = 0.025,
+) -> bool:
+    """Check enclosure alignment without treating finger depth as lateral error."""
+    object_local = np.asarray(object_in_gripper_m, dtype=np.float64)
+    reference = np.asarray(aperture_reference_m, dtype=np.float64)
+    maximum_error = float(maximum_lateral_error_m)
+    if object_local.shape != (3,) or reference.shape != (3,):
+        raise ValueError("aperture alignment vectors must have shape (3,)")
+    if not np.all(np.isfinite(object_local)) or not np.all(np.isfinite(reference)):
+        raise ValueError("aperture alignment vectors must be finite")
+    if not np.isfinite(maximum_error) or maximum_error <= 0.0:
+        raise ValueError("maximum_lateral_error_m must be finite and positive")
+    return float(np.linalg.norm(object_local[:2] - reference[:2])) <= maximum_error
+
+
 def advance_proof_lift_command(
     commanded_joints,
     measured_joints,
@@ -165,6 +184,21 @@ def rotary_jaw_capture_hold_target(
     )
 
 
+def unilateral_contact_requires_recenter(
+    left_force_n: float,
+    right_force_n: float,
+    *,
+    minimum_force_n: float,
+) -> bool:
+    """Return whether exactly one finger retains meaningful object contact."""
+    if minimum_force_n < 0.0:
+        raise ValueError("minimum force must be non-negative")
+    return (
+        min(float(left_force_n), float(right_force_n)) < minimum_force_n
+        <= max(float(left_force_n), float(right_force_n))
+    )
+
+
 @dataclass(frozen=True)
 class GraspEvidence:
     left_force_n: float
@@ -196,6 +230,8 @@ class ContactAwareGraspStateMachine:
 
     control_hz: int = 120
     minimum_contact_force_n: float = 0.10
+    capture_contact_force_n: float | None = None
+    capture_confirmation_s: float = 0.0
     maximum_force_n: float = 60.0
     maximum_relative_translation_error_m: float = 0.003
     maximum_relative_speed_mps: float = 0.015
@@ -209,6 +245,7 @@ class ContactAwareGraspStateMachine:
     phase_steps: int = 0
     stable_steps: int = 0
     contact_loss_steps: int = 0
+    capture_steps: int = 0
     failure_reason: str | None = None
 
     def __post_init__(self) -> None:
@@ -218,6 +255,19 @@ class ContactAwareGraspStateMachine:
             raise ValueError("contact force thresholds must be valid")
         if self.minimum_contact_force_n >= self.maximum_force_n:
             raise ValueError("minimum contact force must be below maximum force")
+        if self.capture_contact_force_n is None:
+            self.capture_contact_force_n = self.minimum_contact_force_n
+        if not (
+            self.minimum_contact_force_n
+            <= self.capture_contact_force_n
+            < self.maximum_force_n
+        ):
+            raise ValueError(
+                "capture contact force must be at least the minimum contact "
+                "force and below the maximum force"
+            )
+        if self.capture_confirmation_s < 0:
+            raise ValueError("capture confirmation duration must be non-negative")
 
     def _steps(self, seconds: float) -> int:
         return max(1, int(round(seconds * self.control_hz)))
@@ -227,6 +277,7 @@ class ContactAwareGraspStateMachine:
         self.phase_steps = 0
         self.stable_steps = 0
         self.contact_loss_steps = 0
+        self.capture_steps = 0
 
     def _fail(self, reason: str) -> None:
         self.phase = GraspPhase.FAILED
@@ -248,6 +299,10 @@ class ContactAwareGraspStateMachine:
         right = evidence.right_force_n >= self.minimum_contact_force_n
         any_contact = left or right
         bilateral = left and right
+        capture_bilateral = (
+            evidence.left_force_n >= self.capture_contact_force_n
+            and evidence.right_force_n >= self.capture_contact_force_n
+        )
         rigid = (
             evidence.relative_translation_error_m
             <= self.maximum_relative_translation_error_m
@@ -260,8 +315,10 @@ class ContactAwareGraspStateMachine:
             self._enter(GraspPhase.CONTACT_ALIGNMENT)
         elif self.phase is GraspPhase.CONTACT_ALIGNMENT and evidence.aperture_aligned:
             self._enter(GraspPhase.SLOW_CLOSE)
-        elif self.phase is GraspPhase.SLOW_CLOSE and bilateral:
-            self._enter(GraspPhase.BILATERAL_SETTLE)
+        elif self.phase is GraspPhase.SLOW_CLOSE:
+            self.capture_steps = self.capture_steps + 1 if capture_bilateral else 0
+            if self.capture_steps >= self._steps(self.capture_confirmation_s):
+                self._enter(GraspPhase.BILATERAL_SETTLE)
         elif self.phase is GraspPhase.BILATERAL_SETTLE:
             self.stable_steps = self.stable_steps + 1 if bilateral and rigid else 0
             if self.stable_steps >= self._steps(self.bilateral_settle_s):

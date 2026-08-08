@@ -144,6 +144,51 @@ produces `READY_FOR_FORMAL_REVIEW`; it does not authorize or launch a formal
 collection. Formal collection still requires merged `main`, a new frozen
 collection identity, and the normal owner-reviewed workflow.
 
+Controller fixes for a known subset of variations use a separate targeted
+diagnostic pilot instead of resuming or modifying formal collection evidence.
+The weak-contact capture pilot freezes two structural-failure sentinels first,
+then two weak-contact variations and one known-success control at 0.03 kg:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/weak_contact_capture_pilot_<sha> \
+  --workflow-id weak_contact_capture_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config \
+    configs/workflows/so101_weak_contact_capture_pilot.json
+```
+
+The pilot always executes all five frozen trials, even if its three-success
+target becomes mathematically unreachable. Passing requires the collision and
+non-cube-contact sentinels to retain their exact expected failure reasons, both
+weak-contact variations to succeed, and the known-pass control to remain
+successful. This role-aware contract prevents an unrelated sentinel success
+from masking a weak-contact regression. A pass supports the weak-contact
+hypothesis only; it does not show that the two structural failure modes were
+fixed and does not authorize formal collection or reuse of the pilot episodes
+in a release candidate.
+
+The structural contact-handoff pilot tests those two former structural
+failures plus one known-success control at 0.03 kg. During `DESCEND`, the
+controller now stops insertion at the first cube-filtered fingertip force of
+at least 0.1 N. The separate generic 2 N contact signal remains the collision
+input, so table or target-pad contact cannot advance the grasp state. Aperture
+alignment constrains the two local axes across the opening, while bilateral
+capture force, rigidity, and proof lift validate contact along the long-finger
+insertion axis. All three frozen trials must succeed:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/structural_contact_handoff_pilot_<sha> \
+  --workflow-id structural_contact_handoff_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config \
+    configs/workflows/so101_structural_contact_handoff_pilot.json
+```
+
+The pilot is diagnostic evidence only. Its episodes remain `PILOT` artifacts
+and are not eligible for the v0.0.1 dataset candidate.
+
 For an existing collection, the read-only one-shot check is:
 
 ```bash

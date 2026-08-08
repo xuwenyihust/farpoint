@@ -8,10 +8,12 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     rotary_jaw_capture_hold_target,
+    unilateral_contact_requires_recenter,
 )
 
 
@@ -81,6 +83,50 @@ def test_unilateral_recenter_starts_before_bilateral_contact():
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.BILATERAL_SETTLE)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.APPROACH)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
+
+
+def test_capture_aperture_alignment_uses_aperture_plane_not_finger_depth():
+    reference = [0.0215, -0.0085, -0.0547]
+
+    assert capture_aperture_laterally_aligned(
+        [0.0223, -0.0105, -0.1107], reference
+    )
+    assert not capture_aperture_laterally_aligned(
+        [0.0470, -0.0085, -0.0547], reference
+    )
+
+
+@pytest.mark.parametrize(
+    ("actual", "reference", "maximum_error"),
+    [
+        ([0.0, 0.0], [0.0, 0.0, 0.0], 0.025),
+        ([0.0, 0.0, float("nan")], [0.0, 0.0, 0.0], 0.025),
+        ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0),
+    ],
+)
+def test_capture_aperture_alignment_rejects_invalid_contract(
+    actual, reference, maximum_error
+):
+    with pytest.raises(ValueError):
+        capture_aperture_laterally_aligned(
+            actual,
+            reference,
+            maximum_lateral_error_m=maximum_error,
+        )
+
+
+def test_unilateral_recenter_uses_grasp_persistence_force_floor():
+    assert unilateral_contact_requires_recenter(
+        0.0, 0.12, minimum_force_n=0.10
+    )
+    assert not unilateral_contact_requires_recenter(
+        0.0, 0.09, minimum_force_n=0.10
+    )
+    assert not unilateral_contact_requires_recenter(
+        0.11, 0.12, minimum_force_n=0.10
+    )
+    with pytest.raises(ValueError, match="non-negative"):
+        unilateral_contact_requires_recenter(0.0, 0.12, minimum_force_n=-0.1)
 
 
 def test_proof_lift_rebases_once_then_preserves_accumulated_command():
@@ -225,6 +271,79 @@ def test_low_force_capture_still_requires_physical_proof_lift():
             }
         )
     ).phase is GraspPhase.VALIDATED
+
+
+def test_capture_threshold_is_distinct_from_contact_persistence_threshold():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(5):
+        decision = machine.step(_evidence(left_force_n=1.5, right_force_n=1.5))
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+
+
+def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 2
+    assert machine.step(_evidence(right_force_n=1.0)).phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    decision = machine.step(_evidence())
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+    assert decision.rebase_relative_tracking
+
+
+def test_sustain_threshold_applies_after_strong_capture():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.1,
+        bilateral_settle_s=0.1,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    assert machine.step(_evidence()).phase is GraspPhase.BILATERAL_SETTLE
+
+    decision = machine.step(_evidence(left_force_n=0.15, right_force_n=0.20))
+
+    assert decision.phase is GraspPhase.STATIC_HOLD
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"capture_contact_force_n": 0.05},
+        {"capture_contact_force_n": 60.0},
+        {"capture_confirmation_s": -0.01},
+    ),
+)
+def test_capture_admission_configuration_is_validated(overrides):
+    with pytest.raises(ValueError):
+        ContactAwareGraspStateMachine(**overrides)
 
 
 def test_motion_during_bilateral_contact_resets_settle_window():

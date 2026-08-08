@@ -6,6 +6,7 @@ from farpoint.object_variation import load_variation_config
 from farpoint.so101_collection import create_pilot_manifest, next_attempt, record_attempt
 from farpoint.so101_pilot import build_so101_pilot_plan
 from farpoint.so101_pilot_report import (
+    _expectation_errors,
     _pilot_status,
     build_so101_pilot_report,
     render_so101_pilot_report_markdown,
@@ -129,8 +130,29 @@ def test_pilot_report_passes_ten_independent_physical_front_only_episodes(tmp_pa
 
 
 def test_pilot_gate_failure_is_not_invalid_evidence():
-    assert _pilot_status("FINISHED", "FAIL", 9, 10, []) == "FAIL"
+    assert _pilot_status("FINISHED", "FAIL", 9, 10, [], []) == "FAIL"
+    assert _pilot_status("FINISHED", "PASS", 10, 10, [], ["role_mismatch"]) == "FAIL"
     assert (
-        _pilot_status("FINISHED", "FAIL", 9, 10, ["missing_episode"])
+        _pilot_status("FINISHED", "FAIL", 9, 10, ["missing_episode"], [])
         == "INVALID_EVIDENCE"
     )
+
+
+def test_targeted_pilot_expectations_check_success_and_failure_roles():
+    expectations = {
+        "collision_trial": {"success": False, "failure_reason": "collision"},
+        "fixed_trial": {"success": True},
+    }
+    passing = [
+        {"trial_id": "collision_trial", "success": False, "failure_reason": "collision"},
+        {"trial_id": "fixed_trial", "success": True, "failure_reason": None},
+    ]
+    assert _expectation_errors(expectations, passing) == []
+
+    failing = [
+        {"trial_id": "collision_trial", "success": True, "failure_reason": None},
+    ]
+    assert _expectation_errors(expectations, failing) == [
+        "collision_trial:expected_success_false",
+        "fixed_trial:missing_expected_attempt",
+    ]

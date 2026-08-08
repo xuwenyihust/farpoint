@@ -123,6 +123,26 @@ def test_watchdog_stops_strict_gate_when_target_is_unreachable():
     }
 
 
+def test_watchdog_can_finish_all_diagnostic_trials_after_target_is_unreachable():
+    plan = fixed_plan()
+    manifest = create_gate_manifest(
+        plan, collection_id="diagnostic", git_commit="a" * 40
+    )
+    manifest["stop_when_success_target_unreachable"] = False
+    record(
+        manifest,
+        plan,
+        success=False,
+        reason="bilateral_contact_lost:static_hold",
+    )
+    set_recent(manifest)
+
+    report = evaluate_so101_collection(plan, manifest, policy(), now=NOW)
+
+    assert report["decision"] == "CONTINUE"
+    assert report["reasons"] == []
+
+
 def test_watchdog_allows_eleven_then_stops_on_twelve_consecutive_failures():
     plan = workspace_plan()
     manifest = create_gate_manifest(
