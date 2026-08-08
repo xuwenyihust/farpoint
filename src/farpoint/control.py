@@ -84,6 +84,56 @@ def so101_capture_contact_loss_grace_s(object_width_m):
     return 0.30 - 0.10 * interpolation
 
 
+def so101_confirmed_capture_should_force_close(object_width_m):
+    """Keep low-force recovery closing only for the proven 30 mm geometry.
+
+    Once a 40 mm cube has produced a confirmed bilateral capture, additional
+    rotary-jaw closing can squeeze the axis-aligned cube out of the aperture.
+    The measured capture preload and Cartesian recenter remain active.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    return width < 0.035
+
+
+def so101_reset_support_is_stable(
+    expected_position_m,
+    measured_position_m,
+    linear_velocity_mps,
+    *,
+    maximum_xy_error_m=0.002,
+    maximum_z_error_m=0.001,
+    maximum_speed_mps=0.05,
+):
+    """Check that a reset object settled on its support before oracle motion."""
+    if not all(
+        len(values) == 3
+        for values in (
+            expected_position_m,
+            measured_position_m,
+            linear_velocity_mps,
+        )
+    ):
+        raise ValueError("reset support vectors must have three coordinates")
+    expected = [float(value) for value in expected_position_m]
+    measured = [float(value) for value in measured_position_m]
+    velocity = [float(value) for value in linear_velocity_mps]
+    limits = (
+        float(maximum_xy_error_m),
+        float(maximum_z_error_m),
+        float(maximum_speed_mps),
+    )
+    if any(not math.isfinite(value) for value in (*expected, *measured, *velocity)):
+        return False
+    if any(not math.isfinite(value) or value <= 0.0 for value in limits):
+        raise ValueError("reset support limits must be finite and positive")
+    xy_error = math.hypot(measured[0] - expected[0], measured[1] - expected[1])
+    z_error = abs(measured[2] - expected[2])
+    speed = math.sqrt(sum(value * value for value in velocity))
+    return xy_error <= limits[0] and z_error <= limits[1] and speed <= limits[2]
+
+
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
@@ -696,6 +746,7 @@ def force_controlled_gripper_target(
     backoff_step,
     max_position,
     close_on_unilateral=True,
+    close_on_low_force=True,
     max_preload_error=None,
     preload_reference_position=None,
 ):
@@ -737,6 +788,11 @@ def force_controlled_gripper_target(
             "action": "unilateral_hold",
         }
     if lower_force < float(min_force):
+        if not bool(close_on_low_force):
+            return {
+                "position": target,
+                "action": "low_force_hold",
+            }
         return {
             "position": min(
                 close_ceiling,
@@ -761,6 +817,7 @@ def force_controlled_rotary_jaw_target(
     backoff_step,
     max_preload_error=None,
     preload_reference_position=None,
+    close_on_low_force=True,
 ):
     """Adapt force control to a rotary jaw whose position decreases on close."""
     open_value = float(open_position)
@@ -785,6 +842,7 @@ def force_controlled_rotary_jaw_target(
         max_position=open_value - closed_value,
         max_preload_error=max_preload_error,
         preload_reference_position=reference,
+        close_on_low_force=close_on_low_force,
     )
     return {
         "position": open_value - float(update["position"]),

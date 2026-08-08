@@ -125,9 +125,11 @@ from farpoint.control import (  # noqa: E402
     settle_release_separation_target,
     so101_approach_jaw_target,
     so101_capture_contact_loss_grace_s,
+    so101_confirmed_capture_should_force_close,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_pre_capture_recenter_limit,
+    so101_reset_support_is_stable,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
@@ -1575,9 +1577,12 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     print(f"SO101_RESET_DEBUG after_reset={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
+    expected_object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
+    reset_spawn_position = expected_object_position.copy()
+    reset_spawn_position[2] += 0.002
     _move_object(
         scene[active_name],
-        object_spec["position_m"],
+        reset_spawn_position,
         device,
         object_spec["orientation_xyzw"],
     )
@@ -1587,7 +1592,46 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     # Send the same explicit pose as the first manager action; using the stale
     # tensor cached before write_joint_state would restore the USD default.
     _aim_front_camera(scene, device)
-    env.step(initial_joints)
+    # Spawn just above the table and let PhysX establish support before the
+    # oracle reads its first target. A direct contact-surface spawn previously
+    # let one tilted 40 mm cube tunnel through the table during PREGRASP.
+    for _ in range(8):
+        env.step(initial_joints)
+    measured_object_position = _numpy(active_object.data.root_pos_w[0])
+    measured_object_velocity = _numpy(active_object.data.root_lin_vel_w[0])
+    reset_support_verified = so101_reset_support_is_stable(
+        expected_object_position,
+        measured_object_position,
+        measured_object_velocity,
+    )
+    reset_support_audit = {
+        "spawn_clearance_m": 0.002,
+        "settling_control_steps": 8,
+        "expected_position_m": expected_object_position.tolist(),
+        "measured_position_m": measured_object_position.tolist(),
+        "measured_linear_velocity_mps": measured_object_velocity.tolist(),
+        "maximum_xy_error_m": 0.002,
+        "maximum_z_error_m": 0.001,
+        "maximum_speed_mps": 0.05,
+        "verified": reset_support_verified,
+    }
+    run_state["physics_audit"]["reset_support"] = copy.deepcopy(
+        reset_support_audit
+    )
+    _write_json(root / "run-state.json", run_state)
+    if not reset_support_verified:
+        raise RuntimeError(
+            "SO-101 cube failed reset support validation: "
+            f"expected={expected_object_position.tolist()}, "
+            f"measured={measured_object_position.tolist()}, "
+            f"linear_velocity={measured_object_velocity.tolist()}"
+        )
+    print(
+        "SO101_RESET_SUPPORT "
+        f"position={measured_object_position.tolist()} "
+        f"linear_velocity={measured_object_velocity.tolist()}",
+        flush=True,
+    )
     print(f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     action_term = env.action_manager.get_term("joint_positions")
     print(
@@ -1754,6 +1798,9 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 backoff_step=0.001,
                 max_preload_error=(0.012 if settling_capture else 0.030),
                 preload_reference_position=grasp_jaw_reference,
+                close_on_low_force=so101_confirmed_capture_should_force_close(
+                    object_spec["dimensions_m"][0]
+                ),
             )
             grasp_jaw_hold = float(jaw_update["position"])
             jaw_force_action = str(jaw_update["action"])
@@ -2761,6 +2808,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         "dynamic_friction": object_spec["dynamic_friction"],
         "restitution": object_spec["restitution"],
         "mass_audit": copy.deepcopy(mass_audit),
+        "reset_support_audit": copy.deepcopy(reset_support_audit),
     }
     scene_target = {
         "target_id": "green_rectangular_pad_v1",
@@ -2804,7 +2852,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         )
     _write_json(root / "metadata.json", metadata)
     (root / "observations.jsonl").write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
-    _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows), "physics_audit": {"mass": mass_audit}})
+    _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows), "physics_audit": {"mass": mass_audit, "reset_support": reset_support_audit}})
     run_state["execution_status"] = "FINISHED"
     run_state["recording"]["frame_count"] = len(rows)
     run_state["outcome"] = copy.deepcopy(metadata["outcome"])

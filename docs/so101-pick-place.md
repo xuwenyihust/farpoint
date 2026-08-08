@@ -392,6 +392,18 @@ actual PhysX mass for every attempt. The PhysX observation may settle by at most
 2 degrees from the requested upright yaw; the report records the measured angular
 error for every attempt. Pilot episodes remain `PILOT` artifacts.
 
+The first yaw=0 run isolated two controller failures. Four 40 mm attempts
+formed a real bilateral capture and then lost it because the post-capture force
+controller kept tightening the rotary jaw as force relaxed, squeezing the
+axis-aligned cube out of the aperture. Confirmed 40 mm captures now retain the
+measured 2 mrad preload and Cartesian recenter but hold, rather than close, on
+low force; the proven 30 mm recovery behavior is unchanged. One additional
+attempt spawned directly on the table contact plane, tilted, and fell through
+during PREGRASP. Reset now spawns 2 mm above the table, settles for eight
+control steps, and records a support audit for position and velocity before the
+oracle may move. A failed support audit terminates the attempt as runner
+evidence instead of consuming the 40-second PREGRASP budget.
+
 A later v0.0.2 collection may add only 50 yaw=0 demonstrations rather than the
 full 100-trial Cartesian mirror. The lowest-risk fractional design freezes the
 30 mm cube, then collects one 0.03 kg and one 0.04 kg trial in each of the 25
