@@ -26,8 +26,10 @@ from farpoint.control import (
     settle_release_separation_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
+    so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
+    so101_pre_capture_recenter_limit,
     tactile_contact_hold_target,
     tactile_search_active,
     temporal_contact_confirmed,
@@ -83,6 +85,40 @@ def test_so101_cube_contact_handoff_uses_first_filtered_finger_contact():
     assert not so101_cube_contact_handoff(0.0, 0.099)
     assert so101_cube_contact_handoff(0.0, 0.10)
     assert so101_cube_contact_handoff(0.731, 0.0)
+
+
+def test_so101_pre_capture_recenter_limit_expands_formal_cube_corridor():
+    assert so101_pre_capture_recenter_limit(0.03) == pytest.approx(0.008)
+    assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.008)
+    assert so101_pre_capture_recenter_limit(0.02) == pytest.approx(0.006)
+
+
+def test_so101_capture_contact_loss_grace_is_size_aware():
+    assert so101_capture_contact_loss_grace_s(0.03) == pytest.approx(0.30)
+    assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.25)
+    assert so101_capture_contact_loss_grace_s(0.04) == pytest.approx(0.20)
+    assert so101_capture_contact_loss_grace_s(0.02) == pytest.approx(0.30)
+    assert so101_capture_contact_loss_grace_s(0.05) == pytest.approx(0.20)
+
+
+@pytest.mark.parametrize("value", (0.0, -0.01, float("nan"), float("inf")))
+def test_so101_capture_contact_loss_grace_rejects_invalid_width(value):
+    with pytest.raises(ValueError):
+        so101_capture_contact_loss_grace_s(value)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"object_width_m": 0.0},
+        {"object_width_m": float("nan")},
+        {"object_width_m": 0.03, "maximum_correction_m": 0.0},
+        {"object_width_m": 0.03, "width_fraction": 0.5},
+    ),
+)
+def test_so101_pre_capture_recenter_limit_rejects_invalid_contract(kwargs):
+    with pytest.raises(ValueError):
+        so101_pre_capture_recenter_limit(**kwargs)
 
 
 @pytest.mark.parametrize(

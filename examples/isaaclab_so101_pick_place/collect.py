@@ -124,8 +124,10 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
+    so101_pre_capture_recenter_limit,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
@@ -1633,10 +1635,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         static_hold_s=0.20,
         proof_lift_hold_s=0.10,
         phase_timeout_s=20.0,
-        # Give the bounded force/recenter controller time to restore a missing
-        # side after first contact; stable timers still reset on every
-        # unilateral sample.
-        maximum_contact_loss_s=0.20,
+        # Give the bounded force/recenter controller enough time to restore a
+        # missing side after first contact. The smaller cube needs three more
+        # 30 Hz ticks for the rotary jaw to finish closing; 40 mm cubes retain
+        # the validated 0.20 s window. Stable timers still reset on every
+        # unilateral sample and physical proof lift remains mandatory.
+        maximum_contact_loss_s=so101_capture_contact_loss_grace_s(
+            object_spec["dimensions_m"][0]
+        ),
     )
     commanded_joints = _numpy(initial_joints[0]).astype(np.float32).copy()
     cube_was_lifted = False
@@ -1787,7 +1793,17 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # let the light cube escape while the jaw only closed harder.
                 min_force=grasp_machine.minimum_contact_force_n,
                 step=(0.0000625 if settling_capture else 0.000125),
-                max_correction=(0.002 if settling_capture else 0.004),
+                # All six deterministic recovery failures saturated the old
+                # 4 mm bound while the cube translated 6--10 mm under one
+                # finger.  Expand only the pre-capture search corridor; once
+                # bilateral contact exists, retain the proven 2 mm hold bound.
+                max_correction=(
+                    0.002
+                    if settling_capture
+                    else so101_pre_capture_recenter_limit(
+                        object_spec["dimensions_m"][0]
+                    )
+                ),
                 move_toward_contact=True,
             )
             grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)

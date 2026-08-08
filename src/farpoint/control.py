@@ -45,6 +45,45 @@ def so101_cube_contact_handoff(
     return max(forces) >= threshold
 
 
+def so101_pre_capture_recenter_limit(
+    object_width_m,
+    *,
+    maximum_correction_m=0.008,
+    width_fraction=0.30,
+):
+    """Bound capture search while leaving room for the opposite fingertip.
+
+    The former 4 mm bound saturated on every uncovered mass variation while
+    the cube moved 6--10 mm under unilateral contact.  Permit at most 30% of
+    the object width, capped at 8 mm, only before bilateral capture.
+    """
+    width = float(object_width_m)
+    maximum = float(maximum_correction_m)
+    fraction = float(width_fraction)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(maximum) or maximum <= 0.0:
+        raise ValueError("maximum_correction_m must be finite and positive")
+    if not math.isfinite(fraction) or not 0.0 < fraction < 0.5:
+        raise ValueError("width_fraction must be finite and between zero and 0.5")
+    return min(maximum, fraction * width)
+
+
+def so101_capture_contact_loss_grace_s(object_width_m):
+    """Return a size-aware grace period for bounded capture recovery.
+
+    A 30 mm cube can briefly lose both contacts while the rotary jaw closes
+    through its final few milliradians. Give that smaller geometry three
+    additional 30 Hz control ticks to recover, while preserving the validated
+    0.20 s behavior for 40 mm cubes.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 0.30 - 0.10 * interpolation
+
+
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
