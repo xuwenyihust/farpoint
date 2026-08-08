@@ -286,7 +286,7 @@ def _stage_action(
             "kind": "REPORT",
             "working_directory": "farpoint_repository_root",
             "command": [
-                "python",
+                "python3",
                 script,
                 "--plan",
                 plan,

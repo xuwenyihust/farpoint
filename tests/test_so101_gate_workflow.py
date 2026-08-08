@@ -121,6 +121,7 @@ def test_workflow_requires_report_pass_before_unlocking_next_stage(tmp_path):
     needs_report = evaluate_so101_gate_workflow(path)
     assert needs_report["status"] == "NEEDS_REPORT"
     assert needs_report["next_action"]["kind"] == "REPORT"
+    assert needs_report["next_action"]["command"][0] == "python3"
 
     write_pass_report(path, workflow, first)
     status = evaluate_so101_gate_workflow(path)

@@ -346,6 +346,7 @@ def build_so101_yaw_pilot_plan(
                 "source_trial_ids": source_ids,
                 "yaw_degrees": float(yaw_degrees),
                 "orientation_xyzw": orientation,
+                "actual_orientation_tolerance_degrees": 1.0,
                 "mass_kg_counts": {"0.03": 6, "0.04": 6},
                 "actual_mass_tolerance_kg": 1e-6,
                 "selection_policy": "balanced_representative_yaw_pilot_v1",

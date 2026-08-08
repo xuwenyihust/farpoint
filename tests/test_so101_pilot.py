@@ -240,6 +240,7 @@ def test_yaw_pilot_freezes_balanced_zero_degree_10_of_12_contract():
     assert plan["pilot"]["required_successes"] == 10
     assert plan["pilot"]["maximum_attempts"] == 12
     assert plan["pilot"]["mass_kg_counts"] == {"0.03": 6, "0.04": 6}
+    assert plan["pilot"]["actual_orientation_tolerance_degrees"] == 1.0
     assert plan["pilot"]["coverage"]["splits"] == {
         "test": 2,
         "train": 8,

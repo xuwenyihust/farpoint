@@ -388,7 +388,9 @@ cells; six trials per cube mass and size; six trials per color; and three of
 each size/color combination. All 12 attempts run even after ten successes.
 Passing requires at least 10/12 eligible successes, a verified 0-degree initial
 PhysX orientation in the observation truth and episode sidecars, and a verified
-actual PhysX mass for every attempt. Pilot episodes remain `PILOT` artifacts.
+actual PhysX mass for every attempt. The PhysX observation may settle by at most
+1 degree from the requested upright yaw; the report records the measured angular
+error for every attempt. Pilot episodes remain `PILOT` artifacts.
 
 A later v0.0.2 collection may add only 50 yaw=0 demonstrations rather than the
 full 100-trial Cartesian mirror. Freeze one 0.03 kg and one 0.04 kg trial in

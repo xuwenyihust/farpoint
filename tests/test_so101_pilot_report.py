@@ -2,6 +2,8 @@ import json
 import struct
 import zlib
 
+import pytest
+
 from farpoint.object_variation import load_variation_config
 from farpoint.so101_collection import create_pilot_manifest, next_attempt, record_attempt
 from farpoint.so101_pilot import build_so101_pilot_plan, build_so101_yaw_pilot_plan
@@ -223,10 +225,25 @@ def test_yaw_pilot_report_accepts_twelve_successes_and_audits_pose_and_mass(tmp_
     assert report["required_successes"] == 10
     assert report["yaw_audit_count"] == 12
     assert all(row["orientation_verified"] and row["mass_verified"] for row in report["yaw_audits"])
+    assert all(row["orientation_tolerance_degrees"] == 1.0 for row in report["yaw_audits"])
     assert report["evidence_errors"] == []
 
     first_observations = tmp_path / "episode_yaw_0" / "observations.jsonl"
     rows = [json.loads(line) for line in first_observations.read_text().splitlines()]
+    rows[0]["truth"]["object_root_pose_xyzw"][3:] = [
+        0.0,
+        0.0,
+        0.0043633093,
+        0.9999904807,
+    ]
+    first_observations.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    settled = build_so101_pilot_report(plan, manifest, tmp_path)
+    assert settled["pilot_status"] == "PASS"
+    assert settled["yaw_audits"][0]["initial_orientation_error_degrees"] == pytest.approx(
+        0.5
+    )
+
     rows[0]["truth"]["object_root_pose_xyzw"][3:] = [0.0, 0.0, 0.3826834324, 0.9238795325]
     first_observations.write_text("".join(json.dumps(row) + "\n" for row in rows))
 

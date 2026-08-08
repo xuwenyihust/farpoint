@@ -53,14 +53,22 @@ def _expectation_errors(
     return errors
 
 
-def _quaternions_equivalent(
-    actual: list[float], expected: list[float], *, tolerance: float = 1e-5
-) -> bool:
+def _quaternion_error_degrees(actual: list[float], expected: list[float]) -> float:
     if len(actual) != 4 or len(expected) != 4:
-        return False
-    direct = math.sqrt(sum((float(a) - float(b)) ** 2 for a, b in zip(actual, expected)))
-    negated = math.sqrt(sum((float(a) + float(b)) ** 2 for a, b in zip(actual, expected)))
-    return min(direct, negated) <= tolerance
+        return math.inf
+    actual_norm = math.sqrt(sum(float(value) ** 2 for value in actual))
+    expected_norm = math.sqrt(sum(float(value) ** 2 for value in expected))
+    if actual_norm <= 0.0 or expected_norm <= 0.0:
+        return math.inf
+    dot = sum(float(a) * float(b) for a, b in zip(actual, expected))
+    normalized_dot = min(1.0, max(-1.0, dot / (actual_norm * expected_norm)))
+    return math.degrees(2.0 * math.acos(abs(normalized_dot)))
+
+
+def _quaternions_equivalent(
+    actual: list[float], expected: list[float], *, tolerance_degrees: float
+) -> bool:
+    return _quaternion_error_degrees(actual, expected) <= tolerance_degrees
 
 
 def _yaw_pilot_audit(
@@ -87,9 +95,15 @@ def _yaw_pilot_audit(
         expected_orientation = [
             float(value) for value in trial["resolved"]["orientation_xyzw"]
         ]
+        orientation_tolerance_degrees = float(
+            pilot["actual_orientation_tolerance_degrees"]
+        )
         initial_orientation = [
             float(value) for value in episode["initial_object_pose_xyzw"][3:]
         ]
+        initial_orientation_error_degrees = _quaternion_error_degrees(
+            initial_orientation, expected_orientation
+        )
         variation = metadata.get("variation") or {}
         recorded_orientations = []
         for role in ("requested", "resolved"):
@@ -105,9 +119,15 @@ def _yaw_pilot_audit(
             ((metadata.get("scene") or {}).get("object") or {}).get("initial_pose") or {}
         ).get("orientation_xyzw") or []
         orientation_verified = _quaternions_equivalent(
-            initial_orientation, expected_orientation
+            initial_orientation,
+            expected_orientation,
+            tolerance_degrees=orientation_tolerance_degrees,
         ) and all(
-            _quaternions_equivalent(value, expected_orientation)
+            _quaternions_equivalent(
+                value,
+                expected_orientation,
+                tolerance_degrees=orientation_tolerance_degrees,
+            )
             for value in [*recorded_orientations, scene_orientation]
         )
         if not orientation_verified:
@@ -138,6 +158,8 @@ def _yaw_pilot_audit(
                 "expected_yaw_degrees": float(pilot["yaw_degrees"]),
                 "expected_orientation_xyzw": expected_orientation,
                 "initial_orientation_xyzw": initial_orientation,
+                "initial_orientation_error_degrees": initial_orientation_error_degrees,
+                "orientation_tolerance_degrees": orientation_tolerance_degrees,
                 "orientation_verified": orientation_verified,
                 "expected_mass_kg": expected_mass,
                 "physx_actual_mass_kg": (
