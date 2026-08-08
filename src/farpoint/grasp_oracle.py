@@ -30,6 +30,25 @@ def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
     }
 
 
+def capture_aperture_laterally_aligned(
+    object_in_gripper_m,
+    aperture_reference_m,
+    *,
+    maximum_lateral_error_m: float = 0.025,
+) -> bool:
+    """Check enclosure alignment without treating finger depth as lateral error."""
+    object_local = np.asarray(object_in_gripper_m, dtype=np.float64)
+    reference = np.asarray(aperture_reference_m, dtype=np.float64)
+    maximum_error = float(maximum_lateral_error_m)
+    if object_local.shape != (3,) or reference.shape != (3,):
+        raise ValueError("aperture alignment vectors must have shape (3,)")
+    if not np.all(np.isfinite(object_local)) or not np.all(np.isfinite(reference)):
+        raise ValueError("aperture alignment vectors must be finite")
+    if not np.isfinite(maximum_error) or maximum_error <= 0.0:
+        raise ValueError("maximum_lateral_error_m must be finite and positive")
+    return float(np.linalg.norm(object_local[:2] - reference[:2])) <= maximum_error
+
+
 def advance_proof_lift_command(
     commanded_joints,
     measured_joints,

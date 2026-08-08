@@ -337,3 +337,44 @@ def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
     assert plans[stage["stage_id"]]["pilot"]["expectations"]
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]
+
+
+def test_structural_contact_handoff_profile_freezes_two_fixes_and_control(tmp_path):
+    config = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    policy = load_watchdog_policy(
+        ROOT / "configs/workflows/so101_watchdog_p0.json"
+    )
+    profile = json.loads(
+        (ROOT / "configs/workflows/so101_structural_contact_handoff_pilot.json")
+        .read_text()
+    )
+
+    workflow, plans = build_so101_gate_workflow(
+        profile,
+        config,
+        policy,
+        workflow_id="structural_contact_handoff",
+        git_commit=GIT_COMMIT,
+    )
+    path = write_so101_gate_workflow(
+        tmp_path / "structural_contact_handoff", workflow, plans, policy
+    )
+    stage = workflow["stages"][0]
+    plan = plans[stage["stage_id"]]
+
+    assert stage["collector_mode"] == "pilot"
+    assert stage["maximum_attempts"] == 3
+    assert plan["pilot"]["required_successes"] == 3
+    assert plan["pilot"]["source_trial_ids"] == [
+        "cube_r03_c00_s1_k1",
+        "cube_r04_c01_s0_k0",
+        "cube_r03_c03_s1_k0",
+    ]
+    assert all(
+        expectation == {"success": True}
+        for expectation in plan["pilot"]["expectations"].values()
+    )
+    status = evaluate_so101_gate_workflow(path)
+    assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]
