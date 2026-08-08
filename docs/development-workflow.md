@@ -44,6 +44,12 @@ Formal benchmarks run from an exact commit already merged to `main`, use a
 frozen config hash and holdout seeds, and may not be tuned in place. A failure
 requires a new fix PR, a new pilot, and a new release candidate.
 
+An aborted adaptive collection manifest is also immutable. When accepted
+episodes should be retained, a merged fix may create a new continuation plan
+bound to the aborted manifest hash and containing only uncovered variations.
+The parent and continuation may be exposed as one completed selection only
+after combined evidence passes the original coverage and quality contract.
+
 Adaptive dataset collections are reported separately from fixed-sample
 benchmarks. Their manifests retain every task outcome used to calculate yield,
 distinguish selected episodes from unselected successes, and freeze coverage,

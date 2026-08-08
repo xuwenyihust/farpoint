@@ -123,7 +123,7 @@ def test_watchdog_stops_strict_gate_when_target_is_unreachable():
     }
 
 
-def test_watchdog_allows_five_then_stops_on_six_consecutive_structural_failures():
+def test_watchdog_allows_eleven_then_stops_on_twelve_consecutive_failures():
     plan = workspace_plan()
     manifest = create_gate_manifest(
         plan, collection_id="structural", git_commit="b" * 40
@@ -131,8 +131,8 @@ def test_watchdog_allows_five_then_stops_on_six_consecutive_structural_failures(
     # Exercise the structural guard independently of this gate's strict
     # success target. Formal collections retain a much larger retry budget.
     manifest["required_successes"] = 1
-    manifest["maximum_attempts"] = 10
-    for _ in range(5):
+    manifest["maximum_attempts"] = 20
+    for _ in range(11):
         record(
             manifest,
             plan,
@@ -156,11 +156,11 @@ def test_watchdog_allows_five_then_stops_on_six_consecutive_structural_failures(
 
     assert report["decision"] == "STOP"
     assert report["reasons"] == [
-        "consecutive_structural_failure:phase_timeout:6"
+        "consecutive_structural_failure:phase_timeout:12"
     ]
 
 
-def test_watchdog_stops_when_structural_failures_are_eight_of_last_ten():
+def test_default_watchdog_reports_but_does_not_stop_on_eight_of_last_ten():
     plan = workspace_plan()
     manifest = create_gate_manifest(
         plan, collection_id="recent_structural", git_commit="b" * 40
@@ -178,10 +178,41 @@ def test_watchdog_stops_when_structural_failures_are_eight_of_last_ten():
 
     report = evaluate_so101_collection(plan, manifest, policy(), now=NOW)
 
+    assert report["decision"] == "CONTINUE"
+    assert report["reasons"] == []
+    assert report["recent_window"]["stop_enabled"] is False
+    assert report["recent_window"]["failure_class_counts"] == {
+        "phase_timeout": 8
+    }
+
+
+def test_optional_recent_structural_limit_remains_backward_compatible():
+    plan = workspace_plan()
+    manifest = create_gate_manifest(
+        plan, collection_id="recent_structural_legacy", git_commit="b" * 40
+    )
+    manifest["required_successes"] = 10
+    manifest["maximum_attempts"] = 20
+    for success in (False, False, False, False, True) * 2:
+        record(
+            manifest,
+            plan,
+            success=success,
+            reason=None if success else "grasp_phase_timeout:slow_close",
+        )
+    set_recent(manifest)
+    legacy_policy = policy()
+    legacy_policy["recent_failure_fraction"] = 0.8
+
+    report = evaluate_so101_collection(
+        plan, manifest, legacy_policy, now=NOW
+    )
+
     assert report["decision"] == "STOP"
     assert report["reasons"] == [
         "recent_structural_failure:phase_timeout:8/10"
     ]
+    assert report["recent_window"]["stop_enabled"] is True
 
 
 def test_watchdog_stops_on_a_stale_live_attempt(tmp_path):
