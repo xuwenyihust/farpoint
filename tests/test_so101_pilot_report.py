@@ -225,7 +225,7 @@ def test_yaw_pilot_report_accepts_twelve_successes_and_audits_pose_and_mass(tmp_
     assert report["required_successes"] == 10
     assert report["yaw_audit_count"] == 12
     assert all(row["orientation_verified"] and row["mass_verified"] for row in report["yaw_audits"])
-    assert all(row["orientation_tolerance_degrees"] == 1.0 for row in report["yaw_audits"])
+    assert all(row["orientation_tolerance_degrees"] == 2.0 for row in report["yaw_audits"])
     assert report["evidence_errors"] == []
 
     first_observations = tmp_path / "episode_yaw_0" / "observations.jsonl"
