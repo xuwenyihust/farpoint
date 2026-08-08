@@ -103,8 +103,8 @@ policy after an attempt and its manifest are fully written. On `STOP` or
 `INVALID`, it preserves every artifact, marks a still-running manifest
 `ABORTED` with the watchdog reason, and does not start the next attempt.
 
-The P0 structural-failure tolerance permits up to five consecutive failures
-of one class and stops on the sixth. The recent ten-attempt window remains in
+The P0 structural-failure tolerance permits up to eleven consecutive failures
+of one class and stops on the twelfth. The recent ten-attempt window remains in
 the watchdog report as diagnostic evidence, but the default policy does not
 stop on a recent-window fraction. Strict gates can still stop earlier when
 their frozen success target becomes mathematically unreachable. Budget and

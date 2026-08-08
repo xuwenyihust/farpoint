@@ -123,7 +123,7 @@ def test_watchdog_stops_strict_gate_when_target_is_unreachable():
     }
 
 
-def test_watchdog_allows_five_then_stops_on_six_consecutive_structural_failures():
+def test_watchdog_allows_eleven_then_stops_on_twelve_consecutive_failures():
     plan = workspace_plan()
     manifest = create_gate_manifest(
         plan, collection_id="structural", git_commit="b" * 40
@@ -131,8 +131,8 @@ def test_watchdog_allows_five_then_stops_on_six_consecutive_structural_failures(
     # Exercise the structural guard independently of this gate's strict
     # success target. Formal collections retain a much larger retry budget.
     manifest["required_successes"] = 1
-    manifest["maximum_attempts"] = 10
-    for _ in range(5):
+    manifest["maximum_attempts"] = 20
+    for _ in range(11):
         record(
             manifest,
             plan,
@@ -156,7 +156,7 @@ def test_watchdog_allows_five_then_stops_on_six_consecutive_structural_failures(
 
     assert report["decision"] == "STOP"
     assert report["reasons"] == [
-        "consecutive_structural_failure:phase_timeout:6"
+        "consecutive_structural_failure:phase_timeout:12"
     ]
 
 
