@@ -216,6 +216,7 @@ def build_so101_yaw_pilot_plan(
     yaw_degrees: float,
     trial_profiles: list[dict[str, Any]],
     required_successes: int = 10,
+    size_scope: str = "balanced",
 ) -> dict[str, Any]:
     """Build a frozen 12-attempt SO-101 yaw pilot across both proven masses."""
     if not pilot_id:
@@ -226,6 +227,8 @@ def build_so101_yaw_pilot_plan(
         raise ValueError("SO-101 yaw pilot requires exactly 12 trial profiles")
     if required_successes != 10:
         raise ValueError("SO-101 yaw pilot requires exactly 10 successes")
+    if size_scope not in {"balanced", "30mm"}:
+        raise ValueError("yaw pilot size_scope must be balanced or 30mm")
     source_ids = [str(profile.get("source_trial_id", "")) for profile in trial_profiles]
     if any(not value for value in source_ids) or len(set(source_ids)) != len(source_ids):
         raise ValueError("yaw pilot source trial ids must be non-empty and unique")
@@ -306,12 +309,18 @@ def build_so101_yaw_pilot_plan(
         raise ValueError("yaw pilot split coverage must be train=8, validation=2, test=2")
     if len(set(coverage["workspace_cells"])) != 12:
         raise ValueError("yaw pilot must cover 12 distinct workspace cells")
-    if sorted(coverage["sizes"].values()) != [6, 6]:
-        raise ValueError("yaw pilot cube sizes must be balanced 6/6")
+    if size_scope == "balanced":
+        if sorted(coverage["sizes"].values()) != [6, 6]:
+            raise ValueError("yaw pilot cube sizes must be balanced 6/6")
+    elif coverage["sizes"] != {"size_0": 12}:
+        raise ValueError("30mm yaw pilot requires twelve size_0 trials")
     if sorted(coverage["colors"].values()) != [6, 6]:
         raise ValueError("yaw pilot cube colors must be balanced 6/6")
-    if sorted(coverage["size_color"].values()) != [3, 3, 3, 3]:
-        raise ValueError("yaw pilot size/color combinations must be balanced 3 each")
+    if size_scope == "balanced":
+        if sorted(coverage["size_color"].values()) != [3, 3, 3, 3]:
+            raise ValueError("yaw pilot size/color combinations must be balanced 3 each")
+    elif sorted(coverage["size_color"].values()) != [6, 6]:
+        raise ValueError("30mm yaw pilot colors must be balanced within size_0")
     remaining = [
         trial for trial in plan["trials"] if trial["trial_id"] not in set(source_ids)
     ]
@@ -349,7 +358,12 @@ def build_so101_yaw_pilot_plan(
                 "actual_orientation_tolerance_degrees": 2.0,
                 "mass_kg_counts": {"0.03": 6, "0.04": 6},
                 "actual_mass_tolerance_kg": 1e-6,
-                "selection_policy": "balanced_representative_yaw_pilot_v1",
+                "size_scope": size_scope,
+                "selection_policy": (
+                    "balanced_representative_yaw_pilot_v1"
+                    if size_scope == "balanced"
+                    else "staged_30mm_yaw_pilot_v1"
+                ),
                 "coverage": coverage,
             },
         }

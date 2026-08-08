@@ -360,6 +360,8 @@ def test_targeted_yaw_profile_freezes_twelve_balanced_trials(tmp_path):
     assert stage["maximum_attempts"] == 12
     assert plan["pilot"]["required_successes"] == 10
     assert plan["pilot"]["yaw_degrees"] == 0.0
+    assert plan["pilot"]["size_scope"] == "30mm"
+    assert plan["pilot"]["coverage"]["sizes"] == {"size_0": 12}
     assert evaluate_so101_gate_workflow(path)["next_action"]["command"][2:4] == [
         "--pilot-plan",
         "--plan",

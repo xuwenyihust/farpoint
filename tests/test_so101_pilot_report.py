@@ -170,7 +170,11 @@ def test_yaw_pilot_report_accepts_twelve_successes_and_audits_pose_and_mass(tmp_
     )
     profiles = workflow["stages"][0]["trial_profiles"]
     plan = build_so101_yaw_pilot_plan(
-        _config(), pilot_id="yaw0_report", yaw_degrees=0.0, trial_profiles=profiles
+        _config(),
+        pilot_id="yaw0_report",
+        yaw_degrees=0.0,
+        trial_profiles=profiles,
+        size_scope=workflow["stages"][0]["size_scope"],
     )
     manifest = create_pilot_manifest(
         plan, collection_id=plan["plan_id"], git_commit="a" * 40

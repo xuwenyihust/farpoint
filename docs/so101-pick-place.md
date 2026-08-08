@@ -384,8 +384,8 @@ python scripts/run_so101_gate_workflow.py init \
 
 The pilot uses 12 historical-success trial identities from the v0.0.0/v0.0.1
 dataset: eight train, two validation, and two test; twelve distinct workspace
-cells; six trials per cube mass and size; six trials per color; and three of
-each size/color combination. All 12 attempts run even after ten successes.
+cells; all trials at the staged 30 mm size; six trials per cube mass; and six
+trials per color. All 12 attempts run even after ten successes.
 Passing requires at least 10/12 eligible successes, a verified 0-degree initial
 PhysX orientation in the observation truth and episode sidecars, and a verified
 actual PhysX mass for every attempt. The PhysX observation may settle by at most

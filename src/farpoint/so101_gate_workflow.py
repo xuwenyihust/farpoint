@@ -163,6 +163,7 @@ def build_so101_gate_workflow(
                 yaw_degrees=float(stage_config["yaw_degrees"]),
                 trial_profiles=stage_config["trial_profiles"],
                 required_successes=int(stage_config.get("required_successes", 10)),
+                size_scope=str(stage_config.get("size_scope", "balanced")),
             )
             collector_mode = "pilot"
             report_kind = "pilot"
