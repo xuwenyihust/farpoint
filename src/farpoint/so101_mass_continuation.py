@@ -20,6 +20,8 @@ from farpoint.so101_mass_feasibility import audit_resolved_mass
 
 CONTINUATION_POLICY = "missing_variation_continuation_v1"
 COMPLETION_POLICY = "aborted_parent_plus_continuation_v1"
+RECOVERY_POLICY = "multi_source_missing_variation_recovery_v1"
+MULTI_SOURCE_COMPLETION_POLICY = "multi_source_mass_completion_v1"
 
 
 def _sha256(value: Any) -> str:
@@ -386,6 +388,333 @@ def build_mass_completion_selection(
         ),
         "collection_id": collection_id,
         "selection_policy": COMPLETION_POLICY,
+        "episodes": episodes,
+    }
+    return manifest, selection, report
+
+
+def _source_binding(
+    plan: dict[str, Any], manifest: dict[str, Any]
+) -> dict[str, Any]:
+    return {
+        "collection_id": manifest["collection_id"],
+        "execution_status": manifest["execution_status"],
+        "quality_status": manifest["quality_status"],
+        "manifest_sha256": _sha256(manifest),
+        "plan_id": plan["plan_id"],
+        "plan_sha256": plan["plan_sha256"],
+        "attempted_count": len(manifest.get("attempts") or []),
+        "selected_successes": len(manifest.get("selected_variations") or {}),
+    }
+
+
+def _is_reusable_terminal_source(manifest: dict[str, Any]) -> bool:
+    state = (
+        manifest.get("execution_status"),
+        manifest.get("quality_status"),
+    )
+    return state in {
+        ("ABORTED", "NOT_EVALUATED"),
+        ("FINISHED", "PASS"),
+    }
+
+
+def build_mass_recovery_plan(
+    reference_plan: dict[str, Any],
+    source_collections: list[tuple[dict[str, Any], dict[str, Any]]],
+    *,
+    recovery_id: str,
+    maximum_attempts: int = 150,
+) -> dict[str, Any]:
+    """Freeze variations missing across multiple immutable source collections."""
+    if not recovery_id:
+        raise ValueError("recovery_id must be non-empty")
+    if not source_collections:
+        raise ValueError("recovery requires at least one source collection")
+    attempt_budget = int(maximum_attempts)
+    reference_profile = reference_plan.get("collection") or {}
+    if reference_profile.get("kind") != COLLECTION_KIND:
+        raise ValueError("reference plan is not a mirrored mass collection")
+    expected_trials = {
+        trial["variation_id"]: trial for trial in reference_plan["trials"]
+    }
+    selected: set[str] = set()
+    bindings: list[dict[str, Any]] = []
+    for source_plan, source_manifest in source_collections:
+        validate_manifest(source_manifest, source_plan)
+        if not _is_reusable_terminal_source(source_manifest):
+            raise ValueError("recovery source must be terminal reusable evidence")
+        source_profile = source_plan.get("collection") or {}
+        if source_profile.get("kind") != COLLECTION_KIND:
+            raise ValueError("recovery source is not a mirrored mass collection")
+        source_rows = _selected_rows(source_manifest)
+        overlap = selected & set(source_rows)
+        if overlap:
+            raise ValueError(
+                "recovery sources overlap selected variations: "
+                + ",".join(sorted(overlap))
+            )
+        unknown = set(source_rows) - set(expected_trials)
+        if unknown:
+            raise ValueError(
+                "recovery source has unknown selected variations: "
+                + ",".join(sorted(unknown))
+            )
+        for variation_id, row in source_rows.items():
+            if row.get("split") != expected_trials[variation_id].get("split"):
+                raise ValueError(f"recovery source split mismatch: {variation_id}")
+        selected.update(source_rows)
+        bindings.append(_source_binding(source_plan, source_manifest))
+    trials = [
+        copy.deepcopy(trial)
+        for trial in reference_plan["trials"]
+        if trial["variation_id"] not in selected
+    ]
+    if not trials:
+        raise ValueError("source collections already cover every variation")
+    if attempt_budget < len(trials):
+        raise ValueError("recovery attempt budget cannot cover missing variations")
+    plan = copy.deepcopy(reference_plan)
+    plan["plan_id"] = str(recovery_id)
+    plan["config_revision"] = (
+        f"{reference_plan.get('config_revision', 'unknown')}:multi-source-recovery"
+    )
+    plan["trials"] = trials
+    plan["collection"] = {
+        **copy.deepcopy(reference_profile),
+        "required_successes": len(trials),
+        "maximum_attempts": attempt_budget,
+        "selection_policy": RECOVERY_POLICY,
+        "recovery_balance": mirrored_balance(plan),
+        "source_collections": bindings,
+    }
+    plan["collection"].pop("balance", None)
+    plan.pop("plan_sha256", None)
+    plan["plan_sha256"] = _sha256(plan)
+    return plan
+
+
+def build_mass_multi_source_completion_report(
+    reference_plan: dict[str, Any],
+    historical_sources: list[
+        tuple[dict[str, Any], dict[str, Any], str | Path]
+    ],
+    recovery_plan: dict[str, Any],
+    recovery_manifest: dict[str, Any],
+    *,
+    recovery_episodes_root: str | Path,
+) -> dict[str, Any]:
+    """Validate exact balanced coverage across historical and recovery sources."""
+    evidence_errors: list[str] = []
+    validate_manifest(recovery_manifest, recovery_plan)
+    recovery_profile = recovery_plan.get("collection") or {}
+    bindings = recovery_profile.get("source_collections") or []
+    if len(bindings) != len(historical_sources):
+        evidence_errors.append("recovery_source_binding_count_mismatch")
+    expected_trials = {
+        trial["variation_id"]: trial for trial in reference_plan["trials"]
+    }
+    historical_observed: set[str] = set()
+    sources: list[
+        tuple[dict[str, Any], dict[str, Any], Path]
+    ] = []
+    for index, (plan, manifest, episodes_root) in enumerate(historical_sources):
+        validate_manifest(manifest, plan)
+        sources.append((plan, manifest, Path(episodes_root)))
+        if not _is_reusable_terminal_source(manifest):
+            evidence_errors.append(
+                f"source_not_terminal_reusable:{manifest.get('collection_id')}"
+            )
+        rows = _selected_rows(manifest)
+        overlap = historical_observed & set(rows)
+        if overlap:
+            evidence_errors.append(
+                "duplicate_selected_variations:" + ",".join(sorted(overlap))
+            )
+        historical_observed.update(rows)
+        if index < len(bindings):
+            expected_binding = _source_binding(plan, manifest)
+            if bindings[index] != expected_binding:
+                evidence_errors.append(
+                    f"recovery_source_binding_mismatch:{manifest.get('collection_id')}"
+                )
+    if recovery_manifest.get("execution_status") != "FINISHED":
+        evidence_errors.append("recovery_not_finished")
+    if recovery_manifest.get("quality_status") != "PASS":
+        evidence_errors.append("recovery_quality_not_pass")
+    frozen_recovery = {
+        trial["variation_id"] for trial in recovery_plan["trials"]
+    }
+    expected_recovery = set(expected_trials) - historical_observed
+    if frozen_recovery != expected_recovery:
+        evidence_errors.append("recovery_trial_set_mismatch")
+    sources.append(
+        (recovery_plan, recovery_manifest, Path(recovery_episodes_root))
+    )
+    selected_by_source: list[dict[str, dict[str, Any]]] = []
+    observed: set[str] = set()
+    duplicates: set[str] = set()
+    for _plan, manifest, _root in sources:
+        rows = _selected_rows(manifest)
+        duplicates.update(observed & set(rows))
+        observed.update(rows)
+        selected_by_source.append(rows)
+    if duplicates:
+        evidence_errors.append(
+            "duplicate_selected_variations:" + ",".join(sorted(duplicates))
+        )
+    missing = set(expected_trials) - observed
+    extra = observed - set(expected_trials)
+    if missing:
+        evidence_errors.append(
+            "missing_selected_variations:" + ",".join(sorted(missing))
+        )
+    if extra:
+        evidence_errors.append(
+            "unknown_selected_variations:" + ",".join(sorted(extra))
+        )
+    reference_profile = reference_plan.get("collection") or {}
+    target_mass = float(reference_profile["target_mass_kg"])
+    tolerance = float(reference_profile["actual_mass_tolerance_kg"])
+    source_summaries: list[dict[str, Any]] = []
+    for (_plan, manifest, root), rows in zip(sources, selected_by_source):
+        for variation_id, row in rows.items():
+            trial = expected_trials.get(variation_id)
+            if trial is not None and row.get("split") != trial.get("split"):
+                evidence_errors.append(f"{variation_id}:split_mismatch")
+            evidence_errors.extend(
+                _audit_episode(
+                    row,
+                    root,
+                    target_mass_kg=target_mass,
+                    tolerance_kg=tolerance,
+                )
+            )
+        source_summaries.append(
+            {
+                "collection_id": manifest["collection_id"],
+                "execution_status": manifest["execution_status"],
+                "quality_status": manifest["quality_status"],
+                "attempted_count": len(manifest.get("attempts") or []),
+                "selected_successes": len(rows),
+                "manifest_sha256": _sha256(manifest),
+            }
+        )
+    selected_plan = {
+        "trials": [
+            trial
+            for trial in reference_plan["trials"]
+            if trial["variation_id"] in observed
+        ]
+    }
+    balance = mirrored_balance(selected_plan)
+    evidence_errors.extend(validate_mirrored_balance(balance))
+    return {
+        "schema_version": "farpoint.so101-mass-completion-report.v2",
+        "status": "PASS" if not evidence_errors else "INVALID_EVIDENCE",
+        "target_mass_kg": target_mass,
+        "selected_successes": len(observed),
+        "required_successes": len(expected_trials),
+        "balance": balance,
+        "sources": source_summaries,
+        "evidence_errors": sorted(set(evidence_errors)),
+    }
+
+
+def build_mass_multi_source_completion_selection(
+    reference_plan: dict[str, Any],
+    historical_sources: list[
+        tuple[dict[str, Any], dict[str, Any], str | Path]
+    ],
+    recovery_plan: dict[str, Any],
+    recovery_manifest: dict[str, Any],
+    *,
+    recovery_episodes_root: str | Path,
+    collection_id: str,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Build a candidate selection from any number of immutable sources."""
+    report = build_mass_multi_source_completion_report(
+        reference_plan,
+        historical_sources,
+        recovery_plan,
+        recovery_manifest,
+        recovery_episodes_root=recovery_episodes_root,
+    )
+    if report["status"] != "PASS":
+        raise ValueError(
+            "mass multi-source completion evidence did not pass: "
+            + "; ".join(report["evidence_errors"])
+        )
+    sources = [
+        *historical_sources,
+        (recovery_plan, recovery_manifest, recovery_episodes_root),
+    ]
+    attempts: list[dict[str, Any]] = []
+    episodes: list[dict[str, Any]] = []
+    selected_variations: dict[str, str] = {}
+    source_records: list[dict[str, Any]] = []
+    for _plan, source_manifest, episodes_root in sources:
+        rows = _selected_rows(source_manifest)
+        source_id = source_manifest["collection_id"]
+        root = Path(episodes_root)
+        for variation_id, source_row in rows.items():
+            row = copy.deepcopy(source_row)
+            source_attempt_id = row["attempt_id"]
+            row["attempt_id"] = f"{source_id}__{source_attempt_id}"
+            row["source_attempt_id"] = source_attempt_id
+            row["source_collection_id"] = source_id
+            row["selected_for_dataset"] = True
+            attempts.append(row)
+            selected_variations[variation_id] = row["attempt_id"]
+            episodes.append(
+                {
+                    "episode_dir": str(root / row["episode_id"]),
+                    "trial_id": row["trial_id"],
+                    "variation_id": variation_id,
+                    "split": row["split"],
+                }
+            )
+        source_records.append(
+            {
+                "collection_id": source_id,
+                "execution_status": source_manifest["execution_status"],
+                "quality_status": source_manifest["quality_status"],
+                "manifest_sha256": _sha256(source_manifest),
+                "episode_root": str(root),
+            }
+        )
+    order = {
+        trial["variation_id"]: index
+        for index, trial in enumerate(reference_plan["trials"])
+    }
+    attempts.sort(key=lambda row: order[row["variation_id"]])
+    episodes.sort(key=lambda row: order[row["variation_id"]])
+    timestamp = _now()
+    manifest = {
+        "schema_version": "farpoint.collection-selection.v1",
+        "collection_id": collection_id,
+        "task_id": recovery_manifest["task_id"],
+        "git_commit": recovery_manifest["git_commit"],
+        "execution_status": "FINISHED",
+        "quality_status": "PASS",
+        "release_status": "CANDIDATE",
+        "required_successes": len(reference_plan["trials"]),
+        "maximum_attempts": len(reference_plan["trials"]),
+        "created_at": timestamp,
+        "updated_at": timestamp,
+        "attempts": attempts,
+        "selected_variations": selected_variations,
+        "selection_policy": MULTI_SOURCE_COMPLETION_POLICY,
+        "balance": report["balance"],
+        "source_collections": source_records,
+    }
+    selection = {
+        "schema_version": "farpoint.export-selection.v1",
+        "dataset_id": (reference_plan.get("collection") or {}).get(
+            "dataset_id", "farpoint_so101"
+        ),
+        "collection_id": collection_id,
+        "selection_policy": MULTI_SOURCE_COMPLETION_POLICY,
         "episodes": episodes,
     }
     return manifest, selection, report

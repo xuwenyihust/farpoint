@@ -18,6 +18,9 @@ from farpoint.so101_mass_continuation import (
     build_mass_completion_report,
     build_mass_completion_selection,
     build_mass_continuation_plan,
+    build_mass_multi_source_completion_report,
+    build_mass_multi_source_completion_selection,
+    build_mass_recovery_plan,
 )
 
 
@@ -123,6 +126,68 @@ def complete_continuation(tmp_path, parent_plan, parent_manifest):
     return plan, manifest, episodes
 
 
+def partial_continuation(tmp_path, parent_plan, parent_manifest, success_count=2):
+    plan = build_mass_continuation_plan(
+        parent_plan,
+        parent_manifest,
+        continuation_id="mass_partial_continuation",
+    )
+    manifest = create_manifest(
+        plan,
+        collection_id="mass_partial_continuation",
+        git_commit="b" * 40,
+        maximum_attempts=plan["collection"]["maximum_attempts"],
+    )
+    episodes = tmp_path / "partial-continuation"
+    for _ in range(success_count):
+        attempt = next_attempt(manifest, plan)
+        episode_id = f"episode_partial__{attempt['attempt_id']}"
+        record_attempt(
+            manifest,
+            plan,
+            attempt,
+            episode_id=episode_id,
+            success=True,
+            dataset_valid=True,
+        )
+        write_success_episode(episodes, episode_id)
+    abort_collection_manifest(manifest, "operator_stop_after_partial_recovery")
+    return plan, manifest, episodes
+
+
+def complete_recovery(
+    tmp_path,
+    reference_plan,
+    source_collections,
+):
+    plan = build_mass_recovery_plan(
+        reference_plan,
+        source_collections,
+        recovery_id="mass_recovery13",
+        maximum_attempts=150,
+    )
+    manifest = create_manifest(
+        plan,
+        collection_id="mass_recovery13",
+        git_commit="c" * 40,
+        maximum_attempts=plan["collection"]["maximum_attempts"],
+    )
+    episodes = tmp_path / "recovery13"
+    while manifest["execution_status"] == "RUNNING":
+        attempt = next_attempt(manifest, plan)
+        episode_id = f"episode_recovery__{attempt['attempt_id']}"
+        record_attempt(
+            manifest,
+            plan,
+            attempt,
+            episode_id=episode_id,
+            success=True,
+            dataset_valid=True,
+        )
+        write_success_episode(episodes, episode_id)
+    return plan, manifest, episodes
+
+
 def test_continuation_plan_freezes_only_missing_variations_and_budget(tmp_path):
     parent_plan, parent_manifest, _episodes = aborted_parent(tmp_path)
 
@@ -216,3 +281,139 @@ def test_completion_detects_parent_evidence_changed_after_plan_freeze(
     assert "continuation_parent_manifest_hash_mismatch" in report[
         "evidence_errors"
     ]
+
+
+def test_multi_source_recovery_freezes_only_union_missing_with_fresh_budget(
+    tmp_path,
+):
+    parent_plan, parent_manifest, _parent_root = aborted_parent(tmp_path)
+    continuation_plan, continuation_manifest, _continuation_root = (
+        partial_continuation(tmp_path, parent_plan, parent_manifest)
+    )
+
+    recovery = build_mass_recovery_plan(
+        parent_plan,
+        [
+            (parent_plan, parent_manifest),
+            (continuation_plan, continuation_manifest),
+        ],
+        recovery_id="mass_recovery13",
+        maximum_attempts=150,
+    )
+
+    assert len(recovery["trials"]) == 13
+    assert recovery["collection"]["required_successes"] == 13
+    assert recovery["collection"]["maximum_attempts"] == 150
+    assert [
+        source["selected_successes"]
+        for source in recovery["collection"]["source_collections"]
+    ] == [35, 2]
+    selected = set(parent_manifest["selected_variations"]) | set(
+        continuation_manifest["selected_variations"]
+    )
+    assert not selected & {
+        trial["variation_id"] for trial in recovery["trials"]
+    }
+
+
+def test_multi_source_recovery_rejects_budget_smaller_than_missing(tmp_path):
+    parent_plan, parent_manifest, _parent_root = aborted_parent(tmp_path)
+    continuation_plan, continuation_manifest, _continuation_root = (
+        partial_continuation(tmp_path, parent_plan, parent_manifest)
+    )
+
+    with pytest.raises(ValueError, match="budget cannot cover"):
+        build_mass_recovery_plan(
+            parent_plan,
+            [
+                (parent_plan, parent_manifest),
+                (continuation_plan, continuation_manifest),
+            ],
+            recovery_id="mass_recovery13",
+            maximum_attempts=12,
+        )
+
+
+def test_three_source_completion_proves_35_plus_2_plus_13(tmp_path):
+    parent_plan, parent_manifest, parent_root = aborted_parent(tmp_path)
+    continuation_plan, continuation_manifest, continuation_root = (
+        partial_continuation(tmp_path, parent_plan, parent_manifest)
+    )
+    recovery_plan, recovery_manifest, recovery_root = complete_recovery(
+        tmp_path,
+        parent_plan,
+        [
+            (parent_plan, parent_manifest),
+            (continuation_plan, continuation_manifest),
+        ],
+    )
+
+    manifest, selection, report = build_mass_multi_source_completion_selection(
+        parent_plan,
+        [
+            (parent_plan, parent_manifest, parent_root),
+            (
+                continuation_plan,
+                continuation_manifest,
+                continuation_root,
+            ),
+        ],
+        recovery_plan,
+        recovery_manifest,
+        recovery_episodes_root=recovery_root,
+        collection_id="mass_completion50_three_sources",
+    )
+
+    assert report["status"] == "PASS"
+    assert report["selected_successes"] == 50
+    assert [source["selected_successes"] for source in report["sources"]] == [
+        35,
+        2,
+        13,
+    ]
+    assert len(manifest["source_collections"]) == 3
+    assert len(manifest["selected_variations"]) == 50
+    assert len(selection["episodes"]) == 50
+    assert len({row["episode_dir"] for row in selection["episodes"]}) == 50
+    assert report["balance"]["splits"] == {
+        "test": 5,
+        "train": 40,
+        "validation": 5,
+    }
+
+
+def test_three_source_completion_detects_changed_historical_manifest(tmp_path):
+    parent_plan, parent_manifest, parent_root = aborted_parent(tmp_path)
+    continuation_plan, continuation_manifest, continuation_root = (
+        partial_continuation(tmp_path, parent_plan, parent_manifest)
+    )
+    recovery_plan, recovery_manifest, recovery_root = complete_recovery(
+        tmp_path,
+        parent_plan,
+        [
+            (parent_plan, parent_manifest),
+            (continuation_plan, continuation_manifest),
+        ],
+    )
+    continuation_manifest["abort_reason"] = "mutated_after_recovery_freeze"
+
+    report = build_mass_multi_source_completion_report(
+        parent_plan,
+        [
+            (parent_plan, parent_manifest, parent_root),
+            (
+                continuation_plan,
+                continuation_manifest,
+                continuation_root,
+            ),
+        ],
+        recovery_plan,
+        recovery_manifest,
+        recovery_episodes_root=recovery_root,
+    )
+
+    assert report["status"] == "INVALID_EVIDENCE"
+    assert any(
+        error.startswith("recovery_source_binding_mismatch:")
+        for error in report["evidence_errors"]
+    )
