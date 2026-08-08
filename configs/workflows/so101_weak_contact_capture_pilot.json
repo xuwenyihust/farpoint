@@ -13,7 +13,20 @@
         "cube_r02_c00_s1_k0",
         "cube_r03_c03_s1_k0",
         "cube_r01_c01_s0_k1"
-      ]
+      ],
+      "expectations": {
+        "cube_r03_c00_s1_k1": {
+          "success": false,
+          "failure_reason": "collision"
+        },
+        "cube_r04_c01_s0_k0": {
+          "success": false,
+          "failure_reason": "grasp_phase_timeout:slow_close"
+        },
+        "cube_r02_c00_s1_k0": {"success": true},
+        "cube_r03_c03_s1_k0": {"success": true},
+        "cube_r01_c01_s0_k1": {"success": true}
+      }
     }
   ]
 }

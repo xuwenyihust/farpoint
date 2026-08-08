@@ -203,7 +203,10 @@ def evaluate_so101_collection(
         decision = "INVALID"
         errors.append(f"unsupported_execution_status:{status}")
     else:
-        if maximum_possible_successes < required_successes:
+        if (
+            manifest.get("stop_when_success_target_unreachable", True)
+            and maximum_possible_successes < required_successes
+        ):
             reasons.append("success_target_unreachable")
         if (
             consecutive_class in structural

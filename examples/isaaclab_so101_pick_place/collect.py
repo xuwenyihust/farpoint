@@ -141,6 +141,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     point_in_local_frame,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
+    unilateral_contact_requires_recenter,
 )
 from farpoint.oracle import (  # noqa: E402
     OracleObservation,
@@ -1759,7 +1760,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
             and balanced_forces is not None
-            and min(balanced_forces) < 0.5 <= max(balanced_forces)
+            and unilateral_contact_requires_recenter(
+                *balanced_forces,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )
         ):
             jaw_center = _numpy(
                 robot.data.body_link_pose_w.torch[
@@ -1775,7 +1779,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 {"center": jaw_center.tolist()},
                 {"center": gripper_center.tolist()},
                 *balanced_forces,
-                min_force=0.5,
+                # Recenter as soon as one side drops below the same 0.1 N
+                # persistence floor used by the grasp state machine. Waiting
+                # for 0.5 N missed the observed 0.12/0.0 N recovery window and
+                # let the light cube escape while the jaw only closed harder.
+                min_force=grasp_machine.minimum_contact_force_n,
                 step=(0.0000625 if settling_capture else 0.000125),
                 max_correction=(0.002 if settling_capture else 0.004),
                 move_toward_contact=True,

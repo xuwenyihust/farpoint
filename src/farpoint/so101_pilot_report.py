@@ -17,15 +17,38 @@ def _pilot_status(
     selected_count: int,
     required_successes: int,
     evidence_errors: list[str],
+    acceptance_errors: list[str],
 ) -> str:
     """Keep evidence integrity separate from an ordinary pilot gate failure."""
     if evidence_errors:
         return "INVALID_EVIDENCE"
     if execution_status != "FINISHED":
         return "INCOMPLETE"
+    if acceptance_errors:
+        return "FAIL"
     if quality_status == "PASS" and selected_count == required_successes:
         return "PASS"
     return "FAIL"
+
+
+def _expectation_errors(
+    expectations: dict[str, dict[str, Any]], attempts: list[dict[str, Any]]
+) -> list[str]:
+    by_trial_id = {attempt.get("trial_id"): attempt for attempt in attempts}
+    errors = []
+    for trial_id, expectation in expectations.items():
+        attempt = by_trial_id.get(trial_id)
+        if attempt is None:
+            errors.append(f"{trial_id}:missing_expected_attempt")
+            continue
+        expected_success = bool(expectation["success"])
+        if bool(attempt.get("success")) != expected_success:
+            errors.append(f"{trial_id}:expected_success_{str(expected_success).lower()}")
+            continue
+        expected_reason = expectation.get("failure_reason")
+        if not expected_success and attempt.get("failure_reason") != expected_reason:
+            errors.append(f"{trial_id}:unexpected_failure_reason")
+    return errors
 
 
 def build_so101_pilot_report(
@@ -93,12 +116,16 @@ def build_so101_pilot_report(
         acceptance_errors.append("selected_success_count_mismatch")
     if len(attempts) > int(manifest["maximum_attempts"]):
         acceptance_errors.append("attempt_budget_exceeded")
+    acceptance_errors.extend(
+        _expectation_errors((plan.get("pilot") or {}).get("expectations") or {}, attempts)
+    )
     status = _pilot_status(
         str(manifest.get("execution_status")),
         str(manifest.get("quality_status")),
         len(selected),
         int(manifest["required_successes"]),
         errors,
+        acceptance_errors,
     )
     failures = Counter(
         classify_so101_failure(attempt.get("failure_reason"), attempt.get("failure_category"))

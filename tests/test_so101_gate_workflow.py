@@ -302,6 +302,19 @@ def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
                     "cube_r03_c03_s1_k0",
                     "cube_r01_c01_s0_k1",
                 ],
+                "expectations": {
+                    "cube_r03_c00_s1_k1": {
+                        "success": False,
+                        "failure_reason": "collision",
+                    },
+                    "cube_r04_c01_s0_k0": {
+                        "success": False,
+                        "failure_reason": "grasp_phase_timeout:slow_close",
+                    },
+                    "cube_r02_c00_s1_k0": {"success": True},
+                    "cube_r03_c03_s1_k0": {"success": True},
+                    "cube_r01_c01_s0_k1": {"success": True},
+                },
             }
         ],
     }
@@ -321,5 +334,6 @@ def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
     assert stage["collector_mode"] == "pilot"
     assert stage["report_kind"] == "pilot"
     assert stage["maximum_attempts"] == 5
+    assert plans[stage["stage_id"]]["pilot"]["expectations"]
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]

@@ -150,6 +150,7 @@ def build_so101_gate_workflow(
                 source_trial_ids=tuple(stage_config["source_trial_ids"]),
                 target_mass_kg=float(stage_config["target_mass_kg"]),
                 required_successes=int(stage_config["required_successes"]),
+                expectations=stage_config["expectations"],
             )
             collector_mode = "pilot"
             report_kind = "pilot"

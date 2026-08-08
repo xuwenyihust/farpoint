@@ -12,6 +12,7 @@ from farpoint.grasp_oracle import (
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     rotary_jaw_capture_hold_target,
+    unilateral_contact_requires_recenter,
 )
 
 
@@ -81,6 +82,20 @@ def test_unilateral_recenter_starts_before_bilateral_contact():
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.BILATERAL_SETTLE)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.APPROACH)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
+
+
+def test_unilateral_recenter_uses_grasp_persistence_force_floor():
+    assert unilateral_contact_requires_recenter(
+        0.0, 0.12, minimum_force_n=0.10
+    )
+    assert not unilateral_contact_requires_recenter(
+        0.0, 0.09, minimum_force_n=0.10
+    )
+    assert not unilateral_contact_requires_recenter(
+        0.11, 0.12, minimum_force_n=0.10
+    )
+    with pytest.raises(ValueError, match="non-negative"):
+        unilateral_contact_requires_recenter(0.0, 0.12, minimum_force_n=-0.1)
 
 
 def test_proof_lift_rebases_once_then_preserves_accumulated_command():

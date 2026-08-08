@@ -158,11 +158,15 @@ python scripts/run_so101_gate_workflow.py init \
     configs/workflows/so101_weak_contact_capture_pilot.json
 ```
 
-The pilot passes at 3/5 eligible successes. Its ordering is intentional: the
-collision and non-cube-contact sentinels must run before the success target can
-be reached. A pass supports the weak-contact hypothesis only; it does not show
-that the two structural failure modes were fixed and does not authorize formal
-collection or reuse of the pilot episodes in a release candidate.
+The pilot always executes all five frozen trials, even if its three-success
+target becomes mathematically unreachable. Passing requires the collision and
+non-cube-contact sentinels to retain their exact expected failure reasons, both
+weak-contact variations to succeed, and the known-pass control to remain
+successful. This role-aware contract prevents an unrelated sentinel success
+from masking a weak-contact regression. A pass supports the weak-contact
+hypothesis only; it does not show that the two structural failure modes were
+fixed and does not authorize formal collection or reuse of the pilot episodes
+in a release candidate.
 
 For an existing collection, the read-only one-shot check is:
 

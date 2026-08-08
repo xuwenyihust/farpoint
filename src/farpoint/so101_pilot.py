@@ -95,6 +95,7 @@ def build_targeted_mass_diagnostic_pilot_plan(
     source_trial_ids: tuple[str, ...],
     target_mass_kg: float,
     required_successes: int,
+    expectations: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build a bounded pilot for named variations at one audited cube mass."""
     if not pilot_id:
@@ -111,6 +112,16 @@ def build_targeted_mass_diagnostic_pilot_plan(
     missing = sorted(set(source_trial_ids) - available_ids)
     if missing:
         raise ValueError("unknown targeted pilot trial ids: " + ", ".join(missing))
+    expectations = copy.deepcopy(expectations or {})
+    if set(expectations) != set(source_trial_ids):
+        raise ValueError("targeted pilot expectations must cover every source trial")
+    for trial_id, expectation in expectations.items():
+        if not isinstance(expectation.get("success"), bool):
+            raise ValueError(f"targeted pilot expectation requires success: {trial_id}")
+        if not expectation["success"] and not expectation.get("failure_reason"):
+            raise ValueError(
+                f"failed targeted pilot expectation requires failure_reason: {trial_id}"
+            )
 
     grams = int(round(target_mass_kg * 1000.0))
     transformed = []
@@ -143,6 +154,10 @@ def build_targeted_mass_diagnostic_pilot_plan(
     by_source_id = {trial["source_trial_id"]: trial for trial in transformed}
     selected = [by_source_id[trial_id] for trial_id in source_trial_ids]
     selected_ids = {trial["trial_id"] for trial in selected}
+    expectations_by_trial_id = {
+        by_source_id[source_id]["trial_id"]: expectations[source_id]
+        for source_id in source_trial_ids
+    }
     remaining = [trial for trial in transformed if trial["trial_id"] not in selected_ids]
     plan.update(
         {
@@ -171,6 +186,7 @@ def build_targeted_mass_diagnostic_pilot_plan(
                 "source_trial_ids": list(source_trial_ids),
                 "target_mass_kg": target_mass_kg,
                 "actual_mass_tolerance_kg": 1e-6,
+                "expectations": expectations_by_trial_id,
             },
         }
     )

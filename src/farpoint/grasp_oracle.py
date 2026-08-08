@@ -165,6 +165,21 @@ def rotary_jaw_capture_hold_target(
     )
 
 
+def unilateral_contact_requires_recenter(
+    left_force_n: float,
+    right_force_n: float,
+    *,
+    minimum_force_n: float,
+) -> bool:
+    """Return whether exactly one finger retains meaningful object contact."""
+    if minimum_force_n < 0.0:
+        raise ValueError("minimum force must be non-negative")
+    return (
+        min(float(left_force_n), float(right_force_n)) < minimum_force_n
+        <= max(float(left_force_n), float(right_force_n))
+    )
+
+
 @dataclass(frozen=True)
 class GraspEvidence:
     left_force_n: float
