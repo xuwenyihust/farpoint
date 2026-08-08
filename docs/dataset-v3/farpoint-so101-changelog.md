@@ -4,6 +4,20 @@ This changelog tracks published versions of
 `wenyixu101/farpoint-so101`. Dataset versions are independent of Farpoint
 Python package and schema versions.
 
+## v0.0.1
+
+Adds a mirrored cube-mass stratum while preserving the v0.0.0 policy feature
+schema:
+
+- 100 successful SO-101 cube pick-and-place demonstrations
+- 72,433 policy frames at 30 Hz
+- 80 train, 10 validation, and 10 test episodes
+- 50 demonstrations at 0.03 kg and 50 at 0.04 kg
+- matched position, cube-size, color, and split coverage across both masses
+- complete 5 x 5 cube-position grid coverage at each mass
+- one 640 x 480 front-camera RGB stream; no wrist-camera feature
+- unchanged six-dimensional joint state and joint-position action schema
+
 ## v0.0.0
 
 Initial experimental simulation baseline:
