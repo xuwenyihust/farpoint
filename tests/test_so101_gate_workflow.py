@@ -378,3 +378,51 @@ def test_structural_contact_handoff_profile_freezes_two_fixes_and_control(tmp_pa
     )
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]
+
+
+def test_recovery6_contact_profile_freezes_failures_and_success_controls(tmp_path):
+    config = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    policy = load_watchdog_policy(
+        ROOT / "configs/workflows/so101_watchdog_p0.json"
+    )
+    profile = json.loads(
+        (ROOT / "configs/workflows/so101_recovery6_contact_pilot.json")
+        .read_text()
+    )
+
+    workflow, plans = build_so101_gate_workflow(
+        profile,
+        config,
+        policy,
+        workflow_id="recovery6_contact",
+        git_commit=GIT_COMMIT,
+    )
+    path = write_so101_gate_workflow(
+        tmp_path / "recovery6_contact", workflow, plans, policy
+    )
+    stage = workflow["stages"][0]
+    plan = plans[stage["stage_id"]]
+
+    assert stage["collector_mode"] == "pilot"
+    assert stage["maximum_attempts"] == 8
+    assert plan["pilot"]["required_successes"] == 8
+    assert plan["pilot"]["source_trial_ids"][:6] == [
+        "cube_r02_c01_s0_k1",
+        "cube_r03_c01_s0_k0",
+        "cube_r03_c01_s0_k1",
+        "cube_r04_c02_s0_k0",
+        "cube_r04_c02_s1_k0",
+        "cube_r04_c03_s0_k1",
+    ]
+    assert plan["pilot"]["source_trial_ids"][-2:] == [
+        "cube_r03_c01_s1_k0",
+        "cube_r04_c04_s0_k0",
+    ]
+    assert all(
+        expectation == {"success": True}
+        for expectation in plan["pilot"]["expectations"].values()
+    )
+    status = evaluate_so101_gate_workflow(path)
+    assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]

@@ -189,6 +189,29 @@ python scripts/run_so101_gate_workflow.py init \
 The pilot is diagnostic evidence only. Its episodes remain `PILOT` artifacts
 and are not eligible for the v0.0.1 dataset candidate.
 
+The recovery6 contact pilot targets the six variations that remained uncovered
+after the immutable 35 + 2 + 7 mass collections. Their 18 repeated attempts
+were deterministic: every failure saturated the 4 mm pre-capture XY recenter
+bound, moved the cube about 6--10 mm under unilateral contact, then lost a
+brief bilateral capture during settle or static hold. The fix expands only the
+pre-capture corridor to 30% of object width, capped at 8 mm. The post-capture
+2 mm hold bound, force thresholds, proof lift, success criteria, and watchdog
+policy remain unchanged.
+
+Run all six failures plus one successful control for each cube size:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/recovery6_contact_pilot_<sha> \
+  --workflow-id recovery6_contact_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_recovery6_contact_pilot.json
+```
+
+All eight frozen trials must succeed. A pass supports merging the controller
+fix; it does not authorize recovery6 collection or reuse pilot episodes in the
+dataset candidate.
+
 For an existing collection, the read-only one-shot check is:
 
 ```bash
