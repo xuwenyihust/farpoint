@@ -227,6 +227,79 @@ def test_low_force_capture_still_requires_physical_proof_lift():
     ).phase is GraspPhase.VALIDATED
 
 
+def test_capture_threshold_is_distinct_from_contact_persistence_threshold():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(5):
+        decision = machine.step(_evidence(left_force_n=1.5, right_force_n=1.5))
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+
+
+def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 2
+    assert machine.step(_evidence(right_force_n=1.0)).phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    decision = machine.step(_evidence())
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+    assert decision.rebase_relative_tracking
+
+
+def test_sustain_threshold_applies_after_strong_capture():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.1,
+        bilateral_settle_s=0.1,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    assert machine.step(_evidence()).phase is GraspPhase.BILATERAL_SETTLE
+
+    decision = machine.step(_evidence(left_force_n=0.15, right_force_n=0.20))
+
+    assert decision.phase is GraspPhase.STATIC_HOLD
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"capture_contact_force_n": 0.05},
+        {"capture_contact_force_n": 60.0},
+        {"capture_confirmation_s": -0.01},
+    ),
+)
+def test_capture_admission_configuration_is_validated(overrides):
+    with pytest.raises(ValueError):
+        ContactAwareGraspStateMachine(**overrides)
+
+
 def test_motion_during_bilateral_contact_resets_settle_window():
     machine = ContactAwareGraspStateMachine(control_hz=10, bilateral_settle_s=0.2)
     machine.step(_evidence(right_force_n=0.0))

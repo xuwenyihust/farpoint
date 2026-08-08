@@ -69,7 +69,7 @@ def parse_args():
     collection_mode.add_argument(
         "--pilot-plan",
         action="store_true",
-        help="Use a frozen 10-success/15-attempt code-review pilot plan.",
+        help="Use a frozen bounded code-review or diagnostic pilot plan.",
     )
     parser.add_argument("--diagnose-jacobian", action="store_true")
     parser.add_argument("--diagnose-grasp-postures", action="store_true")
@@ -1605,12 +1605,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
     release_position = np.asarray([0.20, 0.10, 0.080], dtype=np.float32)
-    # Let both position actuators settle against the cube before commanding
-    # any lift; two 30 Hz samples only prove an impact, not a stable grasp.
-    # CLOSE performs its own three-frame bilateral-force confirmation before
-    # exposing ``stable_grasp_contact``.  The generic machine must consume
-    # that already-validated event immediately; asking it for three more
-    # samples duplicates the window after the aperture has been frozen.
+    # Separate capture admission from contact persistence. A 0.1 N bilateral
+    # sample is enough to preserve an already captured cube, but it is too
+    # weak to freeze the rotary jaw: light cubes can briefly touch both long
+    # fingers while still sliding out of the aperture. Require the same 2 N,
+    # three-tick confirmation used by CLOSE before entering bilateral settle.
     schedule = CONTROL_RECORDING_SCHEDULE
     machine = OracleStateMachine(
         phase_timeout_steps=schedule.steps_for_seconds(40.0),
@@ -1624,6 +1623,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         # The formal workspace run showed stable 30 mm captures oscillating
         # around 0.1--1.9 N before being rejected by the former 2 N floor.
         minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
         static_hold_s=0.20,

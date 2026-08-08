@@ -277,3 +277,49 @@ def test_candidate_mass_workspace_profile_freezes_five_trials(tmp_path):
     assert stage["report_kind"] == "mass_workspace_pilot"
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--gate-plan", "--plan"]
+
+
+def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
+    config = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    policy = load_watchdog_policy(
+        ROOT / "configs/workflows/so101_watchdog_p0.json"
+    )
+    profile = {
+        "schema_version": "farpoint.so101-gate-workflow-config.v1",
+        "completion_status": "PILOT_COMPLETE",
+        "stages": [
+            {
+                "stage_id": "capture_fix",
+                "kind": "targeted_mass_diagnostic_pilot",
+                "target_mass_kg": 0.03,
+                "required_successes": 3,
+                "source_trial_ids": [
+                    "cube_r03_c00_s1_k1",
+                    "cube_r04_c01_s0_k0",
+                    "cube_r02_c00_s1_k0",
+                    "cube_r03_c03_s1_k0",
+                    "cube_r01_c01_s0_k1",
+                ],
+            }
+        ],
+    }
+
+    workflow, plans = build_so101_gate_workflow(
+        profile,
+        config,
+        policy,
+        workflow_id="capture_fix",
+        git_commit=GIT_COMMIT,
+    )
+    path = write_so101_gate_workflow(
+        tmp_path / "capture_fix", workflow, plans, policy
+    )
+    stage = workflow["stages"][0]
+
+    assert stage["collector_mode"] == "pilot"
+    assert stage["report_kind"] == "pilot"
+    assert stage["maximum_attempts"] == 5
+    status = evaluate_so101_gate_workflow(path)
+    assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]

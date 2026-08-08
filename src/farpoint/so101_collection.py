@@ -176,16 +176,42 @@ def create_manifest(
 def create_pilot_manifest(
     plan: dict[str, Any], *, collection_id: str, git_commit: str
 ) -> dict[str, Any]:
-    """Create a bounded 10-success manifest from a frozen stratified plan."""
+    """Create a bounded manifest from a frozen stratified or diagnostic pilot."""
     trials = plan.get("trials") or []
     pilot = plan.get("pilot") or {}
     required_successes = int(pilot.get("required_successes", 0))
     maximum_attempts = int(pilot.get("maximum_attempts", 0))
+    kind = pilot.get("kind")
+    if kind == "targeted_mass_diagnostic_pilot":
+        frozen_ids = pilot.get("trial_ids") or []
+        if len(trials) != 100:
+            raise ValueError("targeted pilot plan must retain all 100 variations")
+        if not 0 < required_successes <= maximum_attempts:
+            raise ValueError("targeted pilot success threshold is invalid")
+        if maximum_attempts != len(frozen_ids):
+            raise ValueError("targeted pilot attempt budget must match its trial ids")
+        if [trial["trial_id"] for trial in trials[:maximum_attempts]] != frozen_ids:
+            raise ValueError("targeted pilot ordering does not match its frozen ids")
+        target_mass = float(pilot.get("target_mass_kg", 0.0))
+        if target_mass <= 0.0 or {
+            float(trial["resolved"]["mass_kg"])
+            for trial in trials[:maximum_attempts]
+        } != {target_mass}:
+            raise ValueError("targeted pilot mass is inconsistent")
+        return _new_manifest(
+            plan,
+            collection_id=collection_id,
+            git_commit=git_commit,
+            required_successes=required_successes,
+            maximum_attempts=maximum_attempts,
+            release_status="PILOT",
+        )
+
     primary_ids = pilot.get("primary_trial_ids") or []
     fallback_ids = pilot.get("fallback_trial_ids") or []
     if len(trials) != 100:
         raise ValueError("SO-101 pilot plan must retain all 100 variations")
-    if pilot.get("kind") != "stratified_success_pilot":
+    if kind != "stratified_success_pilot":
         raise ValueError("unsupported SO-101 pilot kind")
     if required_successes != 10 or len(primary_ids) != required_successes:
         raise ValueError("SO-101 pilot must freeze exactly 10 primary successes")

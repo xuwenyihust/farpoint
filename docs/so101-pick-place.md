@@ -144,6 +144,26 @@ produces `READY_FOR_FORMAL_REVIEW`; it does not authorize or launch a formal
 collection. Formal collection still requires merged `main`, a new frozen
 collection identity, and the normal owner-reviewed workflow.
 
+Controller fixes for a known subset of variations use a separate targeted
+diagnostic pilot instead of resuming or modifying formal collection evidence.
+The weak-contact capture pilot freezes two structural-failure sentinels first,
+then two weak-contact variations and one known-success control at 0.03 kg:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/weak_contact_capture_pilot_<sha> \
+  --workflow-id weak_contact_capture_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config \
+    configs/workflows/so101_weak_contact_capture_pilot.json
+```
+
+The pilot passes at 3/5 eligible successes. Its ordering is intentional: the
+collision and non-cube-contact sentinels must run before the success target can
+be reached. A pass supports the weak-contact hypothesis only; it does not show
+that the two structural failure modes were fixed and does not authorize formal
+collection or reuse of the pilot episodes in a release candidate.
+
 For an existing collection, the read-only one-shot check is:
 
 ```bash
