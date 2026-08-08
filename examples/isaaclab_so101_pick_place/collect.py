@@ -125,7 +125,7 @@ from farpoint.control import (  # noqa: E402
     settle_release_separation_target,
     so101_approach_jaw_target,
     so101_capture_contact_loss_grace_s,
-    so101_confirmed_capture_should_force_close,
+    so101_cube_grasp_posture,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_pre_capture_recenter_limit,
@@ -1542,6 +1542,18 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     torch.manual_seed(environment_seed)
     env.reset(seed=environment_seed)
     object_spec = trial["resolved"]
+    grasp_posture = np.asarray(
+        so101_cube_grasp_posture(
+            object_spec["dimensions_m"][0],
+            object_spec["orientation_xyzw"],
+        ),
+        dtype=np.float32,
+    )
+    grasp_posture_profile = (
+        "axis_aligned_large_cube_v1"
+        if tuple(float(value) for value in grasp_posture) == (0.0, -0.5)
+        else "legacy_diagonal_cube_v1"
+    )
     active_object = scene[active_name]
     resolved_mass_kg = float(object_spec["mass_kg"])
     active_object.set_masses_index(
@@ -1626,10 +1638,40 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             f"measured={measured_object_position.tolist()}, "
             f"linear_velocity={measured_object_velocity.tolist()}"
         )
+    # The settling steps above are for the cube, not part of the oracle
+    # trajectory. Restore the articulation state without advancing physics so
+    # every episode begins from the same authored HOME pose as the validated
+    # collector. Keeping the arm motion accumulated during cube settling
+    # changed reachability and introduced deterministic PREPLACE regressions.
+    robot.write_joint_state_to_sim(
+        initial_joints,
+        torch.zeros_like(initial_joints),
+    )
+    robot.set_joint_position_target(initial_joints)
+    env.sim.forward()
+    scene.update(0.0)
+    restored_joints = _numpy(robot.data.joint_pos[0])
+    maximum_home_error_rad = float(
+        np.max(np.abs(restored_joints - SO101_HOME_JOINTS))
+    )
+    reset_support_audit["arm_restored_to_home"] = bool(
+        maximum_home_error_rad <= 1e-5
+    )
+    reset_support_audit["maximum_home_error_rad"] = maximum_home_error_rad
+    run_state["physics_audit"]["reset_support"] = copy.deepcopy(
+        reset_support_audit
+    )
+    _write_json(root / "run-state.json", run_state)
+    if not reset_support_audit["arm_restored_to_home"]:
+        raise RuntimeError(
+            "SO-101 arm failed reset HOME restoration: "
+            f"maximum_error_rad={maximum_home_error_rad}"
+        )
     print(
         "SO101_RESET_SUPPORT "
         f"position={measured_object_position.tolist()} "
-        f"linear_velocity={measured_object_velocity.tolist()}",
+        f"linear_velocity={measured_object_velocity.tolist()} "
+        f"maximum_home_error_rad={maximum_home_error_rad}",
         flush=True,
     )
     print(f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
@@ -1737,7 +1779,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             # physically successful enclosure settles at a different wrist
             # roll. Transition to that calibrated capture posture during CLOSE
             # and latch the measured result only after bilateral confirmation.
-            grasp_hold_posture = SO101_CAPTURE_POSTURE.copy()
+            grasp_hold_posture = grasp_posture.copy()
         if phase is OraclePhase.VERIFY_CONTACT and grasp_offset is None:
             grasp_offset = ee_position - _numpy(scene[active_name].data.root_pos_w[0])
             # CLOSE integrates Cartesian commands while the fingers are
@@ -1798,9 +1840,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 backoff_step=0.001,
                 max_preload_error=(0.012 if settling_capture else 0.030),
                 preload_reference_position=grasp_jaw_reference,
-                close_on_low_force=so101_confirmed_capture_should_force_close(
-                    object_spec["dimensions_m"][0]
-                ),
             )
             grasp_jaw_hold = float(jaw_update["position"])
             jaw_force_action = str(jaw_update["action"])
@@ -1913,10 +1952,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     0.10 if pregrasp_route_index == 0 else 0.20
                 )
                 route_posture_ready = (
-                    abs(float(current[3].item()) - float(SO101_GRASP_POSTURE[0]))
+                    abs(float(current[3].item()) - float(grasp_posture[0]))
                     < route_posture_tolerance
                     and abs(
-                        float(current[4].item()) - float(SO101_GRASP_POSTURE[1])
+                        float(current[4].item()) - float(grasp_posture[1])
                     )
                     < route_posture_tolerance
                 )
@@ -2307,7 +2346,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # lever the cube out of the rotary jaw during VERIFY.
                 posture_target = grasp_hold_posture
             else:
-                posture_target = SO101_GRASP_POSTURE
+                posture_target = grasp_posture
             # Position plus the two calibrated wrist targets is the reachable
             # 5-DOF task.  A fixed world quaternion over-constrains translation
             # and was the cause of the pre-v6 single-finger collision.
@@ -2836,7 +2875,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
         "provenance": {"collection_id": collection_id, "git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
         "task": {"task_id": "so101_cube_pick_place", "instruction": f"Pick up the {object_spec['shape']} and place it on the green target pad.", "object_shape": object_spec["shape"], "success_criteria_id": "contact_pick_place_footprint_v2", "manipulated_entity_id": "pick_object", "target_entity_id": "placement_target", "acceptance_region_id": "placement_region"},
-        "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
+        "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "oracle_grasp_posture_profile": grasp_posture_profile, "oracle_grasp_posture_target_rad": grasp_posture.tolist(), "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
         "scene": {"coordinate_frame": "isaac_world", "object": scene_object, "target": scene_target, "entities": list(resolved_variation["entities"].values()), "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
         "variation": {"schema_version": "farpoint.variation.v3", "variation_id": trial["variation_id"], "varied_axes": copy.deepcopy(trial["varied_axes"]), "frozen_axes": copy.deepcopy(trial["frozen_axes"]), "requested": requested_variation, "resolved": resolved_variation, "split": trial["split"]},
         "recording": {"fps": schedule.recording_hz, "control_hz": schedule.control_hz, "recording_stride": schedule.recording_stride, "cameras": (["observation.images.front", "observation.images.wrist"] if args_cli.enable_wrist_camera else ["observation.images.front"]), "frame_count": len(rows), "state_features": list(LEROBOT_JOINT_NAMES), "action_features": list(LEROBOT_JOINT_NAMES), "state_unit": "radian", "action_unit": "radian", "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render"},

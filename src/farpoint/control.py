@@ -1,6 +1,35 @@
 import math
 
 
+def so101_cube_grasp_posture(object_width_m, orientation_xyzw):
+    """Return the bounded wrist posture calibrated for a cube geometry.
+
+    The original ``(0.5, 0.5)`` posture aligns the rotary jaw with the
+    historical 45-degree cube.  A 40 mm axis-aligned cube presents a wider
+    corner to that same closing axis; the kinematic screen found that
+    ``(0.0, -0.5)`` reduces the nearest face-normal error from about 42 to 9
+    degrees.  Keep the new posture narrowly scoped until its contact pilot
+    passes so the proven 30 mm and diagonal-cube paths remain unchanged.
+    """
+    width = float(object_width_m)
+    quaternion = tuple(float(value) for value in orientation_xyzw)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if len(quaternion) != 4 or not all(math.isfinite(value) for value in quaternion):
+        raise ValueError("orientation_xyzw must contain four finite values")
+    norm = math.sqrt(sum(value * value for value in quaternion))
+    if norm <= 1e-12:
+        raise ValueError("orientation_xyzw must be non-zero")
+    x, y, z, w = (value / norm for value in quaternion)
+    yaw_degrees = math.degrees(
+        math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    )
+    canonical_yaw = ((yaw_degrees + 45.0) % 90.0) - 45.0
+    if width >= 0.035 and abs(canonical_yaw) <= 5.0:
+        return (0.0, -0.5)
+    return (0.5, 0.5)
+
+
 def so101_approach_jaw_target(object_width_m):
     """Return the validated open-jaw target for the supported cube sizes."""
     width = float(object_width_m)
@@ -82,19 +111,6 @@ def so101_capture_contact_loss_grace_s(object_width_m):
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
     return 0.30 - 0.10 * interpolation
-
-
-def so101_confirmed_capture_should_force_close(object_width_m):
-    """Keep low-force recovery closing only for the proven 30 mm geometry.
-
-    Once a 40 mm cube has produced a confirmed bilateral capture, additional
-    rotary-jaw closing can squeeze the axis-aligned cube out of the aperture.
-    The measured capture preload and Cartesian recenter remain active.
-    """
-    width = float(object_width_m)
-    if not math.isfinite(width) or width <= 0.0:
-        raise ValueError("object_width_m must be finite and positive")
-    return width < 0.035
 
 
 def so101_reset_support_is_stable(
@@ -746,7 +762,6 @@ def force_controlled_gripper_target(
     backoff_step,
     max_position,
     close_on_unilateral=True,
-    close_on_low_force=True,
     max_preload_error=None,
     preload_reference_position=None,
 ):
@@ -788,11 +803,6 @@ def force_controlled_gripper_target(
             "action": "unilateral_hold",
         }
     if lower_force < float(min_force):
-        if not bool(close_on_low_force):
-            return {
-                "position": target,
-                "action": "low_force_hold",
-            }
         return {
             "position": min(
                 close_ceiling,
@@ -817,7 +827,6 @@ def force_controlled_rotary_jaw_target(
     backoff_step,
     max_preload_error=None,
     preload_reference_position=None,
-    close_on_low_force=True,
 ):
     """Adapt force control to a rotary jaw whose position decreases on close."""
     open_value = float(open_position)
@@ -842,7 +851,6 @@ def force_controlled_rotary_jaw_target(
         max_position=open_value - closed_value,
         max_preload_error=max_preload_error,
         preload_reference_position=reference,
-        close_on_low_force=close_on_low_force,
     )
     return {
         "position": open_value - float(update["position"]),
