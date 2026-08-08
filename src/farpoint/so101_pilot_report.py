@@ -96,7 +96,7 @@ def _yaw_pilot_audit(
             float(value) for value in trial["resolved"]["orientation_xyzw"]
         ]
         orientation_tolerance_degrees = float(
-            pilot["actual_orientation_tolerance_degrees"]
+            pilot.get("actual_orientation_tolerance_degrees", 1.0)
         )
         initial_orientation = [
             float(value) for value in episode["initial_object_pose_xyzw"][3:]
