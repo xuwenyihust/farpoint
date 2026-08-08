@@ -172,8 +172,10 @@ The structural contact-handoff pilot tests those two former structural
 failures plus one known-success control at 0.03 kg. During `DESCEND`, the
 controller now stops insertion at the first cube-filtered fingertip force of
 at least 0.1 N. The separate generic 2 N contact signal remains the collision
-input, so table or target-pad contact cannot advance the grasp state. All three
-frozen trials must succeed:
+input, so table or target-pad contact cannot advance the grasp state. Aperture
+alignment constrains the two local axes across the opening, while bilateral
+capture force, rigidity, and proof lift validate contact along the long-finger
+insertion axis. All three frozen trials must succeed:
 
 ```bash
 python scripts/run_so101_gate_workflow.py init \

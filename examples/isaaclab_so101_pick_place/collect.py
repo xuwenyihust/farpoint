@@ -137,6 +137,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
@@ -2430,12 +2431,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         grasp_evidence = GraspEvidence(
                 left_force_n=float(contact_forces[0]),
                 right_force_n=float(contact_forces[1]),
-                aperture_aligned=float(
-                    np.linalg.norm(
-                        object_in_gripper - capture_object_in_gripper
-                    )
-                )
-                <= 0.025,
+                # The SO-101 fingers are long along local Z. Enclosure needs
+                # tight alignment across the aperture plane; physical depth
+                # is validated separately by bilateral force, rigidity and
+                # proof lift. A 3-D norm incorrectly rejected stable fingertip
+                # captures at short-reach workspace positions.
+                aperture_aligned=capture_aperture_laterally_aligned(
+                    object_in_gripper,
+                    capture_object_in_gripper,
+                ),
                 relative_translation_error_m=relative_translation_error,
                 relative_speed_mps=relative_speed,
                 proof_lift_m=(

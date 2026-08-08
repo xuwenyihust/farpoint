@@ -8,6 +8,7 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
@@ -82,6 +83,36 @@ def test_unilateral_recenter_starts_before_bilateral_contact():
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.BILATERAL_SETTLE)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.APPROACH)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
+
+
+def test_capture_aperture_alignment_uses_aperture_plane_not_finger_depth():
+    reference = [0.0215, -0.0085, -0.0547]
+
+    assert capture_aperture_laterally_aligned(
+        [0.0223, -0.0105, -0.1107], reference
+    )
+    assert not capture_aperture_laterally_aligned(
+        [0.0470, -0.0085, -0.0547], reference
+    )
+
+
+@pytest.mark.parametrize(
+    ("actual", "reference", "maximum_error"),
+    [
+        ([0.0, 0.0], [0.0, 0.0, 0.0], 0.025),
+        ([0.0, 0.0, float("nan")], [0.0, 0.0, 0.0], 0.025),
+        ([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0),
+    ],
+)
+def test_capture_aperture_alignment_rejects_invalid_contract(
+    actual, reference, maximum_error
+):
+    with pytest.raises(ValueError):
+        capture_aperture_laterally_aligned(
+            actual,
+            reference,
+            maximum_lateral_error_m=maximum_error,
+        )
 
 
 def test_unilateral_recenter_uses_grasp_persistence_force_floor():
