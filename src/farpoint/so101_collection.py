@@ -145,7 +145,10 @@ def create_manifest(
     trials = plan.get("trials") or []
     profile = plan.get("collection") or {}
     if profile:
-        if profile.get("kind") != "mirrored_mass_success_collection":
+        if profile.get("kind") not in {
+            "mirrored_mass_success_collection",
+            "balanced_yaw_success_collection",
+        }:
             raise ValueError("unsupported SO-101 collection profile")
         required_successes = int(profile.get("required_successes", 0))
         frozen_maximum = int(profile.get("maximum_attempts", 0))

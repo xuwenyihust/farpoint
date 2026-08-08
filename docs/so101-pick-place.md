@@ -513,6 +513,43 @@ This path audits 35 + 2 + 13 episode artifacts independently, preserves each
 source collection ID and attempt identity, and still requires exact 50/50
 variation coverage before producing a candidate selection.
 
+## v0.0.2 yaw=0°, 30 mm formal collection
+
+The first yaw tranche contains 50 distinct variations and requires one eligible
+success for each within a hard ceiling of 150 attempts. Every 5×5 workspace
+cell contributes exactly two demonstrations: one red and one blue, and one at
+0.03 kg and one at 0.04 kg. A checkerboard assignment alternates which color
+receives which mass, producing 25/25 color and mass balance and 12/12/13/13
+mass-by-color counts. All cubes are 30 mm at yaw=0°. Splits are frozen before
+execution at 40 train, 5 validation, and 5 test.
+
+```bash
+python scripts/create_so101_yaw_collection_plan.py \
+  artifacts/so101/yaw0_30mm_v0_0_2/plan.json
+
+FARPOINT_GIT_COMMIT="$(git rev-parse HEAD)" \
+scripts/run_so101_isaaclab.sh headless \
+  --plan artifacts/so101/yaw0_30mm_v0_0_2/plan.json \
+  --manifest artifacts/so101/yaw0_30mm_v0_0_2/manifest.json \
+  --output-root artifacts/so101/yaw0_30mm_v0_0_2/episodes \
+  --collection-id so101_cube_yaw0_30mm_formal_v0_0_2_<date>_<sha> \
+  --max-attempts-this-run 150 \
+  --watchdog-policy configs/workflows/so101_watchdog_p0.json
+
+python scripts/report_so101_yaw_collection.py \
+  --plan artifacts/so101/yaw0_30mm_v0_0_2/plan.json \
+  --manifest artifacts/so101/yaw0_30mm_v0_0_2/manifest.json \
+  --episodes-root artifacts/so101/yaw0_30mm_v0_0_2/episodes \
+  --json-output artifacts/so101/yaw0_30mm_v0_0_2/report.json \
+  --markdown-output artifacts/so101/yaw0_30mm_v0_0_2/report.md
+```
+
+The scheduler attempts every uncovered variation once before starting the next
+retry round. Failed attempts remain in the manifest; a later eligible success
+for that exact variation becomes the selected episode without changing its
+split. The formal report verifies balance, physical yaw and mass, terminal
+grasp evidence, video integrity, and the complete raw artifact set.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two
