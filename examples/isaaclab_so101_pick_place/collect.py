@@ -124,6 +124,7 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
@@ -2348,6 +2349,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         has_contact = _contact(contact)
         bilateral_contact = _bilateral_contact(contact)
         contact_forces = _cube_contact_forces(contact)
+        descent_cube_contact = so101_cube_contact_handoff(*contact_forces)
         object_pose = _numpy(scene[active_name].data.root_pose_w[0])
         gripper_pose = _numpy(
             robot.data.body_link_pose_w.torch[0, body_index]
@@ -2654,7 +2656,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                         OraclePhase.PLACE_DESCEND,
                     }
                 )
-                or (phase is OraclePhase.DESCEND and has_contact)
+                # The generic contact signal requires 2 N and may include
+                # non-cube contacts. Stop insertion on the first cube-filtered
+                # fingertip contact so the jaw cannot push the object away
+                # while waiting for collision-level force.
+                or (phase is OraclePhase.DESCEND and descent_cube_contact)
                 # Under load, the 5-DOF arm can retain a small Cartesian pose
                 # residual even after the cube has ample target-pad clearance.
                 # Advance on the physical transport condition, not an

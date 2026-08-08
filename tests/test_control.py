@@ -26,6 +26,7 @@ from farpoint.control import (
     settle_release_separation_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
+    so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     tactile_contact_hold_target,
     tactile_search_active,
@@ -76,6 +77,33 @@ def test_so101_descent_contact_window_opens_for_large_cube():
     assert so101_minimum_safe_descent_fraction(0.10) == pytest.approx(0.60)
     with pytest.raises(ValueError, match="finite and positive"):
         so101_minimum_safe_descent_fraction(float("nan"))
+
+
+def test_so101_cube_contact_handoff_uses_first_filtered_finger_contact():
+    assert not so101_cube_contact_handoff(0.0, 0.099)
+    assert so101_cube_contact_handoff(0.0, 0.10)
+    assert so101_cube_contact_handoff(0.731, 0.0)
+
+
+@pytest.mark.parametrize(
+    ("left_force_n", "right_force_n", "minimum_force_n"),
+    [
+        (-0.1, 0.0, 0.1),
+        (float("nan"), 0.0, 0.1),
+        (0.0, float("inf"), 0.1),
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, float("nan")),
+    ],
+)
+def test_so101_cube_contact_handoff_rejects_invalid_force_contract(
+    left_force_n, right_force_n, minimum_force_n
+):
+    with pytest.raises(ValueError):
+        so101_cube_contact_handoff(
+            left_force_n,
+            right_force_n,
+            minimum_force_n=minimum_force_n,
+        )
 
 
 def test_large_cube_first_corner_contact_is_not_a_collision():

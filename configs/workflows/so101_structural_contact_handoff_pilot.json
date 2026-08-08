@@ -1,0 +1,22 @@
+{
+  "schema_version": "farpoint.so101-gate-workflow-config.v1",
+  "completion_status": "PILOT_COMPLETE",
+  "stages": [
+    {
+      "stage_id": "structural_contact_handoff_30g",
+      "kind": "targeted_mass_diagnostic_pilot",
+      "target_mass_kg": 0.03,
+      "required_successes": 3,
+      "source_trial_ids": [
+        "cube_r03_c00_s1_k1",
+        "cube_r04_c01_s0_k0",
+        "cube_r03_c03_s1_k0"
+      ],
+      "expectations": {
+        "cube_r03_c00_s1_k1": {"success": true},
+        "cube_r04_c01_s0_k0": {"success": true},
+        "cube_r03_c03_s1_k0": {"success": true}
+      }
+    }
+  ]
+}

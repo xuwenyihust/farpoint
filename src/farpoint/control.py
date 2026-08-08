@@ -29,6 +29,22 @@ def so101_minimum_safe_descent_fraction(object_width_m):
     return 0.75 - 0.15 * interpolation
 
 
+def so101_cube_contact_handoff(
+    left_force_n,
+    right_force_n,
+    *,
+    minimum_force_n=0.10,
+):
+    """Stop DESCEND on the first real, cube-filtered fingertip contact."""
+    forces = (float(left_force_n), float(right_force_n))
+    threshold = float(minimum_force_n)
+    if any(not math.isfinite(force) or force < 0.0 for force in forces):
+        raise ValueError("cube contact forces must be finite and non-negative")
+    if not math.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+    return max(forces) >= threshold
+
+
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
