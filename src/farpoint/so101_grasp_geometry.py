@@ -208,66 +208,6 @@ def so101_level_capture_orientation_xyzw(gripper_orientation_xyzw) -> np.ndarray
     return result.astype(np.float32)
 
 
-def so101_align_capture_orientation_to_cube_xyzw(
-    gripper_orientation_xyzw,
-    cube_orientation_xyzw,
-) -> np.ndarray:
-    """Level the closing axis and yaw it to the nearest cube face normal.
-
-    The correction preserves the table-safe wrist posture branch.  It first
-    removes only the closing axis' vertical component, then pre-multiplies a
-    world-Z rotation to align that horizontal axis with the closest of the
-    cube's four upright face normals.
-    """
-    levelled = so101_level_capture_orientation_xyzw(gripper_orientation_xyzw)
-    cube_orientation = _vector(
-        cube_orientation_xyzw,
-        length=4,
-        name="cube_orientation_xyzw",
-    )
-    cube_norm = float(np.linalg.norm(cube_orientation))
-    if cube_norm <= 1e-12:
-        raise ValueError("cube_orientation_xyzw must be non-zero")
-    cube_rotation = quaternion_rotation_matrix_xyzw(
-        cube_orientation / cube_norm
-    )
-    closing_world = (
-        quaternion_rotation_matrix_xyzw(levelled)
-        @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
-    )
-    closing_xy = closing_world[:2] / np.linalg.norm(closing_world[:2])
-    candidates = tuple(
-        direction
-        for axis in (cube_rotation[:2, 0], cube_rotation[:2, 1])
-        for direction in (axis, -axis)
-    )
-    desired_xy = max(candidates, key=lambda value: float(np.dot(closing_xy, value)))
-    yaw_correction = float(
-        np.arctan2(
-            closing_xy[0] * desired_xy[1] - closing_xy[1] * desired_xy[0],
-            np.dot(closing_xy, desired_xy),
-        )
-    )
-    half_yaw = 0.5 * yaw_correction
-    delta = np.asarray(
-        (0.0, 0.0, np.sin(half_yaw), np.cos(half_yaw)),
-        dtype=np.float64,
-    )
-    dx, dy, dz, dw = delta
-    x, y, z, w = np.asarray(levelled, dtype=np.float64)
-    result = np.asarray(
-        (
-            dw * x + dx * w + dy * z - dz * y,
-            dw * y - dx * z + dy * w + dz * x,
-            dw * z + dx * y - dy * x + dz * w,
-            dw * w - dx * x - dy * y - dz * z,
-        ),
-        dtype=np.float64,
-    )
-    result /= np.linalg.norm(result)
-    return result.astype(np.float32)
-
-
 def aabb_corners(bounds) -> np.ndarray:
     """Return the eight corners of a three-dimensional AABB."""
     if len(bounds) != 2:

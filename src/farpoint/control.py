@@ -1,25 +1,6 @@
 import math
 
 
-def so101_cube_requires_yaw_alignment(object_width_m, orientation_xyzw):
-    """Select the orientation task only for a large axis-aligned cube."""
-    width = float(object_width_m)
-    quaternion = tuple(float(value) for value in orientation_xyzw)
-    if not math.isfinite(width) or width <= 0.0:
-        raise ValueError("object_width_m must be finite and positive")
-    if len(quaternion) != 4 or not all(math.isfinite(value) for value in quaternion):
-        raise ValueError("orientation_xyzw must contain four finite values")
-    norm = math.sqrt(sum(value * value for value in quaternion))
-    if norm <= 1e-12:
-        raise ValueError("orientation_xyzw must be non-zero")
-    x, y, z, w = (value / norm for value in quaternion)
-    yaw_degrees = math.degrees(
-        math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
-    )
-    canonical_yaw = ((yaw_degrees + 45.0) % 90.0) - 45.0
-    return width >= 0.035 and abs(canonical_yaw) <= 5.0
-
-
 def so101_approach_jaw_target(object_width_m):
     """Return the validated open-jaw target for the supported cube sizes."""
     width = float(object_width_m)

@@ -9,7 +9,7 @@
       "required_successes": 10,
       "trial_profiles": [
         {"source_trial_id": "cube_r00_c00_s0_k0", "mass_kg": 0.04},
-        {"source_trial_id": "cube_r00_c04_s0_k1", "mass_kg": 0.03},
+        {"source_trial_id": "cube_r00_c03_s0_k1", "mass_kg": 0.03},
         {"source_trial_id": "cube_r02_c02_s0_k1", "mass_kg": 0.04},
         {"source_trial_id": "cube_r02_c01_s1_k0", "mass_kg": 0.03},
         {"source_trial_id": "cube_r03_c03_s1_k0", "mass_kg": 0.04},

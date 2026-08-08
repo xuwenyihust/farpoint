@@ -9,7 +9,6 @@ from farpoint.so101_grasp_geometry import (
     SO101_RUNTIME_QUATERNION_ORDER,
     aabb_corners,
     posture_geometry_diagnostics,
-    so101_align_capture_orientation_to_cube_xyzw,
     so101_capture_aperture_reference,
     so101_capture_channel_direction_world,
     so101_level_capture_orientation_xyzw,
@@ -130,40 +129,6 @@ def test_level_capture_orientation_flattens_axis_and_preserves_channel():
 def test_level_capture_orientation_validates_input(invalid):
     with pytest.raises(ValueError):
         so101_level_capture_orientation_xyzw(invalid)
-
-
-def test_align_capture_orientation_levels_and_matches_cube_face_normal():
-    orientation = np.asarray(
-        (-0.6417146921, 0.1408973038, 0.0826371983, -0.7493473291)
-    )
-
-    aligned = so101_align_capture_orientation_to_cube_xyzw(
-        orientation,
-        [0.0, 0.0, 0.0, 1.0],
-    )
-    closing = (
-        quaternion_rotation_matrix_xyzw(aligned)
-        @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
-    )
-
-    assert np.linalg.norm(aligned) == pytest.approx(1.0)
-    assert closing[2] == pytest.approx(0.0, abs=1e-7)
-    assert max(abs(float(closing[0])), abs(float(closing[1]))) == pytest.approx(
-        1.0,
-        abs=1e-6,
-    )
-    assert min(abs(float(closing[0])), abs(float(closing[1]))) == pytest.approx(
-        0.0,
-        abs=1e-6,
-    )
-
-
-def test_align_capture_orientation_rejects_invalid_cube_quaternion():
-    with pytest.raises(ValueError, match="cube_orientation_xyzw"):
-        so101_align_capture_orientation_to_cube_xyzw(
-            [0.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0],
-        )
 
 
 def test_posture_diagnostic_aligns_aperture_without_using_link_origin():

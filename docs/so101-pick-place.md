@@ -396,21 +396,24 @@ The first yaw=0 run isolated two controller failures. Four 40 mm attempts
 formed real bilateral contact before losing the cube during proof lift or
 static hold. A follow-up A/B pilot showed that holding instead of closing on
 low force was a regression, so the proven force controller remains unchanged.
-The measured root cause is geometric: the original wrist posture gives the
-axis-aligned 40 mm cube approximately 42 degrees of closing-axis error. A first
-joint-posture experiment reduced that error to approximately 9 degrees but was
-rejected after PhysX showed a 7 N non-cube collision at the table. The bounded
-replacement preserves the proven wrist posture, levels the measured closing
-axis, and uses a direction-only IK target to rotate it around world Z toward
-the nearest Cube face normal. Only the 40 mm axis-aligned profile enables that
-orientation task; the proven 30 mm and 45-degree paths retain their original
-targets. One additional attempt spawned
-directly on the table contact plane, tilted, and fell through during PREGRASP.
-Reset now spawns 2 mm above the table, allows up to three audited support
-attempts, and restores the arm to the exact HOME joint state without
-advancing physics before the oracle starts. A failed support or HOME audit
-terminates the attempt as runner evidence instead of consuming the PREGRASP
-budget.
+The measured 40 mm root cause is geometric: the original wrist posture gives
+the axis-aligned cube approximately 42 degrees of closing-axis error. Two
+bounded experiments were rejected by PhysX evidence. A joint-posture target
+reduced the error to approximately 9 degrees but produced a 7 N non-cube table
+contact; an exact direction-only target preserved table clearance but made the
+five-DOF PREGRASP position unreachable. Neither experiment is part of the
+collector. The first v0.0.2 tranche therefore remains 30 mm-only until a
+separate large-cube manipulation strategy passes its own pilot.
+
+Reset spawns 2 mm above the table, records a strict support audit, and restores
+the arm to the exact HOME joint state without advancing physics before the
+oracle starts. Repeating the same failed support pose produced identical
+free-fall evidence, so reset is deliberately not retried. The exact
+`cube_r00_c04_s0_k1` yaw=0 sample is excluded from the pilot and replaced by
+the same size/color/mass profile in `r00_c03`; future full-grid collection must
+use a different deterministic sample inside `r00_c04` and pass the same support
+audit. A failed support or HOME audit terminates the attempt as runner evidence
+instead of consuming the PREGRASP budget.
 
 A later v0.0.2 collection may add only 50 yaw=0 demonstrations rather than the
 full 100-trial Cartesian mirror. The lowest-risk fractional design freezes the

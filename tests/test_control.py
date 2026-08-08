@@ -27,7 +27,6 @@ from farpoint.control import (
     simulation_stop_reason,
     so101_approach_jaw_target,
     so101_capture_contact_loss_grace_s,
-    so101_cube_requires_yaw_alignment,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_pre_capture_recenter_limit,
@@ -652,28 +651,6 @@ def test_force_controlled_rotary_jaw_restores_30mm_settling_force_floor():
     )
 
     assert update == {"position": pytest.approx(0.2509), "action": "close"}
-
-
-def test_cube_yaw_alignment_is_scoped_to_large_axis_aligned_cube():
-    assert so101_cube_requires_yaw_alignment(0.04, [0.0, 0.0, 0.0, 1.0])
-    assert not so101_cube_requires_yaw_alignment(0.03, [0.0, 0.0, 0.0, 1.0])
-    assert not so101_cube_requires_yaw_alignment(
-        0.04,
-        [0.0, 0.0, 0.3826834324, 0.9238795325],
-    )
-
-
-@pytest.mark.parametrize(
-    "width,orientation",
-    [
-        (0.0, [0.0, 0.0, 0.0, 1.0]),
-        (0.04, [0.0, 0.0, 1.0]),
-        (0.04, [0.0, 0.0, 0.0, 0.0]),
-    ],
-)
-def test_cube_yaw_alignment_rejects_invalid_geometry(width, orientation):
-    with pytest.raises(ValueError):
-        so101_cube_requires_yaw_alignment(width, orientation)
 
 
 def test_so101_reset_support_requires_settled_table_pose():
