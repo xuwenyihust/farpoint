@@ -370,6 +370,53 @@ resolved, and actual PhysX mass, exact variation identity, split assignment,
 25/25 workspace cells, and the frozen size/color balance. Only its passing
 selection manifest may be registered in the Dashboard Benchmarks tree.
 
+If both the original collection and its first continuation are terminal
+`ABORTED` evidence, do not resume either manifest and do not nest another
+continuation inside the exhausted old budget. Freeze a new recovery from the
+union of their selected variations:
+
+```bash
+python scripts/create_so101_mass_recovery_plan.py \
+  --reference-plan <original-root>/plan.json \
+  --source-plan <original-root>/plan.json \
+  --source-manifest <original-root>/manifest.json \
+  --source-plan <continuation-root>/plan.json \
+  --source-manifest <continuation-root>/manifest.json \
+  --recovery-id so101_cube_mass_003_recovery13_<date>_<sha> \
+  --maximum-attempts 150 \
+  --output <recovery-root>/plan.json
+```
+
+The recovery plan binds both source plan and manifest hashes, rejects overlap,
+and contains only the exact union-missing variations. Its 150-attempt ceiling
+is a new frozen recovery budget; it does not rewrite or borrow from the old
+continuation budget.
+
+After the recovery itself reaches `FINISHED / PASS`, validate and compose all
+three immutable sources:
+
+```bash
+python scripts/create_so101_mass_multi_source_completion.py \
+  --reference-plan <original-root>/plan.json \
+  --source-plan <original-root>/plan.json \
+  --source-manifest <original-root>/manifest.json \
+  --source-episodes-root <original-root>/episodes \
+  --source-plan <continuation-root>/plan.json \
+  --source-manifest <continuation-root>/manifest.json \
+  --source-episodes-root <continuation-root>/episodes \
+  --recovery-plan <recovery-root>/plan.json \
+  --recovery-manifest <recovery-root>/manifest.json \
+  --recovery-episodes-root <recovery-root>/episodes \
+  --collection-id so101_cube_mass_003_completion50_<date>_<sha> \
+  --manifest-output <completion-root>/manifest.json \
+  --selection-output <completion-root>/export-selection.json \
+  --report-output <completion-root>/report.json
+```
+
+This path audits 35 + 2 + 13 episode artifacts independently, preserves each
+source collection ID and attempt identity, and still requires exact 50/50
+variation coverage before producing a candidate selection.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two
