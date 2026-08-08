@@ -26,6 +26,7 @@ from farpoint.control import (
     settle_release_separation_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
+    so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_pre_capture_recenter_limit,
@@ -90,6 +91,20 @@ def test_so101_pre_capture_recenter_limit_expands_formal_cube_corridor():
     assert so101_pre_capture_recenter_limit(0.03) == pytest.approx(0.008)
     assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.008)
     assert so101_pre_capture_recenter_limit(0.02) == pytest.approx(0.006)
+
+
+def test_so101_capture_contact_loss_grace_is_size_aware():
+    assert so101_capture_contact_loss_grace_s(0.03) == pytest.approx(0.30)
+    assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.25)
+    assert so101_capture_contact_loss_grace_s(0.04) == pytest.approx(0.20)
+    assert so101_capture_contact_loss_grace_s(0.02) == pytest.approx(0.30)
+    assert so101_capture_contact_loss_grace_s(0.05) == pytest.approx(0.20)
+
+
+@pytest.mark.parametrize("value", (0.0, -0.01, float("nan"), float("inf")))
+def test_so101_capture_contact_loss_grace_rejects_invalid_width(value):
+    with pytest.raises(ValueError):
+        so101_capture_contact_loss_grace_s(value)
 
 
 @pytest.mark.parametrize(

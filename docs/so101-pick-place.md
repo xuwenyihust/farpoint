@@ -212,6 +212,21 @@ All eight frozen trials must succeed. A pass supports merging the controller
 fix; it does not authorize recovery6 collection or reuse pilot episodes in the
 dataset candidate.
 
+If that pilot isolates a 30 mm capture that forms strong bilateral contact but
+needs more than the 0.20 s large-cube recovery window, use the separate v2
+profile. The controller grants 30 mm cubes 0.30 s and interpolates back to the
+unchanged 0.20 s window at 40 mm; contact thresholds, the post-capture 2 mm
+recenter bound, and proof-lift admission remain frozen. The v2 profile requires
+the isolated failure and two size controls to pass 3/3:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/recovery6_contact_pilot_v2_<sha> \
+  --workflow-id recovery6_contact_pilot_v2_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_recovery6_contact_pilot_v2.json
+```
+
 For an existing collection, the read-only one-shot check is:
 
 ```bash

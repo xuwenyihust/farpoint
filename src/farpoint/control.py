@@ -69,6 +69,21 @@ def so101_pre_capture_recenter_limit(
     return min(maximum, fraction * width)
 
 
+def so101_capture_contact_loss_grace_s(object_width_m):
+    """Return a size-aware grace period for bounded capture recovery.
+
+    A 30 mm cube can briefly lose both contacts while the rotary jaw closes
+    through its final few milliradians. Give that smaller geometry three
+    additional 30 Hz control ticks to recover, while preserving the validated
+    0.20 s behavior for 40 mm cubes.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 0.30 - 0.10 * interpolation
+
+
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
