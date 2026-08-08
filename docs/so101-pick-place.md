@@ -393,14 +393,15 @@ actual PhysX mass for every attempt. The PhysX observation may settle by at most
 error for every attempt. Pilot episodes remain `PILOT` artifacts.
 
 A later v0.0.2 collection may add only 50 yaw=0 demonstrations rather than the
-full 100-trial Cartesian mirror. Freeze one 0.03 kg and one 0.04 kg trial in
-each of the 25 workspace cells, then choose the historically successful
-size/color identities so the aggregate remains 25/25 by size, 25/25 by color,
-40/5/5 by split, and 12/12/13/13 across size/color combinations. This is an
-explicit balanced fractional design: v0.0.2 would contain 150 total episodes
-and intentionally have 100 examples at 45 degrees versus 50 at 0 degrees. A
-future version can add the complementary 50 yaw=0 trials to reach a balanced
-200-episode, 100/100 yaw release without invalidating v0.0.2.
+full 100-trial Cartesian mirror. The lowest-risk fractional design freezes the
+30 mm cube, then collects one 0.03 kg and one 0.04 kg trial in each of the 25
+workspace cells. Assign colors as a complementary checkerboard so the aggregate
+is 25/25 by color and preserve a 40/5/5 logical split. This makes mass, color,
+position, and split balanced inside the new tranche while intentionally leaving
+cube size incomplete. v0.0.2 would contain 150 total episodes and have 100
+examples at 45 degrees versus 50 at 0 degrees. After a separate 40 mm grasp
+pilot passes, a future version can add the complementary 50 yaw=0, 40 mm trials
+to reach a balanced 200-episode release without invalidating v0.0.2.
 
 ### Continuing an aborted mass collection
 
