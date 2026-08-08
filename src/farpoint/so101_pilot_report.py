@@ -71,14 +71,15 @@ def _quaternions_equivalent(
     return _quaternion_error_degrees(actual, expected) <= tolerance_degrees
 
 
-def _yaw_pilot_audit(
+def audit_yaw_mass_episodes(
     plan: dict[str, Any],
     attempts: list[dict[str, Any]],
     by_name: dict[str, dict[str, Any]],
     episodes_root: Path,
+    profile: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    pilot = plan.get("pilot") or {}
-    if pilot.get("kind") != "targeted_yaw_pilot":
+    profile = profile or plan.get("pilot") or {}
+    if "yaw_degrees" not in profile:
         return [], []
     by_trial_id = {trial["trial_id"]: trial for trial in plan["trials"]}
     audits = []
@@ -96,7 +97,7 @@ def _yaw_pilot_audit(
             float(value) for value in trial["resolved"]["orientation_xyzw"]
         ]
         orientation_tolerance_degrees = float(
-            pilot.get("actual_orientation_tolerance_degrees", 2.0)
+            profile.get("actual_orientation_tolerance_degrees", 2.0)
         )
         initial_orientation = [
             float(value) for value in episode["initial_object_pose_xyzw"][3:]
@@ -155,7 +156,7 @@ def _yaw_pilot_audit(
             {
                 "episode_id": episode_id,
                 "trial_id": attempt["trial_id"],
-                "expected_yaw_degrees": float(pilot["yaw_degrees"]),
+                "expected_yaw_degrees": float(profile["yaw_degrees"]),
                 "expected_orientation_xyzw": expected_orientation,
                 "initial_orientation_xyzw": initial_orientation,
                 "initial_orientation_error_degrees": initial_orientation_error_degrees,
@@ -202,7 +203,9 @@ def build_so101_pilot_report(
             errors.append(f"{attempt['episode_id']}:manifest_episode_success_mismatch")
         if episode["dataset_valid"] != bool(attempt["dataset_valid"]):
             errors.append(f"{attempt['episode_id']}:manifest_episode_validity_mismatch")
-    yaw_audits, yaw_errors = _yaw_pilot_audit(plan, attempts, by_name, root)
+    yaw_audits, yaw_errors = audit_yaw_mass_episodes(
+        plan, attempts, by_name, root
+    )
     errors.extend(yaw_errors)
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []

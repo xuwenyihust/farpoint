@@ -1,0 +1,15 @@
+{
+  "schema_version": "farpoint.so101-yaw-collection-config.v1",
+  "profile_id": "so101_cube_yaw0_30mm_balanced50_v0_0_2",
+  "profile_revision": "1",
+  "dataset_id": "farpoint_so101",
+  "source_plan_sha256": "c93cb6378efac2e4febe6b6027bf5fd13581f54caae7831095d84535806d75fc",
+  "cube_size_m": 0.03,
+  "yaw_degrees": 0.0,
+  "mass_kg": [0.03, 0.04],
+  "actual_mass_tolerance_kg": 0.000001,
+  "actual_orientation_tolerance_degrees": 2.0,
+  "required_successes": 50,
+  "maximum_attempts": 150,
+  "selection_policy": "workspace_mass_color_checkerboard_v1"
+}
