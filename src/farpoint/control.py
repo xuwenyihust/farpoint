@@ -1,16 +1,8 @@
 import math
 
 
-def so101_cube_grasp_posture(object_width_m, orientation_xyzw):
-    """Return the bounded wrist posture calibrated for a cube geometry.
-
-    The original ``(0.5, 0.5)`` posture aligns the rotary jaw with the
-    historical 45-degree cube.  A 40 mm axis-aligned cube presents a wider
-    corner to that same closing axis; the kinematic screen found that
-    ``(0.0, -0.5)`` reduces the nearest face-normal error from about 42 to 9
-    degrees.  Keep the new posture narrowly scoped until its contact pilot
-    passes so the proven 30 mm and diagonal-cube paths remain unchanged.
-    """
+def so101_cube_requires_yaw_alignment(object_width_m, orientation_xyzw):
+    """Select the orientation task only for a large axis-aligned cube."""
     width = float(object_width_m)
     quaternion = tuple(float(value) for value in orientation_xyzw)
     if not math.isfinite(width) or width <= 0.0:
@@ -25,9 +17,7 @@ def so101_cube_grasp_posture(object_width_m, orientation_xyzw):
         math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
     )
     canonical_yaw = ((yaw_degrees + 45.0) % 90.0) - 45.0
-    if width >= 0.035 and abs(canonical_yaw) <= 5.0:
-        return (0.0, -0.5)
-    return (0.5, 0.5)
+    return width >= 0.035 and abs(canonical_yaw) <= 5.0
 
 
 def so101_approach_jaw_target(object_width_m):

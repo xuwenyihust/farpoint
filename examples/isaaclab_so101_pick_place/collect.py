@@ -32,7 +32,6 @@ SO101_HOME_JOINTS = np.asarray(
     [-0.2736, -0.6109, -0.0745, 1.5148, -1.6034, 1.7453], dtype=np.float32
 )
 SO101_GRASP_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
-SO101_CAPTURE_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
 # Safe-height reference only.  The 5-DOF arm cannot preserve a full world
 # quaternion throughout translation, so production targeting uses the current
 # measured orientation and gripper-local aperture on every control step.
@@ -125,7 +124,7 @@ from farpoint.control import (  # noqa: E402
     settle_release_separation_target,
     so101_approach_jaw_target,
     so101_capture_contact_loss_grace_s,
-    so101_cube_grasp_posture,
+    so101_cube_requires_yaw_alignment,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_pre_capture_recenter_limit,
@@ -166,6 +165,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_WORKSHOP_ASSET_SHA256,
     SO101_WORKSHOP_COMMIT,
     posture_geometry_diagnostics,
+    so101_align_capture_orientation_to_cube_xyzw,
     so101_capture_aperture_reference,
     so101_capture_channel_direction_world,
     so101_level_capture_orientation_xyzw,
@@ -1542,16 +1542,14 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     torch.manual_seed(environment_seed)
     env.reset(seed=environment_seed)
     object_spec = trial["resolved"]
-    grasp_posture = np.asarray(
-        so101_cube_grasp_posture(
-            object_spec["dimensions_m"][0],
-            object_spec["orientation_xyzw"],
-        ),
-        dtype=np.float32,
+    grasp_posture = SO101_GRASP_POSTURE.copy()
+    yaw_alignment_enabled = so101_cube_requires_yaw_alignment(
+        object_spec["dimensions_m"][0],
+        object_spec["orientation_xyzw"],
     )
     grasp_posture_profile = (
-        "axis_aligned_large_cube_v1"
-        if tuple(float(value) for value in grasp_posture) == (0.0, -0.5)
+        "axis_aligned_large_cube_orientation_v1"
+        if yaw_alignment_enabled
         else "legacy_diagonal_cube_v1"
     )
     active_object = scene[active_name]
@@ -1592,12 +1590,6 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     expected_object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
     reset_spawn_position = expected_object_position.copy()
     reset_spawn_position[2] += 0.002
-    _move_object(
-        scene[active_name],
-        reset_spawn_position,
-        device,
-        object_spec["orientation_xyzw"],
-    )
     # Advance one manager step so FrameTransformer data reflects the reset
     # articulation before choosing the HOME waypoint.  Without this sync,
     # the first observation can be a stale pre-reset pose.
@@ -1605,20 +1597,43 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     # tensor cached before write_joint_state would restore the USD default.
     _aim_front_camera(scene, device)
     # Spawn just above the table and let PhysX establish support before the
-    # oracle reads its first target. A direct contact-surface spawn previously
-    # let one tilted 40 mm cube tunnel through the table during PREGRASP.
-    for _ in range(8):
-        env.step(initial_joints)
-    measured_object_position = _numpy(active_object.data.root_pos_w[0])
-    measured_object_velocity = _numpy(active_object.data.root_lin_vel_w[0])
-    reset_support_verified = so101_reset_support_is_stable(
-        expected_object_position,
-        measured_object_position,
-        measured_object_velocity,
-    )
+    # oracle reads its first target. GPU contact caches can occasionally miss
+    # the first table collision after reset, so retry the exact authored pose
+    # at most twice instead of admitting a falling cube or weakening the gate.
+    reset_support_attempts = []
+    reset_support_verified = False
+    for reset_attempt_index in range(3):
+        _move_object(
+            scene[active_name],
+            reset_spawn_position,
+            device,
+            object_spec["orientation_xyzw"],
+        )
+        for _ in range(8):
+            env.step(initial_joints)
+        measured_object_position = _numpy(active_object.data.root_pos_w[0])
+        measured_object_velocity = _numpy(active_object.data.root_lin_vel_w[0])
+        reset_support_verified = so101_reset_support_is_stable(
+            expected_object_position,
+            measured_object_position,
+            measured_object_velocity,
+        )
+        reset_support_attempts.append(
+            {
+                "attempt_index": reset_attempt_index,
+                "measured_position_m": measured_object_position.tolist(),
+                "measured_linear_velocity_mps": measured_object_velocity.tolist(),
+                "verified": reset_support_verified,
+            }
+        )
+        if reset_support_verified:
+            break
     reset_support_audit = {
         "spawn_clearance_m": 0.002,
         "settling_control_steps": 8,
+        "maximum_attempts": 3,
+        "attempt_count": len(reset_support_attempts),
+        "attempts": reset_support_attempts,
         "expected_position_m": expected_object_position.tolist(),
         "measured_position_m": measured_object_position.tolist(),
         "measured_linear_velocity_mps": measured_object_velocity.tolist(),
@@ -1756,6 +1771,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     verify_lift_height = 0.0
     verify_object_start_z = None
     grasp_relative_reference = None
+    grasp_orientation_target = None
     previous_object_in_gripper = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
@@ -1766,6 +1782,22 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         descent_fraction = None
         current = robot.data.joint_pos[0]
         ee_position = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
+        if (
+            phase is OraclePhase.PREGRASP
+            and yaw_alignment_enabled
+            and pregrasp_route_index >= 1
+            and grasp_orientation_target is None
+        ):
+            grasp_orientation_target = (
+                so101_align_capture_orientation_to_cube_xyzw(
+                    _numpy(
+                        robot.data.body_link_pose_w.torch[
+                            0, body_index, 3:7
+                        ]
+                    ),
+                    object_spec["orientation_xyzw"],
+                )
+            )
         control_point_position = None
         control_point_offset_world = None
         if phase is OraclePhase.CLOSE and grasp_hold_pose is None:
@@ -1952,12 +1984,29 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     0.10 if pregrasp_route_index == 0 else 0.20
                 )
                 route_posture_ready = (
-                    abs(float(current[3].item()) - float(grasp_posture[0]))
-                    < route_posture_tolerance
-                    and abs(
-                        float(current[4].item()) - float(grasp_posture[1])
+                    float(
+                        np.linalg.norm(
+                            quaternion_direction_error(
+                                grasp_orientation_target,
+                                live_gripper_pose[3:7],
+                                local_axis=SO101_CAPTURE_CLOSING_AXIS_LOCAL,
+                            )
+                        )
                     )
                     < route_posture_tolerance
+                    if grasp_orientation_target is not None
+                    else (
+                        abs(
+                            float(current[3].item())
+                            - float(grasp_posture[0])
+                        )
+                        < route_posture_tolerance
+                        and abs(
+                            float(current[4].item())
+                            - float(grasp_posture[1])
+                        )
+                        < route_posture_tolerance
+                    )
                 )
                 if (
                     float(np.linalg.norm(ee_position - target))
@@ -2350,7 +2399,11 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             # Position plus the two calibrated wrist targets is the reachable
             # 5-DOF task.  A fixed world quaternion over-constrains translation
             # and was the cause of the pre-v6 single-finger collision.
-            active_orientation_target = None
+            active_orientation_target = (
+                grasp_orientation_target
+                if phase in {OraclePhase.PREGRASP, OraclePhase.DESCEND}
+                else None
+            )
             action = _ik_action(
                 robot,
                 ee_frame,
@@ -2360,6 +2413,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 device,
                 posture_target=posture_target,
                 orientation_target=active_orientation_target,
+                orientation_local_axis=SO101_CAPTURE_CLOSING_AXIS_LOCAL,
+                orientation_weight=0.12,
                 # Wrist posture regularization is useful while approaching,
                 # but after contact it can trade Cartesian accuracy for a
                 # null-space motion that shears a small cube out of the jaw.
@@ -2719,6 +2774,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     quaternion_direction_error(
                         active_orientation_target,
                         gripper_pose[3:7],
+                        local_axis=SO101_CAPTURE_CLOSING_AXIS_LOCAL,
                     )
                 )
             ) < 0.10
@@ -2875,7 +2931,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
         "provenance": {"collection_id": collection_id, "git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
         "task": {"task_id": "so101_cube_pick_place", "instruction": f"Pick up the {object_spec['shape']} and place it on the green target pad.", "object_shape": object_spec["shape"], "success_criteria_id": "contact_pick_place_footprint_v2", "manipulated_entity_id": "pick_object", "target_entity_id": "placement_target", "acceptance_region_id": "placement_region"},
-        "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "oracle_grasp_posture_profile": grasp_posture_profile, "oracle_grasp_posture_target_rad": grasp_posture.tolist(), "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
+        "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "oracle_grasp_posture_profile": grasp_posture_profile, "oracle_grasp_posture_target_rad": grasp_posture.tolist(), "oracle_grasp_orientation_target_xyzw": (None if grasp_orientation_target is None else grasp_orientation_target.tolist()), "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
         "scene": {"coordinate_frame": "isaac_world", "object": scene_object, "target": scene_target, "entities": list(resolved_variation["entities"].values()), "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
         "variation": {"schema_version": "farpoint.variation.v3", "variation_id": trial["variation_id"], "varied_axes": copy.deepcopy(trial["varied_axes"]), "frozen_axes": copy.deepcopy(trial["frozen_axes"]), "requested": requested_variation, "resolved": resolved_variation, "split": trial["split"]},
         "recording": {"fps": schedule.recording_hz, "control_hz": schedule.control_hz, "recording_stride": schedule.recording_stride, "cameras": (["observation.images.front", "observation.images.wrist"] if args_cli.enable_wrist_camera else ["observation.images.front"]), "frame_count": len(rows), "state_features": list(LEROBOT_JOINT_NAMES), "action_features": list(LEROBOT_JOINT_NAMES), "state_unit": "radian", "action_unit": "radian", "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render"},

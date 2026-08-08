@@ -397,13 +397,17 @@ formed real bilateral contact before losing the cube during proof lift or
 static hold. A follow-up A/B pilot showed that holding instead of closing on
 low force was a regression, so the proven force controller remains unchanged.
 The measured root cause is geometric: the original wrist posture gives the
-axis-aligned 40 mm cube approximately 42 degrees of closing-axis error, while
-the bounded yaw-aware posture screen reduces it to approximately 9 degrees.
-Only the 40 mm axis-aligned profile selects that posture; the proven 30 mm and
-45-degree paths retain their original targets. One additional attempt spawned
+axis-aligned 40 mm cube approximately 42 degrees of closing-axis error. A first
+joint-posture experiment reduced that error to approximately 9 degrees but was
+rejected after PhysX showed a 7 N non-cube collision at the table. The bounded
+replacement preserves the proven wrist posture, levels the measured closing
+axis, and uses a direction-only IK target to rotate it around world Z toward
+the nearest Cube face normal. Only the 40 mm axis-aligned profile enables that
+orientation task; the proven 30 mm and 45-degree paths retain their original
+targets. One additional attempt spawned
 directly on the table contact plane, tilted, and fell through during PREGRASP.
-Reset now spawns 2 mm above the table, settles for eight control steps, records
-a support audit, and restores the arm to the exact HOME joint state without
+Reset now spawns 2 mm above the table, allows up to three audited support
+attempts, and restores the arm to the exact HOME joint state without
 advancing physics before the oracle starts. A failed support or HOME audit
 terminates the attempt as runner evidence instead of consuming the PREGRASP
 budget.
