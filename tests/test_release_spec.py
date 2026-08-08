@@ -41,7 +41,7 @@ def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
 
     assert spec["dataset_id"] == "farpoint_so101"
     assert spec["hf_repo_id"] == "wenyixu101/farpoint-so101"
-    assert spec["dataset_tag"] == "v0.0.0"
+    assert spec["dataset_tag"] == "v0.0.1"
     assert spec["dataset_schema"] == "farpoint.dataset.v3"
     assert spec["variation_schema"] == "farpoint.variation.v3"
     assert check_versions(SO101_RELEASE_SPEC) == []
@@ -57,13 +57,16 @@ def test_so101_dataset_card_documents_viewer_summary_and_policy_features():
 
     assert 'path: "data/**/*.parquet"' in card
     assert 'path: "meta/episode_metadata.parquet"' in card
-    assert "| Train | 40 | 80% |" in card
-    assert "| Validation | 5 | 10% |" in card
-    assert "| Test | 5 | 10% |" in card
-    assert "25 / 25 cells covered" in card
+    assert "| Train | 80 | 80% |" in card
+    assert "| Validation | 10 | 10% |" in card
+    assert "| Test | 10 | 10% |" in card
+    assert "25 / 25 cells covered at each mass" in card
+    assert "| Cube mass | 0.03 kg, 0.04 kg | 50 episodes each |" in card
     assert "There is no wrist-camera feature" in card
+    assert "## Dataset Viewer and LeRobot splits" not in card
     assert "future cylinders, meshes, toys, boxes" in card
     assert "farpoint-so101-changelog.md" in card
+    assert "## v0.0.1" in changelog
     assert "## v0.0.0" in changelog
 
 

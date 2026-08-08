@@ -35,8 +35,8 @@ Farpoint simulation pipeline.
 
 - Dataset: [wenyixu101/farpoint-so101](https://huggingface.co/datasets/wenyixu101/farpoint-so101)
 - Source: [xuwenyihust/farpoint](https://github.com/xuwenyihust/farpoint)
-- Dataset version: `v0.0.0`
-- Status: experimental simulation baseline
+- Dataset version: `v0.0.1`
+- Status: experimental multi-mass simulation baseline
 
 The repository name intentionally describes the robot rather than one object or
 task. Future versions may add new manipulated objects, placement targets,
@@ -45,8 +45,9 @@ version tags.
 
 ## Dataset summary
 
-The first release contains 50 successful, dataset-valid cube pick-and-place
-demonstrations selected for workspace and appearance diversity.
+This release contains 100 successful, dataset-valid cube pick-and-place
+demonstrations. It pairs the original 0.04 kg cube stratum with a new 0.03 kg
+stratum while preserving the same positions, sizes, colors, and logical splits.
 
 | Metric | Value |
 |---|---|
@@ -54,8 +55,8 @@ demonstrations selected for workspace and appearance diversity.
 | **Robot** | SO-101 follower arm: 5 arm joints + 1 gripper joint |
 | **Simulator** | Isaac Sim 6.0.0 + PhysX, through Isaac Lab 3.0.0-beta2 |
 | **Controller** | Simulation-truth, contact-aware DLS IK oracle |
-| **Episodes** | 50 successful demonstrations |
-| **Frames** | 34,757 at 30 Hz (about 19 min 19 s) |
+| **Episodes** | 100 successful demonstrations |
+| **Frames** | 72,433 at 30 Hz (about 40 min 14 s) |
 | **Camera** | One 640 x 480 front RGB stream |
 
 ### Policy features
@@ -74,20 +75,20 @@ gripper uses `[0, 100]`.
 
 | Split | Episodes | Share |
 |---|---:|---:|
-| Train | 40 | 80% |
-| Validation | 5 | 10% |
-| Test | 5 | 10% |
+| Train | 80 | 80% |
+| Validation | 10 | 10% |
+| Test | 10 | 10% |
 
-There is no wrist-camera feature in `v0.0.0`.
+There is no wrist-camera feature in `v0.0.1`.
 
 ## Variation coverage
 
 | Variation axis | Values in this release | Distribution |
 |---|---|---:|
-| Position | 5 x 5 stratified XY grid; cube centers span approximately `x = 0.147–0.255 m` and `y = -0.116–-0.024 m` | 25 / 25 cells covered |
-| Cube edge length | 0.03 m, 0.04 m | 25 episodes each |
-| Cube color | Red, blue | 25 episodes each |
-| Cube mass | 0.04 kg | Fixed |
+| Position | 5 x 5 stratified XY grid; cube centers span approximately `x = 0.147–0.255 m` and `y = -0.116–-0.024 m` | 25 / 25 cells covered at each mass; 4 episodes per cell overall |
+| Cube edge length | 0.03 m, 0.04 m | 50 episodes each; 25 of each size at each mass |
+| Cube color | Red, blue | 50 episodes each; 25 of each color at each mass |
+| Cube mass | 0.03 kg, 0.04 kg | 50 episodes each |
 | Placement target | Green raised pad, 0.16 m x 0.14 m | Fixed |
 
 The normalized `episode_metadata` configuration records requested and resolved
@@ -95,16 +96,6 @@ scene entities, geometry, appearance, pose, physics, task relationships,
 variation axes, seeds, splits, and provenance. This entity-based contract is
 designed to represent future cylinders, meshes, toys, boxes, movable targets,
 and other task objects without changing the policy feature schema.
-
-## Dataset Viewer and LeRobot splits
-
-The default Dataset Viewer configuration displays frame-level data. Select the
-`episode_metadata` configuration to inspect one structured row per episode.
-
-LeRobot v3 stores all frame rows in one physical Parquet table. For that reason,
-the Hub Viewer exposes the frame table as one physical `train` split. The
-logical train, validation, and test episode ranges are recorded in
-`meta/info.json`, and each metadata row includes its logical split.
 
 ## Intended use
 
