@@ -104,11 +104,11 @@ policy after an attempt and its manifest are fully written. On `STOP` or
 `ABORTED` with the watchdog reason, and does not start the next attempt.
 
 The P0 structural-failure tolerance permits up to five consecutive failures
-of one class and stops on the sixth. It also stops when one structural class
-accounts for at least eight of the most recent ten attempts. Strict gates can
-still stop earlier when their frozen success target becomes mathematically
-unreachable; the relaxed structural window is primarily relevant to formal
-collections with retry budget.
+of one class and stops on the sixth. The recent ten-attempt window remains in
+the watchdog report as diagnostic evidence, but the default policy does not
+stop on a recent-window fraction. Strict gates can still stop earlier when
+their frozen success target becomes mathematically unreachable. Budget and
+liveness checks are unchanged.
 
 Initialize the complete stage sequence before using Isaac:
 
@@ -284,6 +284,46 @@ The resulting candidate contains 100 episodes: 50 at 0.04 kg and 50 at
 0.03 kg, with an 80/10/10 split and 50 exact mirrored trial pairs. Export,
 Dashboard registration, release-candidate staging, and Hugging Face publishing
 remain separate validation and owner-approval steps.
+
+### Continuing an aborted mass collection
+
+An `ABORTED` manifest is immutable evidence and must not be changed back to
+`RUNNING`. After the watchdog policy change is reviewed and merged, freeze a
+new continuation plan from the terminal parent evidence:
+
+```bash
+python scripts/create_so101_mass_continuation_plan.py \
+  --parent-plan <aborted-root>/plan.json \
+  --parent-manifest <aborted-root>/manifest.json \
+  --continuation-id so101_cube_mass_003_continuation_<date>_<sha> \
+  --output <continuation-root>/plan.json
+```
+
+The continuation contains only uncovered variations and inherits only the
+unused portion of the parent's 150-attempt budget. It has a new collection ID,
+manifest, episode root, and generating Git commit. The original successes and
+failures remain untouched.
+
+After the continuation reaches `PASS`, compose the two immutable sources:
+
+```bash
+python scripts/create_so101_mass_completion.py \
+  --parent-plan <aborted-root>/plan.json \
+  --parent-manifest <aborted-root>/manifest.json \
+  --parent-episodes-root <aborted-root>/episodes \
+  --continuation-plan <continuation-root>/plan.json \
+  --continuation-manifest <continuation-root>/manifest.json \
+  --continuation-episodes-root <continuation-root>/episodes \
+  --collection-id so101_cube_mass_003_completion50_<date>_<sha> \
+  --manifest-output <completion-root>/manifest.json \
+  --selection-output <completion-root>/export-selection.json \
+  --report-output <completion-root>/report.json
+```
+
+The completion command verifies all 50 selected episode artifacts, requested,
+resolved, and actual PhysX mass, exact variation identity, split assignment,
+25/25 workspace cells, and the frozen size/color balance. Only its passing
+selection manifest may be registered in the Dashboard Benchmarks tree.
 
 ## Dashboard lifecycle
 

@@ -58,10 +58,11 @@ def validate_watchdog_policy(policy: dict[str, Any]) -> None:
             "minimum_recent_attempts cannot exceed recent_window_attempts"
         )
     fraction = policy.get("recent_failure_fraction")
-    if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
-        raise ValueError("recent_failure_fraction must be numeric")
-    if not 0.0 < float(fraction) <= 1.0:
-        raise ValueError("recent_failure_fraction must be in (0, 1]")
+    if fraction is not None:
+        if not isinstance(fraction, (int, float)) or isinstance(fraction, bool):
+            raise ValueError("recent_failure_fraction must be numeric or null")
+        if not 0.0 < float(fraction) <= 1.0:
+            raise ValueError("recent_failure_fraction must be in (0, 1]")
     classes = policy.get("structural_failure_classes")
     if not isinstance(classes, list) or not classes:
         raise ValueError("structural_failure_classes must be a non-empty list")
@@ -212,12 +213,17 @@ def evaluate_so101_collection(
                 f"consecutive_structural_failure:{consecutive_class}:{consecutive_count}"
             )
         minimum_recent = int(policy["minimum_recent_attempts"])
-        if len(recent_attempts) >= minimum_recent and recent_attempts:
+        recent_failure_fraction = policy.get("recent_failure_fraction")
+        if (
+            recent_failure_fraction is not None
+            and len(recent_attempts) >= minimum_recent
+            and recent_attempts
+        ):
             for failure_class, count in sorted(recent_counts.items()):
                 fraction = count / len(recent_attempts)
                 if (
                     failure_class in structural
-                    and fraction >= float(policy["recent_failure_fraction"])
+                    and fraction >= float(recent_failure_fraction)
                 ):
                     reasons.append(
                         f"recent_structural_failure:{failure_class}:{count}/{len(recent_attempts)}"
@@ -254,6 +260,7 @@ def evaluate_so101_collection(
             "maximum_possible_successes": maximum_possible_successes,
         },
         "recent_window": {
+            "stop_enabled": policy.get("recent_failure_fraction") is not None,
             "attempt_count": len(recent_attempts),
             "failure_count": len(recent_failures),
             "failure_class_counts": dict(sorted(recent_counts.items())),

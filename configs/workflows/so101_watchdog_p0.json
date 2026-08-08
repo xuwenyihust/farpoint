@@ -2,7 +2,7 @@
   "schema_version": "farpoint.so101-watchdog-policy.v1",
   "recent_window_attempts": 10,
   "minimum_recent_attempts": 10,
-  "recent_failure_fraction": 0.8,
+  "recent_failure_fraction": null,
   "consecutive_failure_limit": 6,
   "stale_run_state_seconds": 1800,
   "stale_manifest_seconds": 3600,
