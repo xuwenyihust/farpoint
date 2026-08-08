@@ -35,19 +35,10 @@ Farpoint simulation pipeline.
 
 - Dataset: [wenyixu101/farpoint-so101](https://huggingface.co/datasets/wenyixu101/farpoint-so101)
 - Source: [xuwenyihust/farpoint](https://github.com/xuwenyihust/farpoint)
-- Dataset version: `v0.0.1`
-- Status: experimental multi-mass simulation baseline
-
-The repository name intentionally describes the robot rather than one object or
-task. Future versions may add new manipulated objects, placement targets,
-scene variations, cameras, and SO-101 task families while preserving immutable
-version tags.
+- Dataset version: `v0.0.2`
+- Status: experimental multi-mass, multi-yaw simulation baseline
 
 ## Dataset summary
-
-This release contains 100 successful, dataset-valid cube pick-and-place
-demonstrations. It pairs the original 0.04 kg cube stratum with a new 0.03 kg
-stratum while preserving the same positions, sizes, colors, and logical splits.
 
 | Metric | Value |
 |---|---|
@@ -55,8 +46,8 @@ stratum while preserving the same positions, sizes, colors, and logical splits.
 | **Robot** | SO-101 follower arm: 5 arm joints + 1 gripper joint |
 | **Simulator** | Isaac Sim 6.0.0 + PhysX, through Isaac Lab 3.0.0-beta2 |
 | **Controller** | Simulation-truth, contact-aware DLS IK oracle |
-| **Episodes** | 100 successful demonstrations |
-| **Frames** | 72,433 at 30 Hz (about 40 min 14 s) |
+| **Episodes** | 130 successful demonstrations |
+| **Frames** | 93,812 at 30 Hz (about 52 min 7 s) |
 | **Camera** | One 640 x 480 front RGB stream |
 
 ### Policy features
@@ -67,28 +58,25 @@ stratum while preserving the same positions, sizes, colors, and logical splits.
 | `observation.images.front` | video, `480 x 640 x 3` | External front-camera RGB |
 | `action` | `float32[6]` | Joint-position target sent during the current control step |
 
-Joint order is **shoulder pan, shoulder lift, elbow flex, wrist flex, wrist
-roll, gripper**. The five arm joints use the export range `[-100, 100]`; the
-gripper uses `[0, 100]`.
-
 ### Logical episode splits
 
 | Split | Episodes | Share |
 |---|---:|---:|
-| Train | 80 | 80% |
-| Validation | 10 | 10% |
-| Test | 10 | 10% |
+| Train | 104 | 80.0% |
+| Validation | 11 | 8.5% |
+| Test | 15 | 11.5% |
 
-There is no wrist-camera feature in `v0.0.1`.
+There is no wrist-camera feature in `v0.0.2`.
 
 ## Variation coverage
 
 | Variation axis | Values in this release | Distribution |
 |---|---|---:|
-| Position | 5 x 5 stratified XY grid; cube centers span approximately `x = 0.147–0.255 m` and `y = -0.116–-0.024 m` | 25 / 25 cells covered at each mass; 4 episodes per cell overall |
-| Cube edge length | 0.03 m, 0.04 m | 50 episodes each; 25 of each size at each mass |
-| Cube color | Red, blue | 50 episodes each; 25 of each color at each mass |
-| Cube mass | 0.03 kg, 0.04 kg | 50 episodes each |
+| Position | 5 x 5 stratified XY grid; cube centers span approximately `x = 0.147–0.255 m` and `y = -0.116–-0.024 m` | 25 / 25 cells covered overall; the new 0° stratum covers 23 / 25 cells |
+| Cube yaw | 0°, 45° | 30 at 0°; 100 at 45° |
+| Cube edge length | 0.03 m, 0.04 m | 80 at 0.03 m; 50 at 0.04 m |
+| Cube color | Red, blue | 65 episodes each |
+| Cube mass | 0.03 kg, 0.04 kg | 65 episodes each |
 | Placement target | Green raised pad, 0.16 m x 0.14 m | Fixed |
 
 The normalized `episode_metadata` configuration records requested and resolved
