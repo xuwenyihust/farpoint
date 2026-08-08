@@ -103,6 +103,13 @@ policy after an attempt and its manifest are fully written. On `STOP` or
 `INVALID`, it preserves every artifact, marks a still-running manifest
 `ABORTED` with the watchdog reason, and does not start the next attempt.
 
+The P0 structural-failure tolerance permits up to five consecutive failures
+of one class and stops on the sixth. It also stops when one structural class
+accounts for at least eight of the most recent ten attempts. Strict gates can
+still stop earlier when their frozen success target becomes mathematically
+unreachable; the relaxed structural window is primarily relevant to formal
+collections with retry budget.
+
 Initialize the complete stage sequence before using Isaac:
 
 ```bash

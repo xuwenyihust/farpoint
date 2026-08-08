@@ -49,6 +49,11 @@ benchmarks. Their manifests retain every task outcome used to calculate yield,
 distinguish selected episodes from unselected successes, and freeze coverage,
 attempt-budget, and stopping rules before execution.
 
+Completed formal collection manifests are registered under the Dashboard
+`outputs/benchmarks/<collection-id>/manifest.json` tree only after their
+collection report passes. Registration exposes the collection in the
+Benchmarks tab without copying or mutating its episode artifacts.
+
 Every run records the Git revision, config hash, Isaac image digest, seeds,
 episode IDs, artifact completeness, and distinct execution and quality states.
 
