@@ -32,7 +32,6 @@ SO101_HOME_JOINTS = np.asarray(
     [-0.2736, -0.6109, -0.0745, 1.5148, -1.6034, 1.7453], dtype=np.float32
 )
 SO101_GRASP_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
-SO101_CAPTURE_POSTURE = np.asarray([0.50, 0.50], dtype=np.float32)
 # Safe-height reference only.  The 5-DOF arm cannot preserve a full world
 # quaternion throughout translation, so production targeting uses the current
 # measured orientation and gripper-local aperture on every control step.
@@ -128,6 +127,7 @@ from farpoint.control import (  # noqa: E402
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_pre_capture_recenter_limit,
+    so101_reset_support_is_stable,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
 )
@@ -1540,6 +1540,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     torch.manual_seed(environment_seed)
     env.reset(seed=environment_seed)
     object_spec = trial["resolved"]
+    grasp_posture = SO101_GRASP_POSTURE.copy()
     active_object = scene[active_name]
     resolved_mass_kg = float(object_spec["mass_kg"])
     active_object.set_masses_index(
@@ -1575,19 +1576,91 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     print(f"SO101_RESET_DEBUG after_reset={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
-    _move_object(
-        scene[active_name],
-        object_spec["position_m"],
-        device,
-        object_spec["orientation_xyzw"],
-    )
+    expected_object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
+    reset_spawn_position = expected_object_position.copy()
+    reset_spawn_position[2] += 0.002
     # Advance one manager step so FrameTransformer data reflects the reset
     # articulation before choosing the HOME waypoint.  Without this sync,
     # the first observation can be a stale pre-reset pose.
     # Send the same explicit pose as the first manager action; using the stale
     # tensor cached before write_joint_state would restore the USD default.
     _aim_front_camera(scene, device)
-    env.step(initial_joints)
+    # Spawn just above the table and let PhysX establish support before the
+    # oracle reads its first target. A failed audit is a deterministic scene
+    # error and must not be hidden by retrying the same pose.
+    _move_object(
+        scene[active_name],
+        reset_spawn_position,
+        device,
+        object_spec["orientation_xyzw"],
+    )
+    for _ in range(8):
+        env.step(initial_joints)
+    measured_object_position = _numpy(active_object.data.root_pos_w[0])
+    measured_object_velocity = _numpy(active_object.data.root_lin_vel_w[0])
+    reset_support_verified = so101_reset_support_is_stable(
+        expected_object_position,
+        measured_object_position,
+        measured_object_velocity,
+    )
+    reset_support_audit = {
+        "spawn_clearance_m": 0.002,
+        "settling_control_steps": 8,
+        "expected_position_m": expected_object_position.tolist(),
+        "measured_position_m": measured_object_position.tolist(),
+        "measured_linear_velocity_mps": measured_object_velocity.tolist(),
+        "maximum_xy_error_m": 0.002,
+        "maximum_z_error_m": 0.001,
+        "maximum_speed_mps": 0.05,
+        "verified": reset_support_verified,
+    }
+    run_state["physics_audit"]["reset_support"] = copy.deepcopy(
+        reset_support_audit
+    )
+    _write_json(root / "run-state.json", run_state)
+    if not reset_support_verified:
+        raise RuntimeError(
+            "SO-101 cube failed reset support validation: "
+            f"expected={expected_object_position.tolist()}, "
+            f"measured={measured_object_position.tolist()}, "
+            f"linear_velocity={measured_object_velocity.tolist()}"
+        )
+    # The settling steps above are for the cube, not part of the oracle
+    # trajectory. Restore the articulation state without advancing physics so
+    # every episode begins from the same authored HOME pose as the validated
+    # collector. Keeping the arm motion accumulated during cube settling
+    # changed reachability and introduced deterministic PREPLACE regressions.
+    robot.write_joint_state_to_sim(
+        initial_joints,
+        torch.zeros_like(initial_joints),
+    )
+    robot.set_joint_position_target(initial_joints)
+    env.sim.forward()
+    scene.update(0.0)
+    restored_joints = _numpy(robot.data.joint_pos[0])
+    maximum_home_error_rad = float(
+        np.max(np.abs(restored_joints - SO101_HOME_JOINTS))
+    )
+    reset_support_audit["arm_restored_to_home"] = bool(
+        maximum_home_error_rad <= 1e-5
+    )
+    reset_support_audit["maximum_home_error_rad"] = maximum_home_error_rad
+    run_state["physics_audit"]["reset_support"] = copy.deepcopy(
+        reset_support_audit
+    )
+    _write_json(root / "run-state.json", run_state)
+    if not reset_support_audit["arm_restored_to_home"]:
+        raise RuntimeError(
+            "SO-101 arm failed reset HOME restoration: "
+            f"maximum_error_rad={maximum_home_error_rad}"
+        )
+    print(
+        "SO101_RESET_SUPPORT "
+        f"position={measured_object_position.tolist()} "
+        f"linear_velocity={measured_object_velocity.tolist()} "
+        f"maximum_home_error_rad={maximum_home_error_rad}",
+        flush=True,
+    )
     print(f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     action_term = env.action_manager.get_term("joint_positions")
     print(
@@ -1693,7 +1766,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             # physically successful enclosure settles at a different wrist
             # roll. Transition to that calibrated capture posture during CLOSE
             # and latch the measured result only after bilateral confirmation.
-            grasp_hold_posture = SO101_CAPTURE_POSTURE.copy()
+            grasp_hold_posture = grasp_posture.copy()
         if phase is OraclePhase.VERIFY_CONTACT and grasp_offset is None:
             grasp_offset = ee_position - _numpy(scene[active_name].data.root_pos_w[0])
             # CLOSE integrates Cartesian commands while the fingers are
@@ -1866,10 +1939,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     0.10 if pregrasp_route_index == 0 else 0.20
                 )
                 route_posture_ready = (
-                    abs(float(current[3].item()) - float(SO101_GRASP_POSTURE[0]))
+                    abs(float(current[3].item()) - float(grasp_posture[0]))
                     < route_posture_tolerance
                     and abs(
-                        float(current[4].item()) - float(SO101_GRASP_POSTURE[1])
+                        float(current[4].item()) - float(grasp_posture[1])
                     )
                     < route_posture_tolerance
                 )
@@ -2260,7 +2333,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # lever the cube out of the rotary jaw during VERIFY.
                 posture_target = grasp_hold_posture
             else:
-                posture_target = SO101_GRASP_POSTURE
+                posture_target = grasp_posture
             # Position plus the two calibrated wrist targets is the reachable
             # 5-DOF task.  A fixed world quaternion over-constrains translation
             # and was the cause of the pre-v6 single-finger collision.
@@ -2761,6 +2834,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         "dynamic_friction": object_spec["dynamic_friction"],
         "restitution": object_spec["restitution"],
         "mass_audit": copy.deepcopy(mass_audit),
+        "reset_support_audit": copy.deepcopy(reset_support_audit),
     }
     scene_target = {
         "target_id": "green_rectangular_pad_v1",
@@ -2804,7 +2878,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         )
     _write_json(root / "metadata.json", metadata)
     (root / "observations.jsonl").write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
-    _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows), "physics_audit": {"mass": mass_audit}})
+    _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows), "physics_audit": {"mass": mass_audit, "reset_support": reset_support_audit}})
     run_state["execution_status"] = "FINISHED"
     run_state["recording"]["frame_count"] = len(rows)
     run_state["outcome"] = copy.deepcopy(metadata["outcome"])

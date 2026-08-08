@@ -6,6 +6,7 @@ from farpoint.so101_pilot import (
     DEFAULT_FALLBACK_TRIAL_IDS,
     DEFAULT_PRIMARY_TRIAL_IDS,
     build_so101_pilot_plan,
+    build_so101_yaw_pilot_plan,
     build_targeted_mass_diagnostic_pilot_plan,
 )
 
@@ -204,4 +205,71 @@ def test_targeted_mass_pilot_requires_role_expectations():
             source_trial_ids=("cube_r03_c00_s1_k1",),
             target_mass_kg=0.03,
             required_successes=1,
+        )
+
+
+def _yaw_profiles():
+    source_ids = (
+        "cube_r00_c00_s0_k0",
+        "cube_r00_c04_s0_k1",
+        "cube_r02_c02_s0_k1",
+        "cube_r02_c01_s1_k0",
+        "cube_r03_c03_s1_k0",
+        "cube_r03_c01_s1_k0",
+        "cube_r01_c02_s1_k1",
+        "cube_r00_c02_s1_k1",
+        "cube_r04_c00_s0_k0",
+        "cube_r04_c02_s0_k0",
+        "cube_r04_c03_s0_k1",
+        "cube_r04_c04_s1_k1",
+    )
+    return [
+        {"source_trial_id": trial_id, "mass_kg": 0.03 if index % 2 else 0.04}
+        for index, trial_id in enumerate(source_ids)
+    ]
+
+
+def test_yaw_pilot_freezes_balanced_zero_degree_10_of_12_contract():
+    plan = build_so101_yaw_pilot_plan(
+        _config(), pilot_id="yaw0_pilot", yaw_degrees=0.0, trial_profiles=_yaw_profiles()
+    )
+
+    selected = plan["trials"][:12]
+    assert len(plan["trials"]) == 100
+    assert plan["pilot"]["kind"] == "targeted_yaw_pilot"
+    assert plan["pilot"]["required_successes"] == 10
+    assert plan["pilot"]["maximum_attempts"] == 12
+    assert plan["pilot"]["mass_kg_counts"] == {"0.03": 6, "0.04": 6}
+    assert plan["pilot"]["actual_orientation_tolerance_degrees"] == 2.0
+    assert plan["pilot"]["coverage"]["splits"] == {
+        "test": 2,
+        "train": 8,
+        "validation": 2,
+    }
+    assert sorted(plan["pilot"]["coverage"]["size_color"].values()) == [3, 3, 3, 3]
+    assert {trial["resolved"]["dimensions_m"][0] for trial in selected} == {0.03, 0.04}
+    assert {tuple(trial["resolved"]["rgba"]) for trial in selected} == {
+        (0.85, 0.08, 0.06, 1.0),
+        (0.04, 0.2, 0.85, 1.0),
+    }
+    assert all(trial["resolved"]["orientation_xyzw"] == [0.0, 0.0, 0.0, 1.0] for trial in selected)
+    manifest = create_pilot_manifest(
+        plan, collection_id=plan["plan_id"], git_commit="a" * 40
+    )
+    assert manifest["completion_policy"] == "all_planned_trials"
+    assert manifest["stop_when_success_target_unreachable"] is False
+
+
+def test_yaw_pilot_rejects_unbalanced_or_wrong_sized_profiles():
+    profiles = _yaw_profiles()
+    with pytest.raises(ValueError, match="exactly 12"):
+        build_so101_yaw_pilot_plan(
+            _config(), pilot_id="bad", yaw_degrees=0.0, trial_profiles=profiles[:-1]
+        )
+    with pytest.raises(ValueError, match="six trials"):
+        build_so101_yaw_pilot_plan(
+            _config(),
+            pilot_id="bad",
+            yaw_degrees=0.0,
+            trial_profiles=[{**profile, "mass_kg": 0.04} for profile in profiles],
         )

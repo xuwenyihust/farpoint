@@ -368,6 +368,64 @@ The resulting candidate contains 100 episodes: 50 at 0.04 kg and 50 at
 Dashboard registration, release-candidate staging, and Hugging Face publishing
 remain separate validation and owner-approval steps.
 
+## Cube-yaw expansion pilot
+
+The first SO-101 orientation expansion changes only the cube's upright yaw
+from the v0.0.1 value of 45 degrees to 0 degrees. Before a dataset collection,
+run the frozen 12-attempt pilot:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/cube_yaw0_pilot_<sha> \
+  --workflow-id cube_yaw0_pilot_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config configs/workflows/so101_cube_yaw0_pilot.json
+```
+
+The pilot uses 12 historical-success trial identities from the v0.0.0/v0.0.1
+dataset: eight train, two validation, and two test; twelve distinct workspace
+cells; all trials at the staged 30 mm size; six trials per cube mass; and six
+trials per color. All 12 attempts run even after ten successes.
+Passing requires at least 10/12 eligible successes, a verified 0-degree initial
+PhysX orientation in the observation truth and episode sidecars, and a verified
+actual PhysX mass for every attempt. The PhysX observation may settle by at most
+2 degrees from the requested upright yaw; the report records the measured angular
+error for every attempt. Pilot episodes remain `PILOT` artifacts.
+
+The first yaw=0 run isolated two controller failures. Four 40 mm attempts
+formed real bilateral contact before losing the cube during proof lift or
+static hold. A follow-up A/B pilot showed that holding instead of closing on
+low force was a regression, so the proven force controller remains unchanged.
+The measured 40 mm root cause is geometric: the original wrist posture gives
+the axis-aligned cube approximately 42 degrees of closing-axis error. Two
+bounded experiments were rejected by PhysX evidence. A joint-posture target
+reduced the error to approximately 9 degrees but produced a 7 N non-cube table
+contact; an exact direction-only target preserved table clearance but made the
+five-DOF PREGRASP position unreachable. Neither experiment is part of the
+collector. The first v0.0.2 tranche therefore remains 30 mm-only until a
+separate large-cube manipulation strategy passes its own pilot.
+
+Reset spawns 2 mm above the table, records a strict support audit, and restores
+the arm to the exact HOME joint state without advancing physics before the
+oracle starts. Repeating the same failed support pose produced identical
+free-fall evidence, so reset is deliberately not retried. The exact
+`cube_r00_c04_s0_k1` yaw=0 sample is excluded from the pilot and replaced by
+the same size/color/mass profile in `r00_c03`; future full-grid collection must
+use a different deterministic sample inside `r00_c04` and pass the same support
+audit. A failed support or HOME audit terminates the attempt as runner evidence
+instead of consuming the PREGRASP budget.
+
+A later v0.0.2 collection may add only 50 yaw=0 demonstrations rather than the
+full 100-trial Cartesian mirror. The lowest-risk fractional design freezes the
+30 mm cube, then collects one 0.03 kg and one 0.04 kg trial in each of the 25
+workspace cells. Assign colors as a complementary checkerboard so the aggregate
+is 25/25 by color and preserve a 40/5/5 logical split. This makes mass, color,
+position, and split balanced inside the new tranche while intentionally leaving
+cube size incomplete. v0.0.2 would contain 150 total episodes and have 100
+examples at 45 degrees versus 50 at 0 degrees. After a separate 40 mm grasp
+pilot passes, a future version can add the complementary 50 yaw=0, 40 mm trials
+to reach a balanced 200-episode release without invalidating v0.0.2.
+
 ### Continuing an aborted mass collection
 
 An `ABORTED` manifest is immutable evidence and must not be changed back to

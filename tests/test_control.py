@@ -30,6 +30,7 @@ from farpoint.control import (
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_pre_capture_recenter_limit,
+    so101_reset_support_is_stable,
     tactile_contact_hold_target,
     tactile_search_active,
     temporal_contact_confirmed,
@@ -650,6 +651,25 @@ def test_force_controlled_rotary_jaw_restores_30mm_settling_force_floor():
     )
 
     assert update == {"position": pytest.approx(0.2509), "action": "close"}
+
+
+def test_so101_reset_support_requires_settled_table_pose():
+    expected = [0.18, -0.07, 0.052]
+    assert so101_reset_support_is_stable(
+        expected,
+        [0.1805, -0.0705, 0.0524],
+        [0.001, 0.0, -0.002],
+    )
+    assert not so101_reset_support_is_stable(
+        expected,
+        [0.18, -0.07, -0.10],
+        [0.0, 0.0, -1.0],
+    )
+    assert not so101_reset_support_is_stable(
+        expected,
+        [0.18, -0.07, 0.052],
+        [0.0, 0.0, 0.06],
+    )
 
 
 def test_force_controlled_rotary_jaw_backs_off_high_force_and_limits_preload():

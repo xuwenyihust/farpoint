@@ -121,6 +121,7 @@ def test_workflow_requires_report_pass_before_unlocking_next_stage(tmp_path):
     needs_report = evaluate_so101_gate_workflow(path)
     assert needs_report["status"] == "NEEDS_REPORT"
     assert needs_report["next_action"]["kind"] == "REPORT"
+    assert needs_report["next_action"]["command"][0] == "python3"
 
     write_pass_report(path, workflow, first)
     status = evaluate_so101_gate_workflow(path)
@@ -337,6 +338,34 @@ def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
     assert plans[stage["stage_id"]]["pilot"]["expectations"]
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]
+
+
+def test_targeted_yaw_profile_freezes_twelve_balanced_trials(tmp_path):
+    config = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
+    profile = json.loads(
+        (ROOT / "configs/workflows/so101_cube_yaw0_pilot.json").read_text()
+    )
+    workflow, plans = build_so101_gate_workflow(
+        profile, config, policy, workflow_id="yaw0", git_commit=GIT_COMMIT
+    )
+    path = write_so101_gate_workflow(tmp_path / "yaw0", workflow, plans, policy)
+    stage = workflow["stages"][0]
+    plan = plans[stage["stage_id"]]
+
+    assert stage["collector_mode"] == "pilot"
+    assert stage["report_kind"] == "pilot"
+    assert stage["maximum_attempts"] == 12
+    assert plan["pilot"]["required_successes"] == 10
+    assert plan["pilot"]["yaw_degrees"] == 0.0
+    assert plan["pilot"]["size_scope"] == "30mm"
+    assert plan["pilot"]["coverage"]["sizes"] == {"size_0": 12}
+    assert evaluate_so101_gate_workflow(path)["next_action"]["command"][2:4] == [
+        "--pilot-plan",
+        "--plan",
+    ]
 
 
 def test_structural_contact_handoff_profile_freezes_two_fixes_and_control(tmp_path):

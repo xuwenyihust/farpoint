@@ -2,15 +2,21 @@ import json
 import struct
 import zlib
 
+import pytest
+
 from farpoint.object_variation import load_variation_config
 from farpoint.so101_collection import create_pilot_manifest, next_attempt, record_attempt
-from farpoint.so101_pilot import build_so101_pilot_plan
+from farpoint.so101_pilot import build_so101_pilot_plan, build_so101_yaw_pilot_plan
 from farpoint.so101_pilot_report import (
     _expectation_errors,
     _pilot_status,
     build_so101_pilot_report,
     render_so101_pilot_report_markdown,
 )
+
+
+def _config():
+    return load_variation_config("configs/variations/so101_cube_pick_place_v1.json")
 
 
 def _write_rgb_png(path):
@@ -156,3 +162,95 @@ def test_targeted_pilot_expectations_check_success_and_failure_roles():
         "collision_trial:expected_success_false",
         "fixed_trial:missing_expected_attempt",
     ]
+
+
+def test_yaw_pilot_report_accepts_twelve_successes_and_audits_pose_and_mass(tmp_path):
+    workflow = json.loads(
+        open("configs/workflows/so101_cube_yaw0_pilot.json", encoding="utf-8").read()
+    )
+    profiles = workflow["stages"][0]["trial_profiles"]
+    plan = build_so101_yaw_pilot_plan(
+        _config(),
+        pilot_id="yaw0_report",
+        yaw_degrees=0.0,
+        trial_profiles=profiles,
+        size_scope=workflow["stages"][0]["size_scope"],
+    )
+    manifest = create_pilot_manifest(
+        plan, collection_id=plan["plan_id"], git_commit="a" * 40
+    )
+    for index in range(12):
+        attempt = next_attempt(manifest, plan)
+        episode_id = f"episode_yaw_{index}"
+        root = tmp_path / episode_id
+        _write_success_episode(root, attempt["variation_id"], index / 1000)
+        metadata = json.loads((root / "metadata.json").read_text())
+        audit = {
+            "requested_mass_kg": attempt["requested"]["mass_kg"],
+            "resolved_mass_kg": attempt["resolved"]["mass_kg"],
+            "physx_actual_mass_kg": attempt["resolved"]["mass_kg"],
+            "requested_resolved_absolute_error_kg": 0.0,
+            "resolved_physx_absolute_error_kg": 0.0,
+            "tolerance_kg": 1e-6,
+            "verified": True,
+        }
+        metadata.update(
+            {
+                "variation": {
+                    "variation_id": attempt["variation_id"],
+                    "requested": attempt["requested"],
+                    "resolved": attempt["resolved"],
+                },
+                "scene": {
+                    "object": {
+                        "initial_pose": {"orientation_xyzw": [0.0, 0.0, 0.0, 1.0]},
+                        "mass_audit": audit,
+                    }
+                },
+            }
+        )
+        (root / "metadata.json").write_text(json.dumps(metadata))
+        metrics = json.loads((root / "metrics.json").read_text())
+        metrics["physics_audit"] = {"mass": audit}
+        (root / "metrics.json").write_text(json.dumps(metrics))
+        record_attempt(
+            manifest,
+            plan,
+            attempt,
+            episode_id=episode_id,
+            success=True,
+            dataset_valid=True,
+        )
+
+    report = build_so101_pilot_report(plan, manifest, tmp_path)
+
+    assert report["pilot_status"] == "PASS"
+    assert report["success_count"] == 12
+    assert report["required_successes"] == 10
+    assert report["yaw_audit_count"] == 12
+    assert all(row["orientation_verified"] and row["mass_verified"] for row in report["yaw_audits"])
+    assert all(row["orientation_tolerance_degrees"] == 2.0 for row in report["yaw_audits"])
+    assert report["evidence_errors"] == []
+
+    first_observations = tmp_path / "episode_yaw_0" / "observations.jsonl"
+    rows = [json.loads(line) for line in first_observations.read_text().splitlines()]
+    rows[0]["truth"]["object_root_pose_xyzw"][3:] = [
+        0.0,
+        0.0,
+        0.0043633093,
+        0.9999904807,
+    ]
+    first_observations.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    settled = build_so101_pilot_report(plan, manifest, tmp_path)
+    assert settled["pilot_status"] == "PASS"
+    assert settled["yaw_audits"][0]["initial_orientation_error_degrees"] == pytest.approx(
+        0.5
+    )
+
+    rows[0]["truth"]["object_root_pose_xyzw"][3:] = [0.0, 0.0, 0.3826834324, 0.9238795325]
+    first_observations.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+    invalid = build_so101_pilot_report(plan, manifest, tmp_path)
+    assert invalid["pilot_status"] == "INVALID_EVIDENCE"
+    assert "episode_yaw_0:yaw_orientation_audit_failed" in invalid["evidence_errors"]

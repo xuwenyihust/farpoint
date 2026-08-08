@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -26,7 +28,7 @@ def _pilot_status(
         return "INCOMPLETE"
     if acceptance_errors:
         return "FAIL"
-    if quality_status == "PASS" and selected_count == required_successes:
+    if quality_status == "PASS" and selected_count >= required_successes:
         return "PASS"
     return "FAIL"
 
@@ -49,6 +51,128 @@ def _expectation_errors(
         if not expected_success and attempt.get("failure_reason") != expected_reason:
             errors.append(f"{trial_id}:unexpected_failure_reason")
     return errors
+
+
+def _quaternion_error_degrees(actual: list[float], expected: list[float]) -> float:
+    if len(actual) != 4 or len(expected) != 4:
+        return math.inf
+    actual_norm = math.sqrt(sum(float(value) ** 2 for value in actual))
+    expected_norm = math.sqrt(sum(float(value) ** 2 for value in expected))
+    if actual_norm <= 0.0 or expected_norm <= 0.0:
+        return math.inf
+    dot = sum(float(a) * float(b) for a, b in zip(actual, expected))
+    normalized_dot = min(1.0, max(-1.0, dot / (actual_norm * expected_norm)))
+    return math.degrees(2.0 * math.acos(abs(normalized_dot)))
+
+
+def _quaternions_equivalent(
+    actual: list[float], expected: list[float], *, tolerance_degrees: float
+) -> bool:
+    return _quaternion_error_degrees(actual, expected) <= tolerance_degrees
+
+
+def _yaw_pilot_audit(
+    plan: dict[str, Any],
+    attempts: list[dict[str, Any]],
+    by_name: dict[str, dict[str, Any]],
+    episodes_root: Path,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    pilot = plan.get("pilot") or {}
+    if pilot.get("kind") != "targeted_yaw_pilot":
+        return [], []
+    by_trial_id = {trial["trial_id"]: trial for trial in plan["trials"]}
+    audits = []
+    errors = []
+    for attempt in attempts:
+        episode_id = attempt.get("episode_id")
+        episode = by_name.get(episode_id)
+        trial = by_trial_id.get(attempt.get("trial_id"))
+        if episode is None or trial is None or not episode_id:
+            continue
+        root = episodes_root / episode_id
+        metadata = json.loads((root / "metadata.json").read_text(encoding="utf-8"))
+        metrics = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
+        expected_orientation = [
+            float(value) for value in trial["resolved"]["orientation_xyzw"]
+        ]
+        orientation_tolerance_degrees = float(
+            pilot.get("actual_orientation_tolerance_degrees", 2.0)
+        )
+        initial_orientation = [
+            float(value) for value in episode["initial_object_pose_xyzw"][3:]
+        ]
+        initial_orientation_error_degrees = _quaternion_error_degrees(
+            initial_orientation, expected_orientation
+        )
+        variation = metadata.get("variation") or {}
+        recorded_orientations = []
+        for role in ("requested", "resolved"):
+            payload = variation.get(role) or {}
+            recorded_orientations.append(payload.get("orientation_xyzw") or [])
+            recorded_orientations.append(
+                (((payload.get("entities") or {}).get("pick_object") or {}).get("pose") or {}).get(
+                    "orientation_xyzw"
+                )
+                or []
+            )
+        scene_orientation = (
+            ((metadata.get("scene") or {}).get("object") or {}).get("initial_pose") or {}
+        ).get("orientation_xyzw") or []
+        orientation_verified = _quaternions_equivalent(
+            initial_orientation,
+            expected_orientation,
+            tolerance_degrees=orientation_tolerance_degrees,
+        ) and all(
+            _quaternions_equivalent(
+                value,
+                expected_orientation,
+                tolerance_degrees=orientation_tolerance_degrees,
+            )
+            for value in [*recorded_orientations, scene_orientation]
+        )
+        if not orientation_verified:
+            errors.append(f"{episode_id}:yaw_orientation_audit_failed")
+
+        metric_mass = (metrics.get("physics_audit") or {}).get("mass")
+        metadata_mass = ((metadata.get("scene") or {}).get("object") or {}).get(
+            "mass_audit"
+        )
+        expected_mass = float(trial["resolved"]["mass_kg"])
+        mass_verified = (
+            isinstance(metric_mass, dict)
+            and metric_mass == metadata_mass
+            and metric_mass.get("verified") is True
+            and abs(float(metric_mass.get("requested_mass_kg", math.inf)) - expected_mass)
+            <= 1e-6
+            and abs(float(metric_mass.get("resolved_mass_kg", math.inf)) - expected_mass)
+            <= 1e-6
+            and abs(float(metric_mass.get("physx_actual_mass_kg", math.inf)) - expected_mass)
+            <= 1e-6
+        )
+        if not mass_verified:
+            errors.append(f"{episode_id}:mass_audit_failed")
+        audits.append(
+            {
+                "episode_id": episode_id,
+                "trial_id": attempt["trial_id"],
+                "expected_yaw_degrees": float(pilot["yaw_degrees"]),
+                "expected_orientation_xyzw": expected_orientation,
+                "initial_orientation_xyzw": initial_orientation,
+                "initial_orientation_error_degrees": initial_orientation_error_degrees,
+                "orientation_tolerance_degrees": orientation_tolerance_degrees,
+                "orientation_verified": orientation_verified,
+                "expected_mass_kg": expected_mass,
+                "physx_actual_mass_kg": (
+                    metric_mass.get("physx_actual_mass_kg")
+                    if isinstance(metric_mass, dict)
+                    else None
+                ),
+                "mass_verified": mass_verified,
+            }
+        )
+    if len(audits) != len([attempt for attempt in attempts if attempt.get("episode_id")]):
+        errors.append("yaw_audit_count_mismatch")
+    return audits, errors
 
 
 def build_so101_pilot_report(
@@ -78,6 +202,8 @@ def build_so101_pilot_report(
             errors.append(f"{attempt['episode_id']}:manifest_episode_success_mismatch")
         if episode["dataset_valid"] != bool(attempt["dataset_valid"]):
             errors.append(f"{attempt['episode_id']}:manifest_episode_validity_mismatch")
+    yaw_audits, yaw_errors = _yaw_pilot_audit(plan, attempts, by_name, root)
+    errors.extend(yaw_errors)
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
     for attempt in selected:
@@ -112,7 +238,10 @@ def build_so101_pilot_report(
     if variation_seed_count != len(attempts):
         errors.append("variation_seeds_not_unique")
     acceptance_errors = []
-    if len(selected) != int(manifest["required_successes"]):
+    if (plan.get("pilot") or {}).get("kind") == "targeted_yaw_pilot":
+        if len(selected) < int(manifest["required_successes"]):
+            acceptance_errors.append("selected_success_count_below_threshold")
+    elif len(selected) != int(manifest["required_successes"]):
         acceptance_errors.append("selected_success_count_mismatch")
     if len(attempts) > int(manifest["maximum_attempts"]):
         acceptance_errors.append("attempt_budget_exceeded")
@@ -149,6 +278,8 @@ def build_so101_pilot_report(
             {episode["metadata_sha256"] for episode in analysis["episodes"]}
         ),
         "failure_class_counts": dict(sorted(failures.items())),
+        "yaw_audit_count": len(yaw_audits),
+        "yaw_audits": yaw_audits,
         "evidence_errors": sorted(set(errors)),
         "acceptance_errors": sorted(set(acceptance_errors)),
         "minimum_selected_proof_lift_m": min(

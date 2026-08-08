@@ -84,6 +84,43 @@ def so101_capture_contact_loss_grace_s(object_width_m):
     return 0.30 - 0.10 * interpolation
 
 
+def so101_reset_support_is_stable(
+    expected_position_m,
+    measured_position_m,
+    linear_velocity_mps,
+    *,
+    maximum_xy_error_m=0.002,
+    maximum_z_error_m=0.001,
+    maximum_speed_mps=0.05,
+):
+    """Check that a reset object settled on its support before oracle motion."""
+    if not all(
+        len(values) == 3
+        for values in (
+            expected_position_m,
+            measured_position_m,
+            linear_velocity_mps,
+        )
+    ):
+        raise ValueError("reset support vectors must have three coordinates")
+    expected = [float(value) for value in expected_position_m]
+    measured = [float(value) for value in measured_position_m]
+    velocity = [float(value) for value in linear_velocity_mps]
+    limits = (
+        float(maximum_xy_error_m),
+        float(maximum_z_error_m),
+        float(maximum_speed_mps),
+    )
+    if any(not math.isfinite(value) for value in (*expected, *measured, *velocity)):
+        return False
+    if any(not math.isfinite(value) or value <= 0.0 for value in limits):
+        raise ValueError("reset support limits must be finite and positive")
+    xy_error = math.hypot(measured[0] - expected[0], measured[1] - expected[1])
+    z_error = abs(measured[2] - expected[2])
+    speed = math.sqrt(sum(value * value for value in velocity))
+    return xy_error <= limits[0] and z_error <= limits[1] and speed <= limits[2]
+
+
 def settle_release_separation_target(
     release_hold_position,
     phase_steps,
