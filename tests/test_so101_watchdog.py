@@ -123,12 +123,16 @@ def test_watchdog_stops_strict_gate_when_target_is_unreachable():
     }
 
 
-def test_watchdog_stops_repeated_structural_failure_before_budget_exhaustion():
+def test_watchdog_allows_five_then_stops_on_six_consecutive_structural_failures():
     plan = workspace_plan()
     manifest = create_gate_manifest(
         plan, collection_id="structural", git_commit="b" * 40
     )
-    for _ in range(3):
+    # Exercise the structural guard independently of this gate's strict
+    # success target. Formal collections retain a much larger retry budget.
+    manifest["required_successes"] = 1
+    manifest["maximum_attempts"] = 10
+    for _ in range(5):
         record(
             manifest,
             plan,
@@ -138,10 +142,46 @@ def test_watchdog_stops_repeated_structural_failure_before_budget_exhaustion():
     set_recent(manifest)
 
     report = evaluate_so101_collection(plan, manifest, policy(), now=NOW)
+    assert report["decision"] == "CONTINUE"
+    assert report["reasons"] == []
+
+    record(
+        manifest,
+        plan,
+        success=False,
+        reason="grasp_phase_timeout:slow_close",
+    )
+    set_recent(manifest)
+    report = evaluate_so101_collection(plan, manifest, policy(), now=NOW)
 
     assert report["decision"] == "STOP"
-    assert "consecutive_structural_failure:phase_timeout:3" in report["reasons"]
-    assert "success_target_unreachable" in report["reasons"]
+    assert report["reasons"] == [
+        "consecutive_structural_failure:phase_timeout:6"
+    ]
+
+
+def test_watchdog_stops_when_structural_failures_are_eight_of_last_ten():
+    plan = workspace_plan()
+    manifest = create_gate_manifest(
+        plan, collection_id="recent_structural", git_commit="b" * 40
+    )
+    manifest["required_successes"] = 10
+    manifest["maximum_attempts"] = 20
+    for success in (False, False, False, False, True) * 2:
+        record(
+            manifest,
+            plan,
+            success=success,
+            reason=None if success else "grasp_phase_timeout:slow_close",
+        )
+    set_recent(manifest)
+
+    report = evaluate_so101_collection(plan, manifest, policy(), now=NOW)
+
+    assert report["decision"] == "STOP"
+    assert report["reasons"] == [
+        "recent_structural_failure:phase_timeout:8/10"
+    ]
 
 
 def test_watchdog_stops_on_a_stale_live_attempt(tmp_path):
