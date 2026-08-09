@@ -23,6 +23,7 @@ class GraspPhase(str, Enum):
 def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
     """Return whether a one-finger load should still steer the aperture."""
     return phase in {
+        GraspPhase.FIRST_CONTACT,
         GraspPhase.CONTACT_ALIGNMENT,
         GraspPhase.SLOW_CLOSE,
         GraspPhase.BILATERAL_SETTLE,

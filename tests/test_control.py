@@ -837,6 +837,31 @@ def test_relative_object_grasp_servo_tracks_offset_with_norm_limit():
     assert sum(value * value for value in delta) ** 0.5 == pytest.approx(0.005)
 
 
+def test_relative_object_grasp_servo_recovers_yaw30_static_hold_drift():
+    captured_object = [0.2514796, -0.0771627, 0.0469985]
+    captured_grasp = [0.2116900, -0.1243032, 0.0793410]
+    capture_offset = [
+        captured_object[axis] - captured_grasp[axis] for axis in range(3)
+    ]
+    measured_grasp = [0.2096628, -0.1253432, 0.0771301]
+    result = relative_object_grasp_servo_target(
+        [0.2515510, -0.0766251, 0.0470775],
+        capture_offset,
+        measured_grasp,
+        captured_grasp,
+        max_step=0.000125,
+        max_correction=[0.006, 0.006, 0.006],
+    )
+
+    correction = [
+        result["position"][axis] - measured_grasp[axis] for axis in range(3)
+    ]
+    assert all(value > 0.0 for value in correction)
+    assert sum(value * value for value in correction) ** 0.5 == pytest.approx(
+        0.000125
+    )
+
+
 def test_relative_object_grasp_servo_limits_total_axis_correction():
     result = relative_object_grasp_servo_target(
         [1.0, 1.0, 1.0],
