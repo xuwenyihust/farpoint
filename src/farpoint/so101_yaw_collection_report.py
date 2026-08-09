@@ -1,4 +1,4 @@
-"""Evidence report for the formal SO-101 yaw=0, 30 mm collection."""
+"""Evidence report for formal SO-101 fixed-yaw, 30 mm collections."""
 
 from __future__ import annotations
 
@@ -29,7 +29,9 @@ def build_so101_yaw_collection_report(
     selected = [row for row in attempts if row.get("attempt_id") in selected_ids]
     trials = {trial["variation_id"]: trial for trial in plan["trials"]}
     balance = yaw_collection_balance({"trials": [trials[row["variation_id"]] for row in selected]})
-    errors = validate_yaw_collection_balance(balance)
+    errors = validate_yaw_collection_balance(
+        balance, profile.get("balance_contract")
+    )
     root = Path(episodes_root)
     episode_attempts = [row for row in attempts if row.get("episode_id")]
     episode_dirs = [root / row["episode_id"] for row in episode_attempts if (root / row["episode_id"]).is_dir()]
@@ -81,6 +83,7 @@ def build_so101_yaw_collection_report(
         "status": status,
         "attempted_count": len(attempts),
         "maximum_attempts": int(profile["maximum_attempts"]),
+        "yaw_degrees": float(profile["yaw_degrees"]),
         "success_count": len(selected),
         "required_successes": int(profile["required_successes"]),
         "complete_artifact_count": len(analysis["episodes"]),
@@ -95,7 +98,9 @@ def build_so101_yaw_collection_report(
 def render_so101_yaw_collection_report_markdown(report: dict[str, Any]) -> str:
     balance = report["balance"]
     lines = [
-        f"# SO-101 yaw=0°, 30 mm formal collection: {report['collection_id']}", "",
+        f"# SO-101 yaw={report['yaw_degrees']:g}°, 30 mm formal collection: "
+        f"{report['collection_id']}",
+        "",
         f"- Status: **{report['status']}**",
         f"- Git commit: `{report['git_commit']}`",
         f"- Successes: {report['success_count']}/{report['required_successes']}",

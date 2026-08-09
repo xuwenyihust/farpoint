@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a formal balanced SO-101 yaw=0, 30 mm collection."""
+"""Validate a formal SO-101 fixed-yaw, 30 mm collection."""
 
 from __future__ import annotations
 
