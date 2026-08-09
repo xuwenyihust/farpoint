@@ -11,10 +11,7 @@ from farpoint.release_spec import load_release_spec
 
 
 SO101_RELEASE_SPEC = (
-    Path(__file__).resolve().parents[1]
-    / "configs"
-    / "datasets"
-    / "farpoint-so101.toml"
+    Path(__file__).resolve().parents[1] / "configs" / "datasets" / "farpoint-so101.toml"
 )
 
 
@@ -26,14 +23,12 @@ def test_current_release_spec_is_consistent():
     assert check_versions() == []
 
 
-def test_current_dataset_card_separates_frames_from_metadata_in_viewer():
+def test_current_dataset_card_is_generated():
     spec = load_release_spec()
-    project_root = Path(__file__).resolve().parents[1]
-    card = project_root.joinpath(spec["dataset_card"]).read_text()
 
-    assert 'path: "data/**/*.parquet"' in card
-    assert "config_name: episode_metadata" in card
-    assert 'path: "meta/episode_metadata.parquet"' in card
+    assert spec["dataset_card_mode"] == "generated"
+    assert "dataset_card" not in spec
+    assert spec["card"]["pretty_name"] == "Farpoint UR10e Robotiq 2F-85"
 
 
 def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
@@ -47,30 +42,16 @@ def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
     assert check_versions(SO101_RELEASE_SPEC) == []
 
 
-def test_so101_dataset_card_documents_viewer_summary_and_policy_features():
+def test_so101_dataset_card_is_generated_from_release_metadata():
     spec = load_release_spec(SO101_RELEASE_SPEC)
     project_root = Path(__file__).resolve().parents[1]
-    card = project_root.joinpath(spec["dataset_card"]).read_text(encoding="utf-8")
-    changelog = project_root.joinpath(
-        "docs/dataset-v3/farpoint-so101-changelog.md"
-    ).read_text(encoding="utf-8")
+    changelog = project_root.joinpath("docs/dataset-v3/farpoint-so101-changelog.md").read_text(
+        encoding="utf-8"
+    )
 
-    assert 'path: "data/**/*.parquet"' in card
-    assert 'path: "meta/episode_metadata.parquet"' in card
-    assert "| Train | 104 | 80.0% |" in card
-    assert "| Validation | 11 | 8.5% |" in card
-    assert "| Test | 15 | 11.5% |" in card
-    assert "25 / 25 cells covered overall" in card
-    assert "| Cube yaw | 0°, 45° | 30 at 0°; 100 at 45° |" in card
-    assert "| Cube edge length | 0.03 m, 0.04 m | 80 at 0.03 m; 50 at 0.04 m |" in card
-    assert "| Cube mass | 0.03 kg, 0.04 kg | 65 episodes each |" in card
-    assert "There is no wrist-camera feature" in card
-    assert "## Dataset Viewer and LeRobot splits" not in card
-    assert "The repository name intentionally describes" not in card
-    assert "This release contains 100 successful" not in card
-    assert "Joint order is **shoulder pan" not in card
-    assert "future cylinders, meshes, toys, boxes" in card
-    assert "farpoint-so101-changelog.md" in card
+    assert spec["dataset_card_mode"] == "generated"
+    assert "dataset_card" not in spec
+    assert spec["card"]["pretty_name"] == "Farpoint SO-101"
     assert "## v0.0.2" in changelog
     assert "## v0.0.1" in changelog
     assert "## v0.0.0" in changelog
@@ -119,6 +100,28 @@ def test_code_and_dataset_versions_are_independent(tmp_path):
 
     assert spec["dataset_version"] == "9.4.1"
     assert spec["dataset_tag"] == "v9.4.1"
+
+
+def test_generated_card_mode_requires_structured_metadata(tmp_path):
+    path = tmp_path / "dataset-release.toml"
+    path.write_text(
+        "\n".join(
+            [
+                'schema_version = "farpoint.dataset-release.v1"',
+                'dataset_version = "1.2.3"',
+                'dataset_id = "dataset"',
+                'hf_repo_id = "owner/dataset"',
+                'dataset_schema = "farpoint.dataset.v3"',
+                'variation_schema = "farpoint.variation.v3"',
+                'lerobot_format = "v3"',
+                'variation_config = "config.json"',
+                'dataset_card_mode = "generated"',
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError, match=r"requires a \[card\] table"):
+        load_release_spec(path)
 
 
 def test_version_check_does_not_require_code_to_match_dataset(tmp_path, monkeypatch):

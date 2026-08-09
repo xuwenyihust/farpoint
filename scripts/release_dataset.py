@@ -18,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from create_benchmark_from_episodes import build_manifest  # noqa: E402
+from farpoint.dataset_card import generate_dataset_card  # noqa: E402
 from farpoint.release import audit_viewer_package, prepare_viewer_package  # noqa: E402
 from farpoint.release_spec import DEFAULT_RELEASE_SPEC, load_release_spec  # noqa: E402
 from validate_lerobot_dataset import validate_dataset  # noqa: E402
@@ -251,13 +252,19 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
             "canonical dataset failed validation: " + "; ".join(canonical_validation["errors"])
         )
     package_result = prepare_viewer_package(canonical_dir, public_dir)
-    dataset_card = PROJECT_ROOT / spec["dataset_card"]
-    if not dataset_card.is_file():
-        raise FileNotFoundError(f"dataset card does not exist: {dataset_card}")
-    shutil.copy2(dataset_card, public_dir / "README.md")
+    if spec["dataset_card_mode"] == "generated":
+        card = generate_dataset_card(canonical_dir, spec)
+        (public_dir / "README.md").write_text(card, encoding="utf-8")
+    else:
+        dataset_card = PROJECT_ROOT / spec["dataset_card"]
+        if not dataset_card.is_file():
+            raise FileNotFoundError(f"dataset card does not exist: {dataset_card}")
+        shutil.copy2(dataset_card, public_dir / "README.md")
     viewer_audit = audit_public_release_package(public_dir)
     if not viewer_audit["valid"]:
-        raise ValueError("public release package failed audit: " + "; ".join(viewer_audit["errors"]))
+        raise ValueError(
+            "public release package failed audit: " + "; ".join(viewer_audit["errors"])
+        )
     release = {
         "schema_version": "farpoint.dataset-release-manifest.v1",
         "dataset_version": spec["dataset_version"],

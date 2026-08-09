@@ -11,7 +11,9 @@ release histories:
 - The GitHub repository and Python package use the Farpoint code version from
   `pyproject.toml` and `farpoint.__version__`.
 - Each Hugging Face dataset has its own specification under `configs/datasets/`,
-  including its `dataset_version`, Hub repository, schemas, and Dataset Card.
+  including its `dataset_version`, Hub repository, schemas, and Dataset Card
+  generation metadata. The rendered Card is a release artifact, not a second
+  hand-maintained source file.
 - Schema versions are compatibility contracts and are independent of both code
   and dataset versions.
 
@@ -74,8 +76,8 @@ episode IDs, artifact completeness, and distinct execution and quality states.
 4. Run `validate`, then `stage`; neither command uploads data.
 5. QA the Dataset Card, LeRobot loader, Viewer `/is-valid`, and first rows on a
    staging revision or staging dataset.
-6. Open a dataset release PR containing that dataset's version change, card,
-   release notes, manifest,
+6. Open a dataset release PR containing that dataset's version change, generated
+   Card preview, release notes, manifest,
    benchmark links, and validation evidence.
 7. After the owner merges and separately approves publishing, run `publish`
    with the exact confirmed version.

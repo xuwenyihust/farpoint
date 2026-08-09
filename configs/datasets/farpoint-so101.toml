@@ -6,4 +6,23 @@ dataset_schema = "farpoint.dataset.v3"
 variation_schema = "farpoint.variation.v3"
 lerobot_format = "v3"
 variation_config = "configs/variations/so101_cube_pick_place_v1.json"
-dataset_card = "docs/dataset-v3/huggingface-dataset-card.md"
+dataset_card_mode = "generated"
+
+[card]
+pretty_name = "Farpoint SO-101"
+license = "cc-by-4.0"
+description = "Farpoint SO-101 is a LeRobot v3 dataset of physics-based SO-101 robot manipulation episodes generated with Isaac Lab, Isaac Sim, and Farpoint."
+intended_use = "Robot-learning pipeline development, behavior-cloning experiments, simulation evaluation, and data-loader testing. Simulation-only demonstrations are not a basis for real-world deployment or safety claims."
+source_url = "https://github.com/xuwenyihust/farpoint"
+tags = [
+  "LeRobotDataset-v3",
+  "format:parquet",
+  "modality:video",
+  "robotics",
+  "robot-learning",
+  "isaac-sim",
+  "isaac-lab",
+  "manipulation",
+  "so101",
+  "synthetic-data",
+]

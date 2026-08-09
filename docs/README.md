@@ -11,8 +11,9 @@
 ## Dataset V1
 
 - [Data Contract](dataset-v1/data-contract.md): LeRobot-compatible schema
-- [Hugging Face Dataset Card](dataset-v1/huggingface-dataset-card.md): release
-  metadata and dataset licensing template
+- Dataset Cards are generated from each release specification and the exported
+  dataset metadata by `scripts/release_dataset.py`; they are not maintained as
+  hand-written documentation.
 
 ## Dataset Contract V2
 

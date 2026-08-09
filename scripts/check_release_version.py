@@ -29,13 +29,16 @@ def check_versions(spec_path: Path = DEFAULT_RELEASE_SPEC) -> list[str]:
             f"Farpoint code version differs: pyproject.toml={package_version}, "
             f"farpoint.__version__={__version__}"
         )
-    card_path = PROJECT_ROOT / spec["dataset_card"]
-    if not card_path.is_file():
-        errors.append(f"dataset card does not exist: {spec['dataset_card']}")
-    elif f"`{spec['dataset_tag']}`" not in card_path.read_text(encoding="utf-8"):
-        errors.append(f"Dataset Card does not document {spec['dataset_tag']}")
-    legacy_script = PROJECT_ROOT / "scripts" / (
-        f"release_farpoint_v{spec['dataset_version'].replace('.', '_')}.py"
+    if spec["dataset_card_mode"] == "file":
+        card_path = PROJECT_ROOT / spec["dataset_card"]
+        if not card_path.is_file():
+            errors.append(f"dataset card does not exist: {spec['dataset_card']}")
+        elif f"`{spec['dataset_tag']}`" not in card_path.read_text(encoding="utf-8"):
+            errors.append(f"Dataset Card does not document {spec['dataset_tag']}")
+    legacy_script = (
+        PROJECT_ROOT
+        / "scripts"
+        / (f"release_farpoint_v{spec['dataset_version'].replace('.', '_')}.py")
     )
     if legacy_script.exists():
         errors.append("release script filename must not contain the release version")
@@ -52,10 +55,7 @@ def main() -> int:
             print(f"VERSION_ERROR: {error}")
         return 1
     spec = load_release_spec(args.release_spec)
-    print(
-        f"VERSION_OK: code={__version__} "
-        f"dataset={spec['hf_repo_id']}@{spec['dataset_tag']}"
-    )
+    print(f"VERSION_OK: code={__version__} dataset={spec['hf_repo_id']}@{spec['dataset_tag']}")
     return 0
 
 

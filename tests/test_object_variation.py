@@ -21,6 +21,10 @@ def test_so101_plan_is_deterministic_stratified_and_valid():
     config = load_variation_config(CONFIG)
     first = generate_variation_plan(config)
     second = generate_variation_plan(config)
+
+    assert (
+        first["plan_sha256"] == "c93cb6378efac2e4febe6b6027bf5fd13581f54caae7831095d84535806d75fc"
+    )
     assert first == second
     assert not validate_contract(first)
     assert len(first["trials"]) == 100
@@ -36,9 +40,11 @@ def test_so101_plan_is_deterministic_stratified_and_valid():
     }
     trial = first["trials"][0]
     assert trial["resolved"]["entities"]["pick_object"]["entity_type"] == "cube"
-    assert trial["resolved"]["entities"]["placement_target"]["pose"][
-        "position_m"
-    ] == [0.20, 0.10, 0.037]
+    assert trial["resolved"]["entities"]["placement_target"]["pose"]["position_m"] == [
+        0.20,
+        0.10,
+        0.037,
+    ]
     assert first["varied_axes"] == [
         "entities.pick_object.pose.position_m.x",
         "entities.pick_object.pose.position_m.y",
@@ -84,7 +90,6 @@ def test_generic_dimension_profiles_support_non_cube_assets():
     plan = generate_variation_plan(config)
 
     assert plan["trials"][0]["resolved"]["shape"] == "cylinder"
+    assert plan["trials"][0]["trial_id"].startswith("cylinder_")
     assert plan["trials"][0]["resolved"]["dimensions_m"] == [0.03, 0.03, 0.06]
-    assert plan["trials"][0]["resolved"]["entities"]["pick_object"][
-        "entity_type"
-    ] == "cylinder"
+    assert plan["trials"][0]["resolved"]["entities"]["pick_object"]["entity_type"] == "cylinder"

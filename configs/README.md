@@ -10,6 +10,7 @@ Recommended configuration layers:
   dataset versions do not define the Farpoint code version
 - `benchmarks/`: benchmark acceptance thresholds
 - `collections/`: resource budgets, source imports, coverage, and stopping rules
+- `selections/`: reusable balanced-subset policies and coverage constraints
 - `workflows/`: frozen multi-stage admission gates and watchdog policies
 - `machines/`: local examples only; do not commit private hostnames or tokens
 

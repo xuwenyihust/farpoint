@@ -6,12 +6,18 @@ import copy
 import hashlib
 import json
 import math
-import random
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from farpoint.scene_entities import bind_scene_entities, placement_target_entity
+from farpoint.variation_engine import (
+    ProportionalSplitPolicy,
+    StratifiedGridSampler,
+    VariationAxis,
+    axis_product,
+)
 
 
 SCHEMA_VERSION = "farpoint.variation.v3"
@@ -95,8 +101,8 @@ def validate_variation_config(config: dict[str, Any]) -> None:
         if key not in config:
             raise ValueError(f"variation config is missing {key}")
     workspace = config["workspace"]
-    if int(workspace.get("rows", 0)) != 5 or int(workspace.get("columns", 0)) != 5:
-        raise ValueError("SO-101 cube MVP requires a 5x5 workspace grid")
+    if int(workspace.get("rows", 0)) <= 0 or int(workspace.get("columns", 0)) <= 0:
+        raise ValueError("workspace rows and columns must be positive")
     for key in ("x_bounds_m", "y_bounds_m"):
         bounds = workspace.get(key)
         if not isinstance(bounds, list) or len(bounds) != 2 or bounds[0] >= bounds[1]:
@@ -104,10 +110,10 @@ def validate_variation_config(config: dict[str, Any]) -> None:
     base = config["object"]
     dimensions = _dimension_profiles(base)
     colors = config["object"].get("colors")
-    if len(dimensions) != 2:
-        raise ValueError("object must define exactly two dimension profiles")
-    if not isinstance(colors, list) or len(colors) != 2:
-        raise ValueError("object.colors must contain two color profiles")
+    if not dimensions:
+        raise ValueError("object must define at least one dimension profile")
+    if not isinstance(colors, list) or not colors:
+        raise ValueError("object.colors must contain at least one color profile")
     for color in colors:
         ObjectSpec(
             shape=str(base.get("shape") or "cube"),
@@ -133,13 +139,11 @@ def _dimension_profiles(base: dict[str, Any]) -> list[list[float]]:
     profiles = base.get("dimension_profiles_m")
     if profiles is None:
         sizes = base.get("edge_sizes_m")
-        if not isinstance(sizes, list) or len(sizes) != 2:
-            raise ValueError(
-                "object.edge_sizes_m or object.dimension_profiles_m must define two sizes"
-            )
+        if not isinstance(sizes, list) or not sizes:
+            raise ValueError("object.edge_sizes_m or object.dimension_profiles_m must define sizes")
         profiles = [[value, value, value] for value in sizes]
-    if not isinstance(profiles, list) or len(profiles) != 2:
-        raise ValueError("object.dimension_profiles_m must contain two XYZ profiles")
+    if not isinstance(profiles, list) or not profiles:
+        raise ValueError("object.dimension_profiles_m must contain XYZ profiles")
     resolved = []
     for profile in profiles:
         if (
@@ -154,82 +158,97 @@ def _dimension_profiles(base: dict[str, Any]) -> list[list[float]]:
     return resolved
 
 
-def _split_for(index: int) -> str:
-    if index < 80:
-        return "train"
-    if index < 90:
-        return "validation"
-    return "test"
-
-
 def _position(config: dict[str, Any], row: int, column: int, seed: int) -> list[float]:
     grid = config["workspace"]
-    x_min, x_max = (float(value) for value in grid["x_bounds_m"])
-    y_min, y_max = (float(value) for value in grid["y_bounds_m"])
-    x_width = (x_max - x_min) / 5
-    y_width = (y_max - y_min) / 5
-    low, high = (float(value) for value in grid.get("interior_fraction", [0.2, 0.8]))
-    rng = random.Random(seed)
-    return [
-        round(x_min + column * x_width + x_width * rng.uniform(low, high), 9),
-        round(y_min + row * y_width + y_width * rng.uniform(low, high), 9),
-    ]
+    sampler = StratifiedGridSampler(
+        x_bounds_m=tuple(float(value) for value in grid["x_bounds_m"]),
+        y_bounds_m=tuple(float(value) for value in grid["y_bounds_m"]),
+        rows=int(grid["rows"]),
+        columns=int(grid["columns"]),
+        interior_fraction=tuple(
+            float(value) for value in grid.get("interior_fraction", [0.2, 0.8])
+        ),
+    )
+    sampled = sampler.sample(row, column, seed)
+    return [sampled["x"], sampled["y"]]
 
 
 def generate_variation_plan(config: dict[str, Any]) -> dict[str, Any]:
-    """Create exactly 100 stratified cube trials and deterministic reserves."""
+    """Create a deterministic stratified object-variation plan."""
     validate_variation_config(config)
     trials = []
     base = config["object"]
     dimensions = _dimension_profiles(base)
     colors = config["object"]["colors"]
+    grid = config["workspace"]
+    sampler = StratifiedGridSampler(
+        x_bounds_m=tuple(float(value) for value in grid["x_bounds_m"]),
+        y_bounds_m=tuple(float(value) for value in grid["y_bounds_m"]),
+        rows=int(grid["rows"]),
+        columns=int(grid["columns"]),
+        interior_fraction=tuple(
+            float(value) for value in grid.get("interior_fraction", [0.2, 0.8])
+        ),
+    )
+    axes = (
+        VariationAxis("object_dimensions_m", "dimensions_m", tuple(dimensions)),
+        VariationAxis("object_color", "color", tuple(colors)),
+    )
+    assignments = list(axis_product(axes))
+    total = sampler.rows * sampler.columns * len(assignments)
+    split_policy = ProportionalSplitPolicy()
+    shape = str(base.get("shape") or "cube")
+    trial_prefix = re.sub(r"[^a-z0-9]+", "_", shape.lower()).strip("_") or "object"
     ordinal = 0
-    for row in range(5):
-        for column in range(5):
-            for size_index, profile in enumerate(dimensions):
-                for color_index, color in enumerate(colors):
-                    material = {
-                        "schema_version": SCHEMA_VERSION,
-                        "plan_id": config["plan_id"],
-                        "row": row,
-                        "column": column,
-                        "size_index": size_index,
-                        "color_index": color_index,
-                    }
-                    seed = int.from_bytes(hashlib.sha256(_canonical_json(material)).digest()[:8], "big")
-                    xy = _position(config, row, column, seed)
-                    requested = ObjectSpec(
-                        shape=str(base.get("shape") or "cube"),
-                        asset_id=str(base.get("asset_id", "procedural_cube")),
-                        dimensions_m=tuple(profile),
-                        position_m=(xy[0], xy[1], float(config["workspace"]["table_z_m"]) + profile[2] / 2),
-                        orientation_xyzw=tuple(
-                            float(value)
-                            for value in base.get(
-                                "orientation_xyzw", (0.0, 0.0, 0.0, 1.0)
-                            )
-                        ),
-                        rgba=tuple(float(value) for value in color["rgba"]),
-                        mass_kg=float(base["mass_kg"]),
-                        static_friction=float(base["static_friction"]),
-                        dynamic_friction=float(base["dynamic_friction"]),
-                        restitution=float(base.get("restitution", 0.0)),
-                    ).to_dict()
-                    requested = bind_scene_entities(requested, config["target"])
-                    trial_id = f"cube_r{row:02d}_c{column:02d}_s{size_index}_k{color_index}"
-                    trials.append(
-                        {
-                            "trial_id": trial_id,
-                            "variation_id": trial_id,
-                            "cell_id": f"r{row:02d}_c{column:02d}",
-                            "split": _split_for(ordinal),
-                            "seed": seed,
-                            "seed_material": material,
-                            "requested": requested,
-                            "resolved": copy.deepcopy(requested),
-                        }
-                    )
-                    ordinal += 1
+    for row, column in sampler.cells():
+        for assignment in assignments:
+            profile = assignment["dimensions_m"]
+            color = assignment["color"]
+            size_index = dimensions.index(profile)
+            color_index = colors.index(color)
+            material = {
+                "schema_version": SCHEMA_VERSION,
+                "plan_id": config["plan_id"],
+                "row": row,
+                "column": column,
+                "size_index": size_index,
+                "color_index": color_index,
+            }
+            seed = int.from_bytes(hashlib.sha256(_canonical_json(material)).digest()[:8], "big")
+            xy = _position(config, row, column, seed)
+            requested = ObjectSpec(
+                shape=str(base.get("shape") or "cube"),
+                asset_id=str(base.get("asset_id", "procedural_cube")),
+                dimensions_m=tuple(profile),
+                position_m=(
+                    xy[0],
+                    xy[1],
+                    float(config["workspace"]["table_z_m"]) + profile[2] / 2,
+                ),
+                orientation_xyzw=tuple(
+                    float(value) for value in base.get("orientation_xyzw", (0.0, 0.0, 0.0, 1.0))
+                ),
+                rgba=tuple(float(value) for value in color["rgba"]),
+                mass_kg=float(base["mass_kg"]),
+                static_friction=float(base["static_friction"]),
+                dynamic_friction=float(base["dynamic_friction"]),
+                restitution=float(base.get("restitution", 0.0)),
+            ).to_dict()
+            requested = bind_scene_entities(requested, config["target"])
+            trial_id = f"{trial_prefix}_r{row:02d}_c{column:02d}_s{size_index}_k{color_index}"
+            trials.append(
+                {
+                    "trial_id": trial_id,
+                    "variation_id": trial_id,
+                    "cell_id": f"r{row:02d}_c{column:02d}",
+                    "split": split_policy.split_for(ordinal, total),
+                    "seed": seed,
+                    "seed_material": material,
+                    "requested": requested,
+                    "resolved": copy.deepcopy(requested),
+                }
+            )
+            ordinal += 1
     plan = {
         "schema_version": SCHEMA_VERSION,
         "plan_id": config["plan_id"],
@@ -250,13 +269,21 @@ def generate_variation_plan(config: dict[str, Any]) -> dict[str, Any]:
             "lighting.profile",
         ],
         "dimensions": [
-            {"name": "workspace_cell", "kind": "categorical", "values": 25},
+            {
+                "name": "workspace_cell",
+                "kind": "categorical",
+                "values": sampler.rows * sampler.columns,
+            },
             {
                 "name": "object_dimensions_m",
                 "kind": "categorical",
                 "values": dimensions,
             },
-            {"name": "cube_color", "kind": "categorical", "values": [row["id"] for row in colors]},
+            {
+                "name": "cube_color" if shape == "cube" else "object_color",
+                "kind": "categorical",
+                "values": [row["id"] for row in colors],
+            },
         ],
         "target": copy.deepcopy(config["target"]),
         "recording": copy.deepcopy(config["recording"]),

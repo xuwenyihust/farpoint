@@ -1,0 +1,41 @@
+{
+  "schema_version": "farpoint.balanced-selection-policy.v1",
+  "policy_id": "so101_yaw0_30mm_balanced30_v1",
+  "target_count": 30,
+  "seed": 202608081159369,
+  "iterations": 100000,
+  "split_targets": {"train": 24, "validation": 1, "test": 5},
+  "mutable_splits": ["train"],
+  "require_selected_variation": true,
+  "labels": {
+    "workspace_cells": {"path": "cell_id"},
+    "workspace_rows": {"path": "cell_id", "transform": "cell_row"},
+    "workspace_columns": {"path": "cell_id", "transform": "cell_column"},
+    "sizes": {"path": "seed_material.size_index", "template": "size_{value}"},
+    "colors": {"path": "seed_material.color_index", "template": "color_{value}"},
+    "masses_kg": {"path": "resolved.mass_kg", "number_format": ".2f"},
+    "yaw_degrees": {"path": "object_yaw_degrees", "number_format": ".1f"}
+  },
+  "joints": {"mass_color": ["masses_kg", "colors"]},
+  "coverage_summary": {
+    "axis": "workspace_cells",
+    "universe": ["r00_c00", "r00_c01", "r00_c02", "r00_c03", "r00_c04", "r01_c00", "r01_c01", "r01_c02", "r01_c03", "r01_c04", "r02_c00", "r02_c01", "r02_c02", "r02_c03", "r02_c04", "r03_c00", "r03_c01", "r03_c02", "r03_c03", "r03_c04", "r04_c00", "r04_c01", "r04_c02", "r04_c03", "r04_c04"]
+  },
+  "constraints": [
+    {"kind": "counts", "key": "workspace_rows", "targets": {"r00": 6, "r01": 6, "r02": 6, "r03": 6, "r04": 6}},
+    {"kind": "counts", "key": "workspace_columns", "targets": {"c00": 5, "c01": 6, "c02": 7, "c03": 6, "c04": 6}},
+    {"kind": "counts", "key": "sizes", "targets": {"size_0": 30}},
+    {"kind": "counts", "key": "colors", "targets": {"color_0": 15, "color_1": 15}},
+    {"kind": "counts", "key": "masses_kg", "targets": {"0.03": 15, "0.04": 15}},
+    {"kind": "counts", "key": "mass_color", "targets": {"0.03__color_0": 8, "0.03__color_1": 7, "0.04__color_0": 7, "0.04__color_1": 8}},
+    {"kind": "counts", "key": "yaw_degrees", "targets": {"0.0": 30}},
+    {"kind": "coverage", "key": "workspace_cells", "required": ["r00_c00", "r00_c01", "r00_c02", "r00_c03", "r00_c04", "r01_c00", "r01_c01", "r01_c02", "r01_c03", "r01_c04", "r02_c00", "r02_c01", "r02_c02", "r02_c03", "r02_c04", "r03_c00", "r03_c01", "r03_c02", "r03_c03", "r03_c04", "r04_c02", "r04_c03", "r04_c04"], "excluded": ["r04_c00", "r04_c01"]},
+    {"kind": "range", "key": "workspace_cells", "minimum": 1, "maximum": 2}
+  ],
+  "objectives": [
+    {"key": "workspace_cells", "required": ["r00_c00", "r00_c01", "r00_c02", "r00_c03", "r00_c04", "r01_c00", "r01_c01", "r01_c02", "r01_c03", "r01_c04", "r02_c00", "r02_c01", "r02_c02", "r02_c03", "r02_c04", "r03_c00", "r03_c01", "r03_c02", "r03_c03", "r03_c04", "r04_c02", "r04_c03", "r04_c04"], "weight": 1000000},
+    {"key": "mass_color", "targets": {"0.03__color_0": 8, "0.03__color_1": 7, "0.04__color_0": 7, "0.04__color_1": 8}, "weight": 100000},
+    {"key": "workspace_rows", "targets": {"r00": 6, "r01": 6, "r02": 6, "r03": 6, "r04": 6}, "weight": 10000},
+    {"key": "workspace_columns", "targets": {"c00": 5, "c01": 6, "c02": 7, "c03": 6, "c04": 6}, "weight": 1000}
+  ]
+}
