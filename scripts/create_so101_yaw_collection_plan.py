@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the frozen balanced50 SO-101 yaw=0, 30 mm collection plan."""
+"""Create a frozen SO-101 fixed-yaw, 30 mm collection plan."""
 
 from __future__ import annotations
 
@@ -29,7 +29,12 @@ def main() -> int:
         raise FileExistsError(f"refusing to overwrite existing plan: {args.output}")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"Wrote {len(plan['trials'])} yaw variations to {args.output}; success target=50 attempt budget=150")
+    profile = plan["collection"]
+    print(
+        f"Wrote {len(plan['trials'])} yaw variations to {args.output}; "
+        f"success target={profile['required_successes']} "
+        f"attempt budget={profile['maximum_attempts']}"
+    )
     return 0
 
 

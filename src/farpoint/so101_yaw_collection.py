@@ -15,6 +15,18 @@ from farpoint.object_variation import generate_variation_plan
 
 CONFIG_SCHEMA_VERSION = "farpoint.so101-yaw-collection-config.v1"
 COLLECTION_KIND = "balanced_yaw_success_collection"
+BALANCE_KEYS = {
+    "total",
+    "splits",
+    "workspace_cells",
+    "workspace_rows",
+    "workspace_columns",
+    "sizes",
+    "colors",
+    "masses_kg",
+    "mass_color",
+    "yaw_degrees",
+}
 
 
 def _sha256(value: Any) -> str:
@@ -49,19 +61,45 @@ def validate_yaw_collection_config(config: dict[str, Any]) -> None:
     if missing:
         raise ValueError("yaw collection config is missing " + ", ".join(missing))
     if float(config["cube_size_m"]) != 0.03:
-        raise ValueError("first yaw collection tranche must use 30 mm cubes")
+        raise ValueError("yaw collection tranche must use 30 mm cubes")
     yaw = float(config["yaw_degrees"])
-    if not math.isfinite(yaw) or yaw != 0.0:
-        raise ValueError("first yaw collection tranche must use yaw=0 degrees")
+    if not math.isfinite(yaw):
+        raise ValueError("yaw collection angle must be finite")
     masses = [float(value) for value in config["mass_kg"]]
     if masses != [0.03, 0.04]:
         raise ValueError("yaw collection masses must be [0.03, 0.04]")
-    if int(config["required_successes"]) != 50:
-        raise ValueError("yaw collection must require 50 successes")
-    if int(config["maximum_attempts"]) != 150:
-        raise ValueError("yaw collection must freeze a 150-attempt ceiling")
-    if config["selection_policy"] != "workspace_mass_color_checkerboard_v1":
+    required = int(config["required_successes"])
+    maximum = int(config["maximum_attempts"])
+    if required <= 0 or maximum < required:
+        raise ValueError("yaw collection attempt budget must cover its success target")
+    policy = config["selection_policy"]
+    if policy == "workspace_mass_color_checkerboard_v1":
+        if yaw != 0.0:
+            raise ValueError("checkerboard yaw collection must use yaw=0 degrees")
+        if required != 50:
+            raise ValueError("checkerboard yaw collection must require 50 successes")
+        if maximum != 150:
+            raise ValueError(
+                "checkerboard yaw collection must freeze a 150-attempt ceiling"
+            )
+        return
+    if policy != "explicit_source_trials_v1":
         raise ValueError("unsupported yaw collection selection policy")
+    profiles = config.get("trial_profiles")
+    if not isinstance(profiles, list) or len(profiles) != required:
+        raise ValueError("explicit yaw collection must define one profile per success")
+    source_ids = [profile.get("source_trial_id") for profile in profiles]
+    if any(not isinstance(source_id, str) or not source_id for source_id in source_ids):
+        raise ValueError("explicit yaw collection source trial ids must be non-empty")
+    if len(set(source_ids)) != len(source_ids):
+        raise ValueError("explicit yaw collection source trial ids must be unique")
+    if any(float(profile.get("mass_kg", math.nan)) not in masses for profile in profiles):
+        raise ValueError("explicit yaw collection profile mass is not allowed")
+    expected_balance = config.get("expected_balance")
+    if not isinstance(expected_balance, dict):
+        raise ValueError("explicit yaw collection requires expected_balance")
+    if set(expected_balance) != BALANCE_KEYS:
+        raise ValueError("explicit yaw collection expected_balance axes are incomplete")
 
 
 def yaw_collection_balance(plan: dict[str, Any]) -> dict[str, Any]:
@@ -85,7 +123,15 @@ def yaw_collection_balance(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def validate_yaw_collection_balance(balance: dict[str, Any]) -> list[str]:
+def validate_yaw_collection_balance(
+    balance: dict[str, Any], expected: dict[str, Any] | None = None
+) -> list[str]:
+    if expected is not None:
+        return [
+            f"yaw collection {key} does not match its frozen balance"
+            for key, value in expected.items()
+            if balance.get(key) != value
+        ]
     errors: list[str] = []
     if balance.get("total") != 50:
         errors.append("yaw collection must contain exactly 50 variations")
@@ -109,6 +155,34 @@ def validate_yaw_collection_balance(balance: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _selected_source_trials(
+    base: dict[str, Any], collection_config: dict[str, Any]
+) -> list[tuple[dict[str, Any], float]]:
+    policy = collection_config["selection_policy"]
+    if policy == "workspace_mass_color_checkerboard_v1":
+        selected = []
+        for source in base["trials"]:
+            if int(source["seed_material"]["size_index"]) != 0:
+                continue
+            row = int(source["cell_id"][1:3])
+            column = int(source["cell_id"][5:7])
+            color = int(source["seed_material"]["color_index"])
+            mass = 0.03 if color == ((row + column) % 2) else 0.04
+            selected.append((source, mass))
+        return selected
+    sources = {trial["trial_id"]: trial for trial in base["trials"]}
+    selected = []
+    for profile in collection_config["trial_profiles"]:
+        source_id = profile["source_trial_id"]
+        source = sources.get(source_id)
+        if source is None:
+            raise ValueError(f"unknown yaw collection source trial: {source_id}")
+        if int(source["seed_material"]["size_index"]) != 0:
+            raise ValueError(f"yaw collection source is not 30 mm: {source_id}")
+        selected.append((source, float(profile["mass_kg"])))
+    return selected
+
+
 def build_yaw_collection_plan(
     variation_config: dict[str, Any], collection_config: dict[str, Any]
 ) -> dict[str, Any]:
@@ -119,16 +193,13 @@ def build_yaw_collection_plan(
     yaw = float(collection_config["yaw_degrees"])
     orientation = _yaw_quaternion_xyzw(yaw)
     trials = []
-    for source in base["trials"]:
-        if int(source["seed_material"]["size_index"]) != 0:
-            continue
+    for source, mass in _selected_source_trials(base, collection_config):
         trial = copy.deepcopy(source)
-        row = int(trial["cell_id"][1:3])
-        column = int(trial["cell_id"][5:7])
-        color = int(trial["seed_material"]["color_index"])
-        mass = 0.03 if color == ((row + column) % 2) else 0.04
         grams = int(round(mass * 1000))
-        trial_id = f"{source['trial_id']}_yaw00000_m{grams:03d}g"
+        yaw_millidegrees = int(round(yaw * 1000))
+        trial_id = (
+            f"{source['trial_id']}_yaw{yaw_millidegrees:05d}_m{grams:03d}g"
+        )
         material = copy.deepcopy(trial["seed_material"])
         material.update({
             "yaw_collection_profile_id": collection_config["profile_id"],
@@ -148,7 +219,11 @@ def build_yaw_collection_plan(
         # The base 30 mm slice is 40/6/4. Freeze one source identity as test
         # before collection so the formal tranche is 40/5/5 without any
         # outcome-dependent relabeling.
-        if source["trial_id"] == "cube_r04_c02_s0_k1":
+        if (
+            collection_config["selection_policy"]
+            == "workspace_mass_color_checkerboard_v1"
+            and source["trial_id"] == "cube_r04_c02_s0_k1"
+        ):
             if trial["split"] != "validation":
                 raise ValueError("frozen yaw split override source is not validation")
             trial["split"] = "test"
@@ -173,9 +248,9 @@ def build_yaw_collection_plan(
         "trials": trials,
         "collection": {
             "kind": COLLECTION_KIND,
-            "required_successes": 50,
-            "maximum_attempts": 150,
-            "cube_size_m": 0.03,
+            "required_successes": int(collection_config["required_successes"]),
+            "maximum_attempts": int(collection_config["maximum_attempts"]),
+            "cube_size_m": float(collection_config["cube_size_m"]),
             "yaw_degrees": yaw,
             "orientation_xyzw": orientation,
             "actual_orientation_tolerance_degrees": float(collection_config.get("actual_orientation_tolerance_degrees", 2.0)),
@@ -188,10 +263,13 @@ def build_yaw_collection_plan(
         },
     }
     balance = yaw_collection_balance(plan)
-    errors = validate_yaw_collection_balance(balance)
+    balance_contract = copy.deepcopy(collection_config.get("expected_balance"))
+    errors = validate_yaw_collection_balance(balance, balance_contract)
     if errors:
         raise ValueError("invalid yaw collection balance: " + "; ".join(errors))
     plan["collection"]["balance"] = balance
+    if balance_contract is not None:
+        plan["collection"]["balance_contract"] = balance_contract
     plan.pop("pilot", None)
     plan.pop("gate", None)
     plan.pop("plan_sha256", None)

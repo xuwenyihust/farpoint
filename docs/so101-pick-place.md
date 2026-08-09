@@ -573,6 +573,50 @@ for that exact variation becomes the selected episode without changing its
 split. The formal report verifies balance, physical yaw and mass, terminal
 grasp evidence, video integrity, and the complete raw artifact set.
 
+## v0.0.3 yaw=30°, 30 mm formal collection
+
+The second yaw tranche freezes 30 distinct variations and requires one
+eligible success for each within a hard ceiling of 60 attempts. It covers all
+25 workspace cells, including `r04_c00` and `r04_c01`, which were absent from
+the yaw=0° balanced30 tranche. Five cells contribute a complementary second
+color so every workspace row and column contains six demonstrations.
+
+The plan freezes 15/15 color balance, 15/15 mass balance, 7/7/8/8 mass-by-color
+coverage, and a 24/3/3 train/validation/test split. All cubes are 30 mm at
+yaw=30°. The exact source trial identities and mass assignments live in
+`configs/collections/so101_cube_yaw30_30mm_v0_0_3.json`; the generic builder
+does not infer or rebalance them from collection outcomes.
+
+Run only from an exact commit already merged to `main`:
+
+```bash
+python scripts/create_so101_yaw_collection_plan.py \
+  artifacts/so101/yaw30_30mm_v0_0_3/plan.json \
+  --collection-config \
+    configs/collections/so101_cube_yaw30_30mm_v0_0_3.json
+
+FARPOINT_GIT_COMMIT="$(git rev-parse HEAD)" \
+scripts/run_so101_isaaclab.sh headless \
+  --plan artifacts/so101/yaw30_30mm_v0_0_3/plan.json \
+  --manifest artifacts/so101/yaw30_30mm_v0_0_3/manifest.json \
+  --output-root artifacts/so101/yaw30_30mm_v0_0_3/episodes \
+  --collection-id so101_cube_yaw30_30mm_formal_v0_0_3_<date>_<sha> \
+  --max-attempts-this-run 60 \
+  --watchdog-policy configs/workflows/so101_watchdog_p0.json
+
+python scripts/report_so101_yaw_collection.py \
+  --plan artifacts/so101/yaw30_30mm_v0_0_3/plan.json \
+  --manifest artifacts/so101/yaw30_30mm_v0_0_3/manifest.json \
+  --episodes-root artifacts/so101/yaw30_30mm_v0_0_3/episodes \
+  --json-output artifacts/so101/yaw30_30mm_v0_0_3/report.json \
+  --markdown-output artifacts/so101/yaw30_30mm_v0_0_3/report.md
+```
+
+The scheduler attempts every uncovered variation before retrying failures.
+Failed attempts remain in the manifest, and the report requires all 30 frozen
+variations plus physical yaw/mass, proof-lift, settle, RGB, timestamp, and raw
+artifact evidence. Passing the collection does not publish or export a dataset.
+
 ### Balanced30 selection from an owner-aborted yaw collection
 
 An owner-aborted yaw collection remains immutable and does not become a passed
