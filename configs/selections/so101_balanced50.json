@@ -1,0 +1,32 @@
+{
+  "schema_version": "farpoint.balanced-selection-policy.v1",
+  "policy_id": "so101_balanced_stratified_subset_v1",
+  "target_count": 50,
+  "seed": 101,
+  "iterations": 250000,
+  "split_targets": {"train": 40, "validation": 5, "test": 5},
+  "labels": {
+    "workspace_cells": {"path": "cell_id"},
+    "workspace_rows": {"path": "cell_id", "transform": "cell_row"},
+    "workspace_columns": {"path": "cell_id", "transform": "cell_column"},
+    "sizes": {"path": "seed_material.size_index", "template": "size_{value}"},
+    "colors": {"path": "seed_material.color_index", "template": "color_{value}"}
+  },
+  "joints": {"size_color": ["sizes", "colors"]},
+  "constraints": [
+    {"kind": "balanced", "key": "sizes", "categories": ["size_0", "size_1"], "max_difference": 0},
+    {"kind": "balanced", "key": "colors", "categories": ["color_0", "color_1"], "max_difference": 0},
+    {"kind": "balanced", "key": "size_color", "categories": ["size_0__color_0", "size_0__color_1", "size_1__color_0", "size_1__color_1"], "max_difference": 1},
+    {"kind": "coverage", "key": "workspace_cells", "required": ["r00_c00", "r00_c01", "r00_c02", "r00_c03", "r00_c04", "r01_c00", "r01_c01", "r01_c02", "r01_c03", "r01_c04", "r02_c00", "r02_c01", "r02_c02", "r02_c03", "r02_c04", "r03_c00", "r03_c01", "r03_c02", "r03_c03", "r03_c04", "r04_c00", "r04_c01", "r04_c02", "r04_c03", "r04_c04"]},
+    {"kind": "counts", "key": "workspace_rows", "targets": {"r00": 10, "r01": 10, "r02": 10, "r03": 10, "r04": 10}},
+    {"kind": "counts", "key": "workspace_columns", "targets": {"c00": 10, "c01": 10, "c02": 10, "c03": 10, "c04": 10}}
+  ],
+  "objectives": [
+    {"key": "sizes", "targets": {"size_0": 25, "size_1": 25}, "weight": 100000},
+    {"key": "colors", "targets": {"color_0": 25, "color_1": 25}, "weight": 100000},
+    {"key": "size_color", "categories": ["size_0__color_0", "size_0__color_1", "size_1__color_0", "size_1__color_1"], "weight": 20000},
+    {"key": "workspace_cells", "required": ["r00_c00", "r00_c01", "r00_c02", "r00_c03", "r00_c04", "r01_c00", "r01_c01", "r01_c02", "r01_c03", "r01_c04", "r02_c00", "r02_c01", "r02_c02", "r02_c03", "r02_c04", "r03_c00", "r03_c01", "r03_c02", "r03_c03", "r03_c04", "r04_c00", "r04_c01", "r04_c02", "r04_c03", "r04_c04"], "weight": 10000},
+    {"key": "workspace_rows", "targets": {"r00": 10, "r01": 10, "r02": 10, "r03": 10, "r04": 10}, "weight": 100},
+    {"key": "workspace_columns", "targets": {"c00": 10, "c01": 10, "c02": 10, "c03": 10, "c04": 10}, "weight": 100}
+  ]
+}

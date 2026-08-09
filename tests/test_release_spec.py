@@ -11,10 +11,7 @@ from farpoint.release_spec import load_release_spec
 
 
 SO101_RELEASE_SPEC = (
-    Path(__file__).resolve().parents[1]
-    / "configs"
-    / "datasets"
-    / "farpoint-so101.toml"
+    Path(__file__).resolve().parents[1] / "configs" / "datasets" / "farpoint-so101.toml"
 )
 
 
@@ -24,16 +21,6 @@ def test_current_release_spec_is_consistent():
     project_root = Path(__file__).resolve().parents[1]
     assert project_root.joinpath(spec["variation_config"]).is_file()
     assert check_versions() == []
-
-
-def test_current_dataset_card_separates_frames_from_metadata_in_viewer():
-    spec = load_release_spec()
-    project_root = Path(__file__).resolve().parents[1]
-    card = project_root.joinpath(spec["dataset_card"]).read_text()
-
-    assert 'path: "data/**/*.parquet"' in card
-    assert "config_name: episode_metadata" in card
-    assert 'path: "meta/episode_metadata.parquet"' in card
 
 
 def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
@@ -47,30 +34,12 @@ def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
     assert check_versions(SO101_RELEASE_SPEC) == []
 
 
-def test_so101_dataset_card_documents_viewer_summary_and_policy_features():
-    spec = load_release_spec(SO101_RELEASE_SPEC)
+def test_so101_changelog_keeps_published_version_history():
     project_root = Path(__file__).resolve().parents[1]
-    card = project_root.joinpath(spec["dataset_card"]).read_text(encoding="utf-8")
-    changelog = project_root.joinpath(
-        "docs/dataset-v3/farpoint-so101-changelog.md"
-    ).read_text(encoding="utf-8")
+    changelog = project_root.joinpath("docs/dataset-v3/farpoint-so101-changelog.md").read_text(
+        encoding="utf-8"
+    )
 
-    assert 'path: "data/**/*.parquet"' in card
-    assert 'path: "meta/episode_metadata.parquet"' in card
-    assert "| Train | 104 | 80.0% |" in card
-    assert "| Validation | 11 | 8.5% |" in card
-    assert "| Test | 15 | 11.5% |" in card
-    assert "25 / 25 cells covered overall" in card
-    assert "| Cube yaw | 0°, 45° | 30 at 0°; 100 at 45° |" in card
-    assert "| Cube edge length | 0.03 m, 0.04 m | 80 at 0.03 m; 50 at 0.04 m |" in card
-    assert "| Cube mass | 0.03 kg, 0.04 kg | 65 episodes each |" in card
-    assert "There is no wrist-camera feature" in card
-    assert "## Dataset Viewer and LeRobot splits" not in card
-    assert "The repository name intentionally describes" not in card
-    assert "This release contains 100 successful" not in card
-    assert "Joint order is **shoulder pan" not in card
-    assert "future cylinders, meshes, toys, boxes" in card
-    assert "farpoint-so101-changelog.md" in card
     assert "## v0.0.2" in changelog
     assert "## v0.0.1" in changelog
     assert "## v0.0.0" in changelog
@@ -89,7 +58,6 @@ def test_release_spec_rejects_prefixed_version(tmp_path):
                 'variation_schema = "farpoint.variation.v1"',
                 'lerobot_format = "v3"',
                 'variation_config = "config.json"',
-                'dataset_card = "README.md"',
             ]
         )
     )
@@ -110,7 +78,6 @@ def test_code_and_dataset_versions_are_independent(tmp_path):
                 'variation_schema = "farpoint.variation.v2"',
                 'lerobot_format = "v3"',
                 'variation_config = "config.json"',
-                'dataset_card = "README.md"',
             ]
         )
     )
@@ -123,7 +90,6 @@ def test_code_and_dataset_versions_are_independent(tmp_path):
 
 def test_version_check_does_not_require_code_to_match_dataset(tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "2.0.0"\n')
-    (tmp_path / "dataset-card.md").write_text("Published dataset: `v9.4.1`\n")
     spec_path = tmp_path / "dataset-release.toml"
     spec_path.write_text(
         "\n".join(
@@ -136,7 +102,6 @@ def test_version_check_does_not_require_code_to_match_dataset(tmp_path, monkeypa
                 'variation_schema = "farpoint.variation.v2"',
                 'lerobot_format = "v3"',
                 'variation_config = "config.json"',
-                'dataset_card = "dataset-card.md"',
             ]
         )
     )

@@ -42,9 +42,7 @@ def test_diagnostic_manifest_is_terminal_without_collection_score(
         git_commit="abc123",
     )
 
-    finish_diagnostic_manifest(
-        manifest, "calibrated_grasp", succeeded=succeeded
-    )
+    finish_diagnostic_manifest(manifest, "calibrated_grasp", succeeded=succeeded)
 
     assert manifest["execution_status"] == "ABORTED"
     assert manifest["quality_status"] == "NOT_EVALUATED"
@@ -87,15 +85,11 @@ def test_episode_id_rejects_unsafe_identifiers(collection_id, attempt_id):
 def test_attempt_run_state_preserves_live_collection_and_variation_context():
     variation_plan = plan()
     attempt = next_attempt(
-        create_manifest(
-            variation_plan, collection_id="pilot_live", git_commit="a" * 40
-        ),
+        create_manifest(variation_plan, collection_id="pilot_live", git_commit="a" * 40),
         variation_plan,
     )
 
-    state = build_attempt_run_state(
-        attempt, collection_id="pilot_live", git_commit="b" * 40
-    )
+    state = build_attempt_run_state(attempt, collection_id="pilot_live", git_commit="b" * 40)
 
     assert state["schema_version"] == "farpoint.episode-run.v1"
     assert state["execution_status"] == "RUNNING"
@@ -109,13 +103,9 @@ def test_attempt_run_state_preserves_live_collection_and_variation_context():
 
 def test_abort_marks_manifest_and_live_episode_terminal_without_scoring_quality():
     variation_plan = plan()
-    manifest = create_manifest(
-        variation_plan, collection_id="pilot_aborted", git_commit="a" * 40
-    )
+    manifest = create_manifest(variation_plan, collection_id="pilot_aborted", git_commit="a" * 40)
     attempt = next_attempt(manifest, variation_plan)
-    run_state = build_attempt_run_state(
-        attempt, collection_id="pilot_aborted", git_commit="a" * 40
-    )
+    run_state = build_attempt_run_state(attempt, collection_id="pilot_aborted", git_commit="a" * 40)
 
     abort_collection_manifest(manifest, "SIGINT")
     abort_attempt_run_state(run_state, "SIGINT")
@@ -143,19 +133,13 @@ def test_collection_interruptions_map_sigint_and_sigterm():
 
 def test_abort_rejects_terminal_manifest_and_episode():
     variation_plan = plan()
-    manifest = create_manifest(
-        variation_plan, collection_id="pilot_terminal", git_commit="a" * 40
-    )
+    manifest = create_manifest(variation_plan, collection_id="pilot_terminal", git_commit="a" * 40)
     manifest["execution_status"] = "FINISHED"
     attempt = next_attempt(
-        create_manifest(
-            variation_plan, collection_id="pilot_live", git_commit="a" * 40
-        ),
+        create_manifest(variation_plan, collection_id="pilot_live", git_commit="a" * 40),
         variation_plan,
     )
-    run_state = build_attempt_run_state(
-        attempt, collection_id="pilot_live", git_commit="a" * 40
-    )
+    run_state = build_attempt_run_state(attempt, collection_id="pilot_live", git_commit="a" * 40)
     run_state["execution_status"] = "FINISHED"
 
     with pytest.raises(ValueError, match="cannot abort collection"):
@@ -192,17 +176,11 @@ def test_abort_collection_artifacts_preserves_finished_attempts(tmp_path):
         live_attempt, collection_id="pilot_interrupted", git_commit="a" * 40
     )
     finished_path = episodes_root / "episode_finished" / "run-state.json"
-    live_path = (
-        episodes_root
-        / live["identity"]["episode_id"]
-        / "run-state.json"
-    )
+    live_path = episodes_root / live["identity"]["episode_id"] / "run-state.json"
     write_manifest(finished_path, finished)
     write_manifest(live_path, live)
 
-    report = abort_collection_artifacts(
-        manifest_path, episodes_root, "SIGINT"
-    )
+    report = abort_collection_artifacts(manifest_path, episodes_root, "SIGINT")
 
     aborted_manifest = load_manifest(manifest_path, variation_plan)
     assert aborted_manifest["execution_status"] == "ABORTED"
@@ -223,9 +201,7 @@ def plan():
 
 def test_collection_retries_failure_without_changing_split(tmp_path):
     variation_plan = plan()
-    manifest = create_manifest(
-        variation_plan, collection_id="pilot_1", git_commit="a" * 40
-    )
+    manifest = create_manifest(variation_plan, collection_id="pilot_1", git_commit="a" * 40)
     first = next_attempt(manifest, variation_plan)
     assert first["varied_axes"] == variation_plan["varied_axes"]
     assert first["frozen_axes"] == variation_plan["frozen_axes"]
@@ -279,6 +255,25 @@ def test_collection_retries_failure_without_changing_split(tmp_path):
 def test_collection_rejects_attempt_budget_below_target():
     with pytest.raises(ValueError, match="maximum_attempts"):
         create_manifest(plan(), collection_id="bad", git_commit="a" * 40, maximum_attempts=99)
+
+
+def test_collection_target_derives_from_dynamic_variation_count():
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    config["workspace"].update({"rows": 2, "columns": 3})
+    config["object"]["edge_sizes_m"] = [0.03]
+    config["object"]["colors"] = config["object"]["colors"][:1]
+    variation_plan = generate_variation_plan(config)
+
+    manifest = create_manifest(
+        variation_plan,
+        collection_id="dynamic_six",
+        git_commit="a" * 40,
+        maximum_attempts=12,
+    )
+
+    assert len(variation_plan["trials"]) == 6
+    assert manifest["required_successes"] == 6
+    assert manifest["maximum_attempts"] == 12
 
 
 def test_collection_preserves_frozen_plan_order_within_retry_round():

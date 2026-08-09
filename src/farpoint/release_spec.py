@@ -12,9 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_RELEASE_SPEC = (
-    PROJECT_ROOT / "configs" / "datasets" / "farpoint-ur10e-robotiq-2f85.toml"
-)
+DEFAULT_RELEASE_SPEC = PROJECT_ROOT / "configs" / "datasets" / "farpoint-ur10e-robotiq-2f85.toml"
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 REQUIRED_FIELDS = {
     "schema_version",
@@ -25,7 +23,6 @@ REQUIRED_FIELDS = {
     "variation_schema",
     "lerobot_format",
     "variation_config",
-    "dataset_card",
 }
 
 
