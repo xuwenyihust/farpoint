@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 
 from farpoint.object_variation import load_variation_config
-from farpoint.so101_collection import create_manifest, next_attempt, record_attempt
+from farpoint.so101_collection import (
+    create_manifest,
+    load_manifest,
+    next_attempt,
+    record_attempt,
+    write_manifest,
+)
 from farpoint.so101_yaw_collection import (
     build_yaw_collection_plan,
     load_yaw_collection_config,
@@ -87,15 +93,18 @@ def test_yaw30_formal_plan_freezes_balanced30_with_sixty_attempt_budget():
     assert by_source["cube_r04_c01_s0_k0"]["resolved"]["mass_kg"] == 0.04
 
 
-def test_yaw30_manifest_freezes_sixty_attempt_budget():
+def test_yaw30_manifest_derives_sixty_attempt_budget_from_frozen_plan(tmp_path):
     plan = build_yaw30_plan()
     manifest = create_manifest(
         plan,
         collection_id="yaw30_formal_test",
         git_commit="a" * 40,
-        maximum_attempts=60,
     )
     assert manifest["maximum_attempts"] == 60
+    manifest_path = tmp_path / "manifest.json"
+    write_manifest(manifest_path, manifest)
+    assert load_manifest(manifest_path, plan)["maximum_attempts"] == 60
+
     with pytest.raises(ValueError, match="frozen collection profile"):
         create_manifest(
             plan,
