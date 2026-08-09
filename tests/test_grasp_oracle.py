@@ -107,11 +107,27 @@ def test_capture_preload_force_floor_rejects_invalid_contract(
 
 
 def test_unilateral_recenter_starts_before_bilateral_contact():
+    assert grasp_phase_allows_unilateral_recenter(GraspPhase.FIRST_CONTACT)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.CONTACT_ALIGNMENT)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.SLOW_CLOSE)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.BILATERAL_SETTLE)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.APPROACH)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
+
+
+def test_first_contact_memory_bridges_handoff_force_dropout():
+    first_contact = so101_recenter_contact_memory(0.0, 0.675)
+    dropout = so101_recenter_contact_memory(0.0, 0.0, first_contact["side"])
+
+    assert first_contact["side"] == "right"
+    assert dropout == {
+        "forces": (0.0, 0.10),
+        "side": "right",
+        "used_memory": True,
+    }
+    assert unilateral_contact_requires_recenter(
+        *dropout["forces"], minimum_force_n=0.10
+    )
 
 
 def test_capture_aperture_alignment_uses_aperture_plane_not_finger_depth():

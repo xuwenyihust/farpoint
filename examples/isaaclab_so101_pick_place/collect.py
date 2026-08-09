@@ -121,6 +121,7 @@ from farpoint.control import (  # noqa: E402
     bounded_position_target,
     collision_safe_pregrasp_waypoints,
     force_controlled_rotary_jaw_target,
+    relative_object_grasp_servo_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
     so101_capture_contact_loss_grace_s,
@@ -1748,6 +1749,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     grasp_relative_reference = None
     previous_object_in_gripper = None
     capture_recenter_side = None
+    capture_object_minus_grasp = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
     rows = []
@@ -1841,6 +1843,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             grasp_jaw_hold = float(jaw_update["position"])
             jaw_force_action = str(jaw_update["action"])
         recenter_active = False
+        relative_recenter_active = False
         recenter_used_memory = False
         recenter_forces = balanced_forces
         closing_alignment = phase is OraclePhase.CLOSE and (
@@ -1849,7 +1852,10 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         verification_alignment = (
             phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
         )
-        if settling_capture and balanced_forces is not None:
+        if (
+            (closing_alignment or settling_capture)
+            and balanced_forces is not None
+        ):
             recenter_memory = so101_recenter_contact_memory(
                 *balanced_forces,
                 capture_recenter_side,
@@ -1858,7 +1864,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             recenter_forces = recenter_memory["forces"]
             capture_recenter_side = recenter_memory["side"]
             recenter_used_memory = bool(recenter_memory["used_memory"])
-        elif not settling_capture:
+        elif phase not in {OraclePhase.DESCEND, OraclePhase.CLOSE}:
             capture_recenter_side = None
         if (
             grasp_hold_pose is not None
@@ -1912,6 +1918,32 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             )
             grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)
             recenter_active = bool(recenter["active"])
+        if (
+            not recenter_active
+            and settling_capture
+            and capture_object_minus_grasp is not None
+            and grasp_hold_nominal_pose is not None
+        ):
+            # Contact forces can remain balanced while a constrained arm
+            # drifts far enough to fail the independent rigidity check.  In
+            # that case force-side recentering has no direction.  Track the
+            # physical capture offset from the measured EE pose, with the same
+            # conservative 0.125 mm/tick rate and a bounded 6 mm recovery box.
+            object_world = _numpy(scene[active_name].data.root_pos_w[0, :3])
+            relative_recenter = relative_object_grasp_servo_target(
+                object_world,
+                capture_object_minus_grasp,
+                ee_position,
+                grasp_hold_nominal_pose,
+                max_step=so101_post_capture_recenter_step(),
+                max_correction=(0.006, 0.006, 0.006),
+            )
+            if float(np.linalg.norm(relative_recenter["error"])) > 0.002:
+                grasp_hold_pose = np.asarray(
+                    relative_recenter["position"], dtype=np.float32
+                )
+                recenter_active = True
+                relative_recenter_active = True
         if phase is OraclePhase.HOME:
             target = home_ee
             jaw = open_jaw
@@ -2471,6 +2503,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
         bilateral_contact = _bilateral_contact(contact)
         contact_forces = _cube_contact_forces(contact)
         descent_cube_contact = so101_cube_contact_handoff(*contact_forces)
+        if phase is OraclePhase.DESCEND and descent_cube_contact:
+            # DESCEND can hand off on a one-tick fingertip contact. Remember
+            # that side before CLOSE begins so a zero-force sample on the next
+            # tick still has a deterministic aperture-recenter direction.
+            capture_recenter_side = so101_recenter_contact_memory(
+                *contact_forces,
+                capture_recenter_side,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )["side"]
         object_pose = _numpy(scene[active_name].data.root_pose_w[0])
         gripper_pose = _numpy(
             robot.data.body_link_pose_w.torch[0, body_index]
@@ -2616,6 +2657,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             grasp_jaw_reference = grasp_jaw_hold
             grasp_hold_pose = gripper_pose[:3].copy()
             grasp_hold_nominal_pose = grasp_hold_pose.copy()
+            capture_object_minus_grasp = object_pose[:3] - gripper_pose[:3]
             grasp_hold_nominal_y = float(grasp_hold_pose[1])
             grasp_hold_posture = _numpy(current[3:5]).astype(np.float32).copy()
             verify_capture_latched = True
@@ -2691,6 +2733,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 "gripper_control": gripper_control,
                 "recenter_contact_memory_side": capture_recenter_side,
                 "recenter_used_contact_memory": recenter_used_memory,
+                "relative_grasp_recenter_active": relative_recenter_active,
                 "descent_lateral_correction_m": descent_lateral_correction,
                 "grasp_lateral_correction_m": (
                     0.0

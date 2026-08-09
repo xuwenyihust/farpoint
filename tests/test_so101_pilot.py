@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from farpoint.object_variation import load_variation_config
@@ -306,3 +308,27 @@ def test_targeted_yaw_diagnostic_runs_both_failed_cells_even_after_one_failure()
     )
     assert manifest["completion_policy"] == "all_planned_trials"
     assert manifest["stop_when_success_target_unreachable"] is False
+
+
+def test_yaw30_r01_recovery_workflow_freezes_formal_gaps():
+    workflow = json.loads(
+        open(
+            "configs/workflows/so101_cube_yaw30_r01_recovery_diagnostic.json",
+            encoding="utf-8",
+        ).read()
+    )
+    stage = workflow["stages"][0]
+    plan = build_targeted_yaw_diagnostic_pilot_plan(
+        _config(),
+        pilot_id="yaw30_r01_recovery_test",
+        yaw_degrees=stage["yaw_degrees"],
+        trial_profiles=stage["trial_profiles"],
+        required_success_cells=stage["required_success_cells"],
+    )
+
+    assert stage["stage_id"] == "yaw30_r01_recovery_2"
+    assert [trial["cell_id"] for trial in plan["trials"][:2]] == [
+        "r01_c00",
+        "r01_c04",
+    ]
+    assert plan["pilot"]["mass_kg_counts"] == {"0.03": 1, "0.04": 1}
