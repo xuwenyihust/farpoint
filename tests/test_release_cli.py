@@ -16,7 +16,6 @@ import release_dataset  # noqa: E402
 def release_fixture(tmp_path: Path, spec: dict, *, accepted: bool = True, revision: str = "abc123"):
     (tmp_path / "canonical").mkdir()
     (tmp_path / "public").mkdir()
-    (tmp_path / "public" / "README.md").write_text("# Dataset\n")
     manifest = {
         "dataset_version": spec["dataset_version"],
         "dataset_tag": spec["dataset_tag"],
@@ -107,20 +106,6 @@ def test_balanced_selection_rejects_non_candidate_states(field, value):
     evidence[field] = value
 
     assert release_dataset.evidence_accepted(evidence) is False
-
-
-def test_public_release_audit_requires_dataset_card(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        release_dataset,
-        "audit_viewer_package",
-        lambda _: {"valid": True, "errors": []},
-    )
-    missing = release_dataset.audit_public_release_package(tmp_path)
-    assert missing["valid"] is False
-    assert missing["errors"] == ["missing Dataset Card: README.md"]
-
-    (tmp_path / "README.md").write_text("# Dataset\n")
-    assert release_dataset.audit_public_release_package(tmp_path)["valid"] is True
 
 
 def test_stage_rejects_unknown_code_revision(tmp_path, successful_audits):
@@ -334,7 +319,6 @@ def test_validate_release_accepts_collection_evidence(tmp_path, monkeypatch):
     (tmp_path / "canonical" / "meta").mkdir(parents=True)
     (tmp_path / "canonical" / "meta" / "farpoint_v2.json").write_text("{}")
     (tmp_path / "public").mkdir()
-    (tmp_path / "public" / "README.md").write_text("# Dataset\n")
     collection = {
         "schema_version": "farpoint.collection.v1",
         "acceptance": {"accepted": True},

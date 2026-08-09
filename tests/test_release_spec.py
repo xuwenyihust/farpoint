@@ -23,14 +23,6 @@ def test_current_release_spec_is_consistent():
     assert check_versions() == []
 
 
-def test_current_dataset_card_is_generated():
-    spec = load_release_spec()
-
-    assert spec["dataset_card_mode"] == "generated"
-    assert "dataset_card" not in spec
-    assert spec["card"]["pretty_name"] == "Farpoint UR10e Robotiq 2F-85"
-
-
 def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
     spec = load_release_spec(SO101_RELEASE_SPEC)
 
@@ -42,16 +34,12 @@ def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
     assert check_versions(SO101_RELEASE_SPEC) == []
 
 
-def test_so101_dataset_card_is_generated_from_release_metadata():
-    spec = load_release_spec(SO101_RELEASE_SPEC)
+def test_so101_changelog_keeps_published_version_history():
     project_root = Path(__file__).resolve().parents[1]
     changelog = project_root.joinpath("docs/dataset-v3/farpoint-so101-changelog.md").read_text(
         encoding="utf-8"
     )
 
-    assert spec["dataset_card_mode"] == "generated"
-    assert "dataset_card" not in spec
-    assert spec["card"]["pretty_name"] == "Farpoint SO-101"
     assert "## v0.0.2" in changelog
     assert "## v0.0.1" in changelog
     assert "## v0.0.0" in changelog
@@ -70,7 +58,6 @@ def test_release_spec_rejects_prefixed_version(tmp_path):
                 'variation_schema = "farpoint.variation.v1"',
                 'lerobot_format = "v3"',
                 'variation_config = "config.json"',
-                'dataset_card = "README.md"',
             ]
         )
     )
@@ -91,7 +78,6 @@ def test_code_and_dataset_versions_are_independent(tmp_path):
                 'variation_schema = "farpoint.variation.v2"',
                 'lerobot_format = "v3"',
                 'variation_config = "config.json"',
-                'dataset_card = "README.md"',
             ]
         )
     )
@@ -102,31 +88,8 @@ def test_code_and_dataset_versions_are_independent(tmp_path):
     assert spec["dataset_tag"] == "v9.4.1"
 
 
-def test_generated_card_mode_requires_structured_metadata(tmp_path):
-    path = tmp_path / "dataset-release.toml"
-    path.write_text(
-        "\n".join(
-            [
-                'schema_version = "farpoint.dataset-release.v1"',
-                'dataset_version = "1.2.3"',
-                'dataset_id = "dataset"',
-                'hf_repo_id = "owner/dataset"',
-                'dataset_schema = "farpoint.dataset.v3"',
-                'variation_schema = "farpoint.variation.v3"',
-                'lerobot_format = "v3"',
-                'variation_config = "config.json"',
-                'dataset_card_mode = "generated"',
-            ]
-        )
-    )
-
-    with pytest.raises(ValueError, match=r"requires a \[card\] table"):
-        load_release_spec(path)
-
-
 def test_version_check_does_not_require_code_to_match_dataset(tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "2.0.0"\n')
-    (tmp_path / "dataset-card.md").write_text("Published dataset: `v9.4.1`\n")
     spec_path = tmp_path / "dataset-release.toml"
     spec_path.write_text(
         "\n".join(
@@ -139,7 +102,6 @@ def test_version_check_does_not_require_code_to_match_dataset(tmp_path, monkeypa
                 'variation_schema = "farpoint.variation.v2"',
                 'lerobot_format = "v3"',
                 'variation_config = "config.json"',
-                'dataset_card = "dataset-card.md"',
             ]
         )
     )

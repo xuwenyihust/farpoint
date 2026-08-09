@@ -18,7 +18,6 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from create_benchmark_from_episodes import build_manifest  # noqa: E402
-from farpoint.dataset_card import generate_dataset_card  # noqa: E402
 from farpoint.release import audit_viewer_package, prepare_viewer_package  # noqa: E402
 from farpoint.release_spec import DEFAULT_RELEASE_SPEC, load_release_spec  # noqa: E402
 from validate_lerobot_dataset import validate_dataset  # noqa: E402
@@ -41,15 +40,6 @@ def parse_episode_ids(args: argparse.Namespace) -> list[str]:
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def audit_public_release_package(root: Path) -> dict:
-    """Apply Viewer checks plus the public Dataset Card release gate."""
-    result = audit_viewer_package(root)
-    errors = list(result.get("errors", []))
-    if not (root / "README.md").is_file():
-        errors.append("missing Dataset Card: README.md")
-    return {**result, "valid": not errors, "errors": errors}
 
 
 def publish_huggingface(package: Path, repo_id: str, dataset_tag: str, commit_message: str) -> dict:
@@ -252,15 +242,7 @@ def build_release(args: argparse.Namespace, spec: dict) -> dict:
             "canonical dataset failed validation: " + "; ".join(canonical_validation["errors"])
         )
     package_result = prepare_viewer_package(canonical_dir, public_dir)
-    if spec["dataset_card_mode"] == "generated":
-        card = generate_dataset_card(canonical_dir, spec)
-        (public_dir / "README.md").write_text(card, encoding="utf-8")
-    else:
-        dataset_card = PROJECT_ROOT / spec["dataset_card"]
-        if not dataset_card.is_file():
-            raise FileNotFoundError(f"dataset card does not exist: {dataset_card}")
-        shutil.copy2(dataset_card, public_dir / "README.md")
-    viewer_audit = audit_public_release_package(public_dir)
+    viewer_audit = audit_viewer_package(public_dir)
     if not viewer_audit["valid"]:
         raise ValueError(
             "public release package failed audit: " + "; ".join(viewer_audit["errors"])
@@ -306,7 +288,7 @@ def validate_release(release_dir: Path, spec: dict) -> dict:
         if v2_dataset and evidence_path
         else validate_dataset(release_dir / "canonical")
     )
-    public = audit_public_release_package(release_dir / "public")
+    public = audit_viewer_package(release_dir / "public")
     errors = preflight_errors
     if manifest.get("dataset_version") != spec["dataset_version"]:
         errors.append("release manifest dataset_version does not match the dataset release spec")

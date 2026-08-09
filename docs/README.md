@@ -11,9 +11,6 @@
 ## Dataset V1
 
 - [Data Contract](dataset-v1/data-contract.md): LeRobot-compatible schema
-- Dataset Cards are generated from each release specification and the exported
-  dataset metadata by `scripts/release_dataset.py`; they are not maintained as
-  hand-written documentation.
 
 ## Dataset Contract V2
 

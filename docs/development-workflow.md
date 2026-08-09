@@ -11,9 +11,9 @@ release histories:
 - The GitHub repository and Python package use the Farpoint code version from
   `pyproject.toml` and `farpoint.__version__`.
 - Each Hugging Face dataset has its own specification under `configs/datasets/`,
-  including its `dataset_version`, Hub repository, schemas, and Dataset Card
-  generation metadata. The rendered Card is a release artifact, not a second
-  hand-maintained source file.
+  including its `dataset_version`, Hub repository, and schemas. Dataset Cards
+  are maintained directly on Hugging Face and are outside the Git repository's
+  release specification and validation contract.
 - Schema versions are compatibility contracts and are independent of both code
   and dataset versions.
 
@@ -74,15 +74,16 @@ episode IDs, artifact completeness, and distinct execution and quality states.
    Parquet shards, MP4 decoding, frame alignment, metadata, and checksums.
 3. Build the Viewer-safe package with `scripts/release_dataset.py build`.
 4. Run `validate`, then `stage`; neither command uploads data.
-5. QA the Dataset Card, LeRobot loader, Viewer `/is-valid`, and first rows on a
-   staging revision or staging dataset.
-6. Open a dataset release PR containing that dataset's version change, generated
-   Card preview, release notes, manifest,
-   benchmark links, and validation evidence.
-7. After the owner merges and separately approves publishing, run `publish`
+5. QA the LeRobot loader, Viewer `/is-valid`, and first rows on a staging
+   revision or staging dataset.
+6. Open a dataset release PR containing that dataset's version change, release
+   notes, manifest, benchmark links, and validation evidence.
+7. Before publishing, review the Hugging Face Dataset Card with the owner and
+   update it directly on the Hub; it is not generated or validated by GitHub.
+8. After the owner merges and separately approves publishing, run `publish`
    with the exact confirmed version.
-8. Verify the dataset's Hugging Face tag, Dataset Viewer, downloadable artifacts, and
-   LeRobot loading from the published revision.
+9. Verify the dataset's Hugging Face tag, Dataset Card, Dataset Viewer,
+   downloadable artifacts, and LeRobot loading from the published revision.
 
 Dataset publication does not create a Git tag. Farpoint code releases follow a
 separate package release process and may use their own Git tags.

@@ -6,20 +6,3 @@ dataset_schema = "farpoint.dataset.v2"
 variation_schema = "farpoint.variation.v2"
 lerobot_format = "v3"
 variation_config = "configs/variations/farpoint_v1_3_cube_position_expanded.json"
-dataset_card_mode = "generated"
-
-[card]
-pretty_name = "Farpoint UR10e Robotiq 2F-85"
-license = "cc-by-4.0"
-description = "Farpoint UR10e Robotiq 2F-85 is a LeRobot v3 dataset of physics-based robot manipulation episodes generated with Isaac Sim and Farpoint."
-intended_use = "Robot-learning pipeline development, behavior-cloning experiments, simulation evaluation, and data-loader testing. Simulation-only demonstrations are not a basis for real-world deployment or safety claims."
-source_url = "https://github.com/xuwenyihust/farpoint"
-tags = [
-  "LeRobotDataset-v3",
-  "format:parquet",
-  "modality:video",
-  "robotics",
-  "robot-learning",
-  "isaac-sim",
-  "manipulation",
-]

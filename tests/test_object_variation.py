@@ -93,3 +93,23 @@ def test_generic_dimension_profiles_support_non_cube_assets():
     assert plan["trials"][0]["trial_id"].startswith("cylinder_")
     assert plan["trials"][0]["resolved"]["dimensions_m"] == [0.03, 0.03, 0.06]
     assert plan["trials"][0]["resolved"]["entities"]["pick_object"]["entity_type"] == "cylinder"
+
+
+def test_trial_count_and_splits_derive_from_configured_axis_product():
+    config = load_variation_config(CONFIG)
+    config["workspace"].update({"rows": 2, "columns": 3})
+    config["object"]["edge_sizes_m"] = [0.03]
+    config["object"]["colors"] = [
+        {"id": "red", "rgba": [1.0, 0.0, 0.0, 1.0]},
+        {"id": "green", "rgba": [0.0, 1.0, 0.0, 1.0]},
+        {"id": "blue", "rgba": [0.0, 0.0, 1.0, 1.0]},
+    ]
+
+    plan = generate_variation_plan(config)
+
+    assert len(plan["trials"]) == 2 * 3 * 1 * 3
+    assert Counter(row["split"] for row in plan["trials"]) == {
+        "train": 14,
+        "validation": 2,
+        "test": 2,
+    }

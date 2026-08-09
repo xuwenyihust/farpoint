@@ -29,12 +29,6 @@ def check_versions(spec_path: Path = DEFAULT_RELEASE_SPEC) -> list[str]:
             f"Farpoint code version differs: pyproject.toml={package_version}, "
             f"farpoint.__version__={__version__}"
         )
-    if spec["dataset_card_mode"] == "file":
-        card_path = PROJECT_ROOT / spec["dataset_card"]
-        if not card_path.is_file():
-            errors.append(f"dataset card does not exist: {spec['dataset_card']}")
-        elif f"`{spec['dataset_tag']}`" not in card_path.read_text(encoding="utf-8"):
-            errors.append(f"Dataset Card does not document {spec['dataset_tag']}")
     legacy_script = (
         PROJECT_ROOT
         / "scripts"
