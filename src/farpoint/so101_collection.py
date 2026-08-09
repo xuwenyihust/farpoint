@@ -133,7 +133,7 @@ def create_manifest(
     *,
     collection_id: str,
     git_commit: str,
-    maximum_attempts: int = 150,
+    maximum_attempts: int | None = None,
 ) -> dict[str, Any]:
     trials = plan.get("trials") or []
     profile = plan.get("collection") or {}
@@ -149,12 +149,13 @@ def create_manifest(
             raise ValueError("mirrored mass collection must require every planned variation")
         if frozen_maximum < required_successes:
             raise ValueError("mirrored mass collection attempt budget is unreachable")
-        if maximum_attempts != frozen_maximum:
+        if maximum_attempts is not None and maximum_attempts != frozen_maximum:
             raise ValueError("maximum_attempts does not match the frozen collection profile")
         release_status = "CANDIDATE"
     else:
         if not trials:
             raise ValueError("SO-101 collection requires at least one planned variation")
+        maximum_attempts = 150 if maximum_attempts is None else maximum_attempts
         if maximum_attempts < len(trials):
             raise ValueError("maximum_attempts cannot be less than the planned variation count")
         required_successes = len(trials)
