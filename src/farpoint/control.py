@@ -48,25 +48,32 @@ def so101_cube_contact_handoff(
 def so101_pre_capture_recenter_limit(
     object_width_m,
     *,
-    maximum_correction_m=0.008,
-    width_fraction=0.30,
+    maximum_correction_m=0.010,
+    width_fraction=0.20,
+    fingertip_clearance_m=0.002,
 ):
     """Bound capture search while leaving room for the opposite fingertip.
 
     The former 4 mm bound saturated on every uncovered mass variation while
-    the cube moved 6--10 mm under unilateral contact.  Permit at most 30% of
-    the object width, capped at 8 mm, only before bilateral capture.
+    the cube moved 6--10 mm under unilateral contact.  The later fixed 8 mm
+    corridor recovered 30 mm cubes, but a 40 mm edge-yaw trace exhausted it
+    while retaining unilateral contact.  Scale the search from 8 mm at 30 mm
+    width to 10 mm at 40 mm width, including a fixed 2 mm fingertip-clearance
+    allowance.  This expansion applies only before bilateral capture.
     """
     width = float(object_width_m)
     maximum = float(maximum_correction_m)
     fraction = float(width_fraction)
+    clearance = float(fingertip_clearance_m)
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     if not math.isfinite(maximum) or maximum <= 0.0:
         raise ValueError("maximum_correction_m must be finite and positive")
     if not math.isfinite(fraction) or not 0.0 < fraction < 0.5:
         raise ValueError("width_fraction must be finite and between zero and 0.5")
-    return min(maximum, fraction * width)
+    if not math.isfinite(clearance) or clearance < 0.0:
+        raise ValueError("fingertip_clearance_m must be finite and non-negative")
+    return min(maximum, clearance + fraction * width)
 
 
 def so101_capture_contact_loss_grace_s(object_width_m):

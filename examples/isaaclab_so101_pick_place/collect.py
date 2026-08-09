@@ -1897,9 +1897,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     if settling_capture
                     else 0.000125
                 ),
-                # All six deterministic recovery failures saturated the old
-                # 4 mm bound while the cube translated 6--10 mm under one
-                # finger.  Expand only the pre-capture search corridor; once
+                # Expand only the size-aware pre-capture search corridor; once
                 # bilateral contact exists, retain the proven 2 mm hold bound.
                 max_correction=(
                     0.002
