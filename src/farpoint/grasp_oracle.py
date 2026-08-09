@@ -184,6 +184,28 @@ def rotary_jaw_capture_hold_target(
     )
 
 
+def capture_preload_force_floor(
+    capture_contact_force_n: float,
+    *,
+    retention_fraction: float = 0.75,
+) -> float:
+    """Keep a confirmed capture above a bounded fraction of admission force.
+
+    The admission threshold rejects weak bilateral impacts.  Immediately after
+    admission, retaining only the much lower persistence threshold can let both
+    contacts decay before the rotary jaw reacts.  This floor keeps force control
+    proactive without changing either the validator's contact truth or its
+    independent maximum-force safety limit.
+    """
+    capture_force = float(capture_contact_force_n)
+    fraction = float(retention_fraction)
+    if not np.isfinite(capture_force) or capture_force <= 0.0:
+        raise ValueError("capture_contact_force_n must be finite and positive")
+    if not np.isfinite(fraction) or not 0.0 < fraction <= 1.0:
+        raise ValueError("retention_fraction must be finite and in (0, 1]")
+    return capture_force * fraction
+
+
 def unilateral_contact_requires_recenter(
     left_force_n: float,
     right_force_n: float,

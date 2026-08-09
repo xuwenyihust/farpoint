@@ -8,6 +8,7 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_preload_force_floor,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
@@ -75,6 +76,33 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
             closed_position=-0.175,
             open_position=1.7453,
             preload_rad=-0.1,
+        )
+
+
+def test_capture_preload_force_floor_tracks_admission_threshold():
+    assert capture_preload_force_floor(2.0) == pytest.approx(1.5)
+    assert capture_preload_force_floor(4.0, retention_fraction=0.5) == pytest.approx(
+        2.0
+    )
+
+
+@pytest.mark.parametrize(
+    ("capture_force", "retention_fraction"),
+    [
+        (0.0, 0.75),
+        (float("nan"), 0.75),
+        (2.0, 0.0),
+        (2.0, 1.01),
+        (2.0, float("nan")),
+    ],
+)
+def test_capture_preload_force_floor_rejects_invalid_contract(
+    capture_force, retention_fraction
+):
+    with pytest.raises(ValueError):
+        capture_preload_force_floor(
+            capture_force,
+            retention_fraction=retention_fraction,
         )
 
 

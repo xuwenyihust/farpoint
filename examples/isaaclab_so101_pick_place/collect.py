@@ -140,6 +140,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_preload_force_floor,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
@@ -1813,12 +1814,18 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 *balanced_forces,
                 open_position=open_jaw,
                 closed_position=closed_jaw,
-                # Keep the force controller and grasp validator on the same
-                # bilateral floor.  The former 0.5 N hold allowed a 30 mm
-                # capture to relax to 1.55/1.65 N while the validator still
-                # required 2.0 N, producing a deterministic false contact-loss
-                # failure despite rigid, balanced contact.
-                min_force=(0.5 if settling_capture else 3.0),
+                # The edge-yaw traces entered capture above 2 N on both
+                # fingers, then decayed through 1.4 N before the old 0.5 N
+                # controller reacted. Retain 75% of the unchanged admission
+                # force so the rotary jaw closes while contact still exists;
+                # persistence and maximum-force validation remain independent.
+                min_force=(
+                    capture_preload_force_floor(
+                        grasp_machine.capture_contact_force_n
+                    )
+                    if settling_capture
+                    else 3.0
+                ),
                 # Back off before the independent 30 N safety validator can
                 # trip on a one-control-tick unilateral force spike.
                 max_force=20.0,
