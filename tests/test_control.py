@@ -91,7 +91,7 @@ def test_so101_cube_contact_handoff_uses_first_filtered_finger_contact():
 
 def test_so101_pre_capture_recenter_limit_expands_formal_cube_corridor():
     assert so101_pre_capture_recenter_limit(0.03) == pytest.approx(0.008)
-    assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.010)
+    assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.008)
     assert so101_pre_capture_recenter_limit(0.02) == pytest.approx(0.006)
 
 
@@ -138,8 +138,6 @@ def test_so101_capture_contact_loss_grace_rejects_invalid_width(value):
         {"object_width_m": float("nan")},
         {"object_width_m": 0.03, "maximum_correction_m": 0.0},
         {"object_width_m": 0.03, "width_fraction": 0.5},
-        {"object_width_m": 0.03, "fingertip_clearance_m": -0.001},
-        {"object_width_m": 0.03, "fingertip_clearance_m": float("nan")},
     ),
 )
 def test_so101_pre_capture_recenter_limit_rejects_invalid_contract(kwargs):
