@@ -145,6 +145,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
+    gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
@@ -1875,47 +1876,63 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         ):
-            jaw_center = _numpy(
-                robot.data.body_link_pose_w.torch[
-                    0, robot.body_names.index("jaw"), :3
-                ]
-            )
-            gripper_center = _numpy(
-                robot.data.body_link_pose_w.torch[0, body_index, :3]
-            )
-            recenter = unilateral_contact_recenter_target(
-                grasp_hold_pose,
-                grasp_hold_nominal_pose,
-                {"center": jaw_center.tolist()},
-                {"center": gripper_center.tolist()},
-                *recenter_forces,
-                # Recenter as soon as one side drops below the same 0.1 N
-                # persistence floor used by the grasp state machine. Waiting
-                # for 0.5 N missed the observed 0.12/0.0 N recovery window and
-                # let the light cube escape while the jaw only closed harder.
-                min_force=grasp_machine.minimum_contact_force_n,
-                # The yaw-30 edge traces needed 1.25--1.63 mm of the frozen
-                # 2 mm corridor but exhausted their contact-loss grace before
-                # getting there. Traverse the same bounded corridor within 16
-                # active ticks; do not relax force, rigidity, or loss limits.
-                step=(
-                    so101_post_capture_recenter_step()
-                    if settling_capture
-                    else 0.000125
-                ),
-                # All six deterministic recovery failures saturated the old
-                # 4 mm bound while the cube translated 6--10 mm under one
-                # finger.  Expand only the pre-capture search corridor; once
-                # bilateral contact exists, retain the proven 2 mm hold bound.
-                max_correction=(
-                    0.002
-                    if settling_capture
-                    else so101_pre_capture_recenter_limit(
-                        object_spec["dimensions_m"][0]
-                    )
-                ),
-                move_toward_contact=True,
-            )
+            if closing_alignment:
+                # A finger-side label alone does not determine which world
+                # direction centers this rotated, long-finger aperture.  Use
+                # simulator truth and the measured gripper orientation to
+                # recover the calibrated object-in-aperture XY offset while
+                # preserving the contact handoff height.
+                live_gripper_pose = _numpy(
+                    robot.data.body_link_pose_w.torch[0, body_index]
+                )
+                object_world = _numpy(
+                    scene[active_name].data.root_pos_w[0, :3]
+                )
+                desired_gripper = gripper_xy_target_for_object_local_offset(
+                    object_world,
+                    live_gripper_pose,
+                    capture_object_in_gripper,
+                )
+                desired_object_minus_grasp = object_world - desired_gripper
+                correction_limit = so101_pre_capture_recenter_limit(
+                    object_spec["dimensions_m"][0]
+                )
+                aligned = relative_object_grasp_servo_target(
+                    object_world,
+                    desired_object_minus_grasp,
+                    ee_position,
+                    grasp_hold_nominal_pose,
+                    max_step=0.000125,
+                    max_correction=(
+                        correction_limit,
+                        correction_limit,
+                        0.0,
+                    ),
+                )
+                recenter = {
+                    "position": aligned["position"],
+                    "active": float(np.linalg.norm(aligned["error"][:2])) > 1e-6,
+                }
+            else:
+                jaw_center = _numpy(
+                    robot.data.body_link_pose_w.torch[
+                        0, robot.body_names.index("jaw"), :3
+                    ]
+                )
+                gripper_center = _numpy(
+                    robot.data.body_link_pose_w.torch[0, body_index, :3]
+                )
+                recenter = unilateral_contact_recenter_target(
+                    grasp_hold_pose,
+                    grasp_hold_nominal_pose,
+                    {"center": jaw_center.tolist()},
+                    {"center": gripper_center.tolist()},
+                    *recenter_forces,
+                    min_force=grasp_machine.minimum_contact_force_n,
+                    step=so101_post_capture_recenter_step(),
+                    max_correction=0.002,
+                    move_toward_contact=True,
+                )
             grasp_hold_pose = np.asarray(recenter["position"], dtype=np.float32)
             recenter_active = bool(recenter["active"])
         if (
