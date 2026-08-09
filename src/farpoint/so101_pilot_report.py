@@ -53,6 +53,22 @@ def _expectation_errors(
     return errors
 
 
+def _required_success_cell_errors(
+    plan: dict[str, Any], selected: list[dict[str, Any]]
+) -> list[str]:
+    trials = {trial["variation_id"]: trial for trial in plan.get("trials") or []}
+    successful_cells = {
+        trials[attempt["variation_id"]]["cell_id"]
+        for attempt in selected
+        if attempt.get("variation_id") in trials
+    }
+    return [
+        f"required_success_cell_failed:{cell_id}"
+        for cell_id in (plan.get("pilot") or {}).get("required_success_cells") or []
+        if cell_id not in successful_cells
+    ]
+
+
 def _quaternion_error_degrees(actual: list[float], expected: list[float]) -> float:
     if len(actual) != 4 or len(expected) != 4:
         return math.inf
@@ -93,15 +109,11 @@ def audit_yaw_mass_episodes(
         root = episodes_root / episode_id
         metadata = json.loads((root / "metadata.json").read_text(encoding="utf-8"))
         metrics = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
-        expected_orientation = [
-            float(value) for value in trial["resolved"]["orientation_xyzw"]
-        ]
+        expected_orientation = [float(value) for value in trial["resolved"]["orientation_xyzw"]]
         orientation_tolerance_degrees = float(
             profile.get("actual_orientation_tolerance_degrees", 2.0)
         )
-        initial_orientation = [
-            float(value) for value in episode["initial_object_pose_xyzw"][3:]
-        ]
+        initial_orientation = [float(value) for value in episode["initial_object_pose_xyzw"][3:]]
         initial_orientation_error_degrees = _quaternion_error_degrees(
             initial_orientation, expected_orientation
         )
@@ -135,18 +147,14 @@ def audit_yaw_mass_episodes(
             errors.append(f"{episode_id}:yaw_orientation_audit_failed")
 
         metric_mass = (metrics.get("physics_audit") or {}).get("mass")
-        metadata_mass = ((metadata.get("scene") or {}).get("object") or {}).get(
-            "mass_audit"
-        )
+        metadata_mass = ((metadata.get("scene") or {}).get("object") or {}).get("mass_audit")
         expected_mass = float(trial["resolved"]["mass_kg"])
         mass_verified = (
             isinstance(metric_mass, dict)
             and metric_mass == metadata_mass
             and metric_mass.get("verified") is True
-            and abs(float(metric_mass.get("requested_mass_kg", math.inf)) - expected_mass)
-            <= 1e-6
-            and abs(float(metric_mass.get("resolved_mass_kg", math.inf)) - expected_mass)
-            <= 1e-6
+            and abs(float(metric_mass.get("requested_mass_kg", math.inf)) - expected_mass) <= 1e-6
+            and abs(float(metric_mass.get("resolved_mass_kg", math.inf)) - expected_mass) <= 1e-6
             and abs(float(metric_mass.get("physx_actual_mass_kg", math.inf)) - expected_mass)
             <= 1e-6
         )
@@ -203,9 +211,7 @@ def build_so101_pilot_report(
             errors.append(f"{attempt['episode_id']}:manifest_episode_success_mismatch")
         if episode["dataset_valid"] != bool(attempt["dataset_valid"]):
             errors.append(f"{attempt['episode_id']}:manifest_episode_validity_mismatch")
-    yaw_audits, yaw_errors = audit_yaw_mass_episodes(
-        plan, attempts, by_name, root
-    )
+    yaw_audits, yaw_errors = audit_yaw_mass_episodes(plan, attempts, by_name, root)
     errors.extend(yaw_errors)
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
@@ -221,9 +227,7 @@ def build_so101_pilot_report(
         if episode["terminal_grasp_phase"] != "validated":
             errors.append(f"{attempt['episode_id']}:selected_grasp_not_validated")
         settle_frames = sum(
-            phase["frame_count"]
-            for phase in episode["phase_ranges"]
-            if phase["phase"] == "settle"
+            phase["frame_count"] for phase in episode["phase_ranges"] if phase["phase"] == "settle"
         )
         if settle_frames < 15:
             errors.append(f"{attempt['episode_id']}:insufficient_settle_frames")
@@ -244,6 +248,7 @@ def build_so101_pilot_report(
     if (plan.get("pilot") or {}).get("kind") == "targeted_yaw_pilot":
         if len(selected) < int(manifest["required_successes"]):
             acceptance_errors.append("selected_success_count_below_threshold")
+        acceptance_errors.extend(_required_success_cell_errors(plan, selected))
     elif len(selected) != int(manifest["required_successes"]):
         acceptance_errors.append("selected_success_count_mismatch")
     if len(attempts) > int(manifest["maximum_attempts"]):
@@ -286,8 +291,7 @@ def build_so101_pilot_report(
         "evidence_errors": sorted(set(errors)),
         "acceptance_errors": sorted(set(acceptance_errors)),
         "minimum_selected_proof_lift_m": min(
-            episode["proof_lift_tracking"]["actual_max_m"]
-            for episode in selected_evidence
+            episode["proof_lift_tracking"]["actual_max_m"] for episode in selected_evidence
         )
         if selected_evidence
         else None,
@@ -325,7 +329,6 @@ def render_so101_pilot_report_markdown(report: dict[str, Any]) -> str:
         lines.append("Selected physics and front-only episode artifacts passed.")
     if report.get("acceptance_errors"):
         lines.extend(
-            ["", "## Acceptance gate", ""]
-            + [f"- {error}" for error in report["acceptance_errors"]]
+            ["", "## Acceptance gate", ""] + [f"- {error}" for error in report["acceptance_errors"]]
         )
     return "\n".join(lines) + "\n"

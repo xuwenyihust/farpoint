@@ -44,12 +44,8 @@ def workflow_config():
 
 
 def initialize(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
-    policy = load_watchdog_policy(
-        ROOT / "configs/workflows/so101_watchdog_p0.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
     workflow, plans = build_so101_gate_workflow(
         workflow_config(),
         config,
@@ -134,12 +130,8 @@ def test_workflow_blocks_after_watchdog_aborts_a_stage(tmp_path):
     path, workflow, plans = initialize(tmp_path)
     first = workflow["stages"][0]
     plan = plans[first["stage_id"]]
-    manifest = create_gate_manifest(
-        plan, collection_id=plan["plan_id"], git_commit=GIT_COMMIT
-    )
-    abort_collection_manifest(
-        manifest, "watchdog:stop:success_target_unreachable"
-    )
+    manifest = create_gate_manifest(plan, collection_id=plan["plan_id"], git_commit=GIT_COMMIT)
+    abort_collection_manifest(manifest, "watchdog:stop:success_target_unreachable")
     write_manifest(path.parent / first["manifest_path"], manifest)
 
     status = evaluate_so101_gate_workflow(path)
@@ -166,12 +158,8 @@ def test_workflow_rejects_commit_drift(tmp_path):
 
 
 def test_mass_feasibility_profile_uses_special_report_and_completion(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
-    policy = load_watchdog_policy(
-        ROOT / "configs/workflows/so101_watchdog_p0.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
     profile = {
         "schema_version": "farpoint.so101-gate-workflow-config.v1",
         "completion_status": "FEASIBILITY_COMPLETE",
@@ -191,9 +179,7 @@ def test_mass_feasibility_profile_uses_special_report_and_completion(tmp_path):
         workflow_id="mass_workflow",
         git_commit=GIT_COMMIT,
     )
-    path = write_so101_gate_workflow(
-        tmp_path / "mass_workflow", workflow, plans, policy
-    )
+    path = write_so101_gate_workflow(tmp_path / "mass_workflow", workflow, plans, policy)
     stage = workflow["stages"][0]
     assert stage["report_kind"] == "mass_feasibility"
     manifest = create_gate_manifest(
@@ -213,9 +199,7 @@ def test_mass_feasibility_profile_uses_special_report_and_completion(tmp_path):
         )
     write_manifest(path.parent / stage["manifest_path"], manifest)
     needs_report = evaluate_so101_gate_workflow(path)
-    assert needs_report["next_action"]["command"][1] == (
-        "scripts/report_so101_mass_feasibility.py"
-    )
+    assert needs_report["next_action"]["command"][1] == ("scripts/report_so101_mass_feasibility.py")
     report_path = path.parent / stage["report_json_path"]
     report_path.write_text(
         json.dumps(
@@ -231,12 +215,8 @@ def test_mass_feasibility_profile_uses_special_report_and_completion(tmp_path):
 
 
 def test_candidate_mass_workspace_profile_freezes_five_trials(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
-    policy = load_watchdog_policy(
-        ROOT / "configs/workflows/so101_watchdog_p0.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
     baselines = [
         {
             "episode_id": f"episode_baseline_{index}",
@@ -269,9 +249,7 @@ def test_candidate_mass_workspace_profile_freezes_five_trials(tmp_path):
         workflow_id="candidate_workspace",
         git_commit=GIT_COMMIT,
     )
-    path = write_so101_gate_workflow(
-        tmp_path / "candidate_workspace", workflow, plans, policy
-    )
+    path = write_so101_gate_workflow(tmp_path / "candidate_workspace", workflow, plans, policy)
     stage = workflow["stages"][0]
 
     assert stage["maximum_attempts"] == 5
@@ -281,12 +259,8 @@ def test_candidate_mass_workspace_profile_freezes_five_trials(tmp_path):
 
 
 def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
-    policy = load_watchdog_policy(
-        ROOT / "configs/workflows/so101_watchdog_p0.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
     profile = {
         "schema_version": "farpoint.so101-gate-workflow-config.v1",
         "completion_status": "PILOT_COMPLETE",
@@ -327,9 +301,7 @@ def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
         workflow_id="capture_fix",
         git_commit=GIT_COMMIT,
     )
-    path = write_so101_gate_workflow(
-        tmp_path / "capture_fix", workflow, plans, policy
-    )
+    path = write_so101_gate_workflow(tmp_path / "capture_fix", workflow, plans, policy)
     stage = workflow["stages"][0]
 
     assert stage["collector_mode"] == "pilot"
@@ -341,13 +313,9 @@ def test_targeted_mass_diagnostic_profile_uses_pilot_contract(tmp_path):
 
 
 def test_targeted_yaw_profile_freezes_twelve_balanced_trials(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
     policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
-    profile = json.loads(
-        (ROOT / "configs/workflows/so101_cube_yaw0_pilot.json").read_text()
-    )
+    profile = json.loads((ROOT / "configs/workflows/so101_cube_yaw0_pilot.json").read_text())
     workflow, plans = build_so101_gate_workflow(
         profile, config, policy, workflow_id="yaw0", git_commit=GIT_COMMIT
     )
@@ -368,16 +336,32 @@ def test_targeted_yaw_profile_freezes_twelve_balanced_trials(tmp_path):
     ]
 
 
+def test_yaw30_profile_requires_both_previous_gap_cells(tmp_path):
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
+    profile = json.loads((ROOT / "configs/workflows/so101_cube_yaw30_pilot.json").read_text())
+
+    workflow, plans = build_so101_gate_workflow(
+        profile, config, policy, workflow_id="yaw30", git_commit=GIT_COMMIT
+    )
+    plan = plans[workflow["stages"][0]["stage_id"]]
+
+    assert plan["pilot"]["yaw_degrees"] == 30.0
+    assert plan["pilot"]["required_success_cells"] == ["r04_c00", "r04_c01"]
+    assert plan["pilot"]["coverage"]["splits"] == {
+        "test": 2,
+        "train": 8,
+        "validation": 2,
+    }
+    assert plan["pilot"]["coverage"]["colors"] == {"color_0": 6, "color_1": 6}
+    assert plan["pilot"]["mass_kg_counts"] == {"0.03": 6, "0.04": 6}
+
+
 def test_structural_contact_handoff_profile_freezes_two_fixes_and_control(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
-    policy = load_watchdog_policy(
-        ROOT / "configs/workflows/so101_watchdog_p0.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
     profile = json.loads(
-        (ROOT / "configs/workflows/so101_structural_contact_handoff_pilot.json")
-        .read_text()
+        (ROOT / "configs/workflows/so101_structural_contact_handoff_pilot.json").read_text()
     )
 
     workflow, plans = build_so101_gate_workflow(
@@ -402,23 +386,17 @@ def test_structural_contact_handoff_profile_freezes_two_fixes_and_control(tmp_pa
         "cube_r03_c03_s1_k0",
     ]
     assert all(
-        expectation == {"success": True}
-        for expectation in plan["pilot"]["expectations"].values()
+        expectation == {"success": True} for expectation in plan["pilot"]["expectations"].values()
     )
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]
 
 
 def test_recovery6_contact_profile_freezes_failures_and_success_controls(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
-    policy = load_watchdog_policy(
-        ROOT / "configs/workflows/so101_watchdog_p0.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
     profile = json.loads(
-        (ROOT / "configs/workflows/so101_recovery6_contact_pilot.json")
-        .read_text()
+        (ROOT / "configs/workflows/so101_recovery6_contact_pilot.json").read_text()
     )
 
     workflow, plans = build_so101_gate_workflow(
@@ -428,9 +406,7 @@ def test_recovery6_contact_profile_freezes_failures_and_success_controls(tmp_pat
         workflow_id="recovery6_contact",
         git_commit=GIT_COMMIT,
     )
-    path = write_so101_gate_workflow(
-        tmp_path / "recovery6_contact", workflow, plans, policy
-    )
+    path = write_so101_gate_workflow(tmp_path / "recovery6_contact", workflow, plans, policy)
     stage = workflow["stages"][0]
     plan = plans[stage["stage_id"]]
 
@@ -450,23 +426,17 @@ def test_recovery6_contact_profile_freezes_failures_and_success_controls(tmp_pat
         "cube_r04_c04_s0_k0",
     ]
     assert all(
-        expectation == {"success": True}
-        for expectation in plan["pilot"]["expectations"].values()
+        expectation == {"success": True} for expectation in plan["pilot"]["expectations"].values()
     )
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]
 
 
 def test_recovery6_contact_v2_profile_freezes_failure_and_controls(tmp_path):
-    config = load_variation_config(
-        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
-    policy = load_watchdog_policy(
-        ROOT / "configs/workflows/so101_watchdog_p0.json"
-    )
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
     profile = json.loads(
-        (ROOT / "configs/workflows/so101_recovery6_contact_pilot_v2.json")
-        .read_text()
+        (ROOT / "configs/workflows/so101_recovery6_contact_pilot_v2.json").read_text()
     )
 
     workflow, plans = build_so101_gate_workflow(
@@ -476,9 +446,7 @@ def test_recovery6_contact_v2_profile_freezes_failure_and_controls(tmp_path):
         workflow_id="recovery6_contact_v2",
         git_commit=GIT_COMMIT,
     )
-    path = write_so101_gate_workflow(
-        tmp_path / "recovery6_contact_v2", workflow, plans, policy
-    )
+    path = write_so101_gate_workflow(tmp_path / "recovery6_contact_v2", workflow, plans, policy)
     stage = workflow["stages"][0]
     plan = plans[stage["stage_id"]]
 
@@ -491,8 +459,7 @@ def test_recovery6_contact_v2_profile_freezes_failure_and_controls(tmp_path):
         "cube_r04_c02_s1_k0",
     ]
     assert all(
-        expectation == {"success": True}
-        for expectation in plan["pilot"]["expectations"].values()
+        expectation == {"success": True} for expectation in plan["pilot"]["expectations"].values()
     )
     status = evaluate_so101_gate_workflow(path)
     assert status["next_action"]["command"][2:4] == ["--pilot-plan", "--plan"]

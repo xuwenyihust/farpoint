@@ -56,9 +56,7 @@ def _yaw_quaternion_xyzw(yaw_degrees: float) -> list[float]:
 
 def _set_orientation(payload: dict[str, Any], orientation_xyzw: list[float]) -> None:
     payload["orientation_xyzw"] = copy.deepcopy(orientation_xyzw)
-    payload["entities"]["pick_object"]["pose"]["orientation_xyzw"] = copy.deepcopy(
-        orientation_xyzw
-    )
+    payload["entities"]["pick_object"]["pose"]["orientation_xyzw"] = copy.deepcopy(orientation_xyzw)
 
 
 def build_so101_pilot_plan(
@@ -176,9 +174,7 @@ def build_targeted_mass_diagnostic_pilot_plan(
     plan.update(
         {
             "plan_id": pilot_id,
-            "config_revision": (
-                f"targeted-mass-pilot:{variation_config['config_revision']}"
-            ),
+            "config_revision": (f"targeted-mass-pilot:{variation_config['config_revision']}"),
             "varied_axes": [
                 *plan["varied_axes"],
                 "entities.pick_object.physics.mass_kg",
@@ -217,6 +213,7 @@ def build_so101_yaw_pilot_plan(
     trial_profiles: list[dict[str, Any]],
     required_successes: int = 10,
     size_scope: str = "balanced",
+    required_success_cells: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a frozen 12-attempt SO-101 yaw pilot across both proven masses."""
     if not pilot_id:
@@ -232,6 +229,9 @@ def build_so101_yaw_pilot_plan(
     source_ids = [str(profile.get("source_trial_id", "")) for profile in trial_profiles]
     if any(not value for value in source_ids) or len(set(source_ids)) != len(source_ids):
         raise ValueError("yaw pilot source trial ids must be non-empty and unique")
+    required_success_cells = list(required_success_cells or [])
+    if len(required_success_cells) != len(set(required_success_cells)):
+        raise ValueError("yaw pilot required success cells must be unique")
     masses = [float(profile.get("mass_kg", 0.0)) for profile in trial_profiles]
     if set(masses) != {0.03, 0.04} or masses.count(0.03) != 6:
         raise ValueError("yaw pilot requires six trials at each of 0.03 kg and 0.04 kg")
@@ -282,16 +282,14 @@ def build_so101_yaw_pilot_plan(
         "sizes": dict(
             sorted(
                 Counter(
-                    f"size_{trial['seed_material']['size_index']}"
-                    for trial in transformed
+                    f"size_{trial['seed_material']['size_index']}" for trial in transformed
                 ).items()
             )
         ),
         "colors": dict(
             sorted(
                 Counter(
-                    f"color_{trial['seed_material']['color_index']}"
-                    for trial in transformed
+                    f"color_{trial['seed_material']['color_index']}" for trial in transformed
                 ).items()
             )
         ),
@@ -309,6 +307,8 @@ def build_so101_yaw_pilot_plan(
         raise ValueError("yaw pilot split coverage must be train=8, validation=2, test=2")
     if len(set(coverage["workspace_cells"])) != 12:
         raise ValueError("yaw pilot must cover 12 distinct workspace cells")
+    if not set(required_success_cells).issubset(coverage["workspace_cells"]):
+        raise ValueError("yaw pilot required success cells must be covered")
     if size_scope == "balanced":
         if sorted(coverage["sizes"].values()) != [6, 6]:
             raise ValueError("yaw pilot cube sizes must be balanced 6/6")
@@ -321,9 +321,7 @@ def build_so101_yaw_pilot_plan(
             raise ValueError("yaw pilot size/color combinations must be balanced 3 each")
     elif sorted(coverage["size_color"].values()) != [6, 6]:
         raise ValueError("30mm yaw pilot colors must be balanced within size_0")
-    remaining = [
-        trial for trial in plan["trials"] if trial["trial_id"] not in set(source_ids)
-    ]
+    remaining = [trial for trial in plan["trials"] if trial["trial_id"] not in set(source_ids)]
     plan.update(
         {
             "plan_id": pilot_id,
@@ -365,6 +363,11 @@ def build_so101_yaw_pilot_plan(
                     else "staged_30mm_yaw_pilot_v1"
                 ),
                 "coverage": coverage,
+                **(
+                    {"required_success_cells": required_success_cells}
+                    if required_success_cells
+                    else {}
+                ),
             },
         }
     )

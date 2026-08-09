@@ -42,9 +42,7 @@ def test_pilot_plan_freezes_stratified_primary_and_fallback_order():
 
 def test_pilot_manifest_stops_at_ten_distinct_successes():
     plan = build_so101_pilot_plan(_config(), pilot_id="so101_pilot_v1")
-    manifest = create_pilot_manifest(
-        plan, collection_id=plan["plan_id"], git_commit="a" * 40
-    )
+    manifest = create_pilot_manifest(plan, collection_id=plan["plan_id"], git_commit="a" * 40)
 
     for index in range(10):
         attempt = next_attempt(manifest, plan)
@@ -65,9 +63,7 @@ def test_pilot_manifest_stops_at_ten_distinct_successes():
 
 def test_pilot_failure_consumes_fallback_without_retrying_or_changing_split():
     plan = build_so101_pilot_plan(_config(), pilot_id="so101_pilot_v1")
-    manifest = create_pilot_manifest(
-        plan, collection_id=plan["plan_id"], git_commit="a" * 40
-    )
+    manifest = create_pilot_manifest(plan, collection_id=plan["plan_id"], git_commit="a" * 40)
     failed = next_attempt(manifest, plan)
     record_attempt(
         manifest,
@@ -154,23 +150,16 @@ def test_targeted_mass_pilot_freezes_named_order_mass_and_budget():
         "source_trial_ids": list(source_ids),
         "target_mass_kg": 0.03,
         "actual_mass_tolerance_kg": 1e-6,
-        "expectations": {
-            f"{trial_id}_m030g": expectations[trial_id]
-            for trial_id in source_ids
-        },
+        "expectations": {f"{trial_id}_m030g": expectations[trial_id] for trial_id in source_ids},
     }
-    assert [trial["source_trial_id"] for trial in plan["trials"][:5]] == list(
-        source_ids
-    )
+    assert [trial["source_trial_id"] for trial in plan["trials"][:5]] == list(source_ids)
     assert {
         trial["requested"]["entities"]["pick_object"]["physics"]["mass_kg"]
         for trial in plan["trials"]
     } == {0.03}
     assert {trial["resolved"]["mass_kg"] for trial in plan["trials"]} == {0.03}
 
-    manifest = create_pilot_manifest(
-        plan, collection_id=plan["plan_id"], git_commit="a" * 40
-    )
+    manifest = create_pilot_manifest(plan, collection_id=plan["plan_id"], git_commit="a" * 40)
     assert manifest["required_successes"] == 3
     assert manifest["maximum_attempts"] == 5
     assert manifest["completion_policy"] == "all_planned_trials"
@@ -253,9 +242,7 @@ def test_yaw_pilot_freezes_balanced_zero_degree_10_of_12_contract():
         (0.04, 0.2, 0.85, 1.0),
     }
     assert all(trial["resolved"]["orientation_xyzw"] == [0.0, 0.0, 0.0, 1.0] for trial in selected)
-    manifest = create_pilot_manifest(
-        plan, collection_id=plan["plan_id"], git_commit="a" * 40
-    )
+    manifest = create_pilot_manifest(plan, collection_id=plan["plan_id"], git_commit="a" * 40)
     assert manifest["completion_policy"] == "all_planned_trials"
     assert manifest["stop_when_success_target_unreachable"] is False
 
@@ -272,4 +259,24 @@ def test_yaw_pilot_rejects_unbalanced_or_wrong_sized_profiles():
             pilot_id="bad",
             yaw_degrees=0.0,
             trial_profiles=[{**profile, "mass_kg": 0.04} for profile in profiles],
+        )
+
+
+def test_yaw_pilot_freezes_required_success_cells():
+    plan = build_so101_yaw_pilot_plan(
+        _config(),
+        pilot_id="yaw30_pilot",
+        yaw_degrees=30.0,
+        trial_profiles=_yaw_profiles(),
+        required_success_cells=["r04_c00", "r04_c02"],
+    )
+
+    assert plan["pilot"]["required_success_cells"] == ["r04_c00", "r04_c02"]
+    with pytest.raises(ValueError, match="must be covered"):
+        build_so101_yaw_pilot_plan(
+            _config(),
+            pilot_id="bad",
+            yaw_degrees=30.0,
+            trial_profiles=_yaw_profiles(),
+            required_success_cells=["r04_c01"],
         )

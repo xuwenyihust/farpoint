@@ -39,9 +39,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def validate_gate_workflow_config(config: dict[str, Any]) -> None:
     if config.get("schema_version") != WORKFLOW_CONFIG_SCHEMA_VERSION:
-        raise ValueError(
-            f"gate workflow config must use {WORKFLOW_CONFIG_SCHEMA_VERSION}"
-        )
+        raise ValueError(f"gate workflow config must use {WORKFLOW_CONFIG_SCHEMA_VERSION}")
     completion_status = config.get("completion_status", "READY_FOR_FORMAL_REVIEW")
     if not isinstance(completion_status, str) or not completion_status:
         raise ValueError("gate workflow completion_status must be non-empty")
@@ -102,9 +100,7 @@ def build_so101_gate_workflow(
             plan = build_cube_workspace_matrix_plan(
                 variation_config,
                 gate_id=plan_id,
-                positions_xy_m=[
-                    tuple(position) for position in stage_config["positions_xy_m"]
-                ],
+                positions_xy_m=[tuple(position) for position in stage_config["positions_xy_m"]],
                 minimum_success_rate=float(stage_config["minimum_success_rate"]),
             )
             collector_mode = "gate"
@@ -116,15 +112,9 @@ def build_so101_gate_workflow(
                 baseline_mass_kg=float(stage_config.get("baseline_mass_kg", 0.04)),
                 candidate_mass_kg=float(stage_config.get("candidate_mass_kg", 0.03)),
                 edge_m=float(stage_config.get("edge_m", 0.03)),
-                position_xy_m=tuple(
-                    stage_config.get("position_xy_m", (0.20, -0.095))
-                ),
-                repetitions_per_mass=int(
-                    stage_config.get("repetitions_per_mass", 5)
-                ),
-                minimum_successes_per_mass=int(
-                    stage_config.get("minimum_successes_per_mass", 4)
-                ),
+                position_xy_m=tuple(stage_config.get("position_xy_m", (0.20, -0.095))),
+                repetitions_per_mass=int(stage_config.get("repetitions_per_mass", 5)),
+                minimum_successes_per_mass=int(stage_config.get("minimum_successes_per_mass", 4)),
             )
             collector_mode = "gate"
             report_kind = "mass_feasibility"
@@ -134,9 +124,7 @@ def build_so101_gate_workflow(
                 pilot_id=plan_id,
                 candidate_mass_kg=float(stage_config["candidate_mass_kg"]),
                 edge_m=float(stage_config["edge_m"]),
-                historical_baseline_commit=str(
-                    stage_config["historical_baseline_commit"]
-                ),
+                historical_baseline_commit=str(stage_config["historical_baseline_commit"]),
                 historical_baseline_collection_id=str(
                     stage_config["historical_baseline_collection_id"]
                 ),
@@ -164,6 +152,7 @@ def build_so101_gate_workflow(
                 trial_profiles=stage_config["trial_profiles"],
                 required_successes=int(stage_config.get("required_successes", 10)),
                 size_scope=str(stage_config.get("size_scope", "balanced")),
+                required_success_cells=stage_config.get("required_success_cells"),
             )
             collector_mode = "pilot"
             report_kind = "pilot"
@@ -247,9 +236,7 @@ def write_so101_gate_workflow(
     return workflow_path
 
 
-def _stage_action(
-    stage: dict[str, Any], workflow: dict[str, Any], root: Path
-) -> dict[str, Any]:
+def _stage_action(stage: dict[str, Any], workflow: dict[str, Any], root: Path) -> dict[str, Any]:
     plan = str(root / stage["plan_path"])
     manifest = str(root / stage["manifest_path"])
     episodes = str(root / stage["episodes_root"])
@@ -361,9 +348,7 @@ def evaluate_so101_gate_workflow(
                     raise ValueError("manifest git commit does not match workflow")
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
                 result["state"] = "INVALID"
-                result["errors"].append(
-                    f"invalid_manifest:{type(error).__name__}:{error}"
-                )
+                result["errors"].append(f"invalid_manifest:{type(error).__name__}:{error}")
                 errors.extend(result["errors"])
                 unlocked = False
                 stage_results.append(result)
@@ -392,24 +377,16 @@ def evaluate_so101_gate_workflow(
                     if report.get("git_commit") != workflow.get("git_commit"):
                         raise ValueError("report git commit does not match workflow")
                     result["report_status"] = report.get(status_key)
-                    result["state"] = (
-                        "PASS" if report.get(status_key) == "PASS" else "BLOCKED"
-                    )
+                    result["state"] = "PASS" if report.get(status_key) == "PASS" else "BLOCKED"
                     if result["state"] == "BLOCKED":
-                        result["errors"].append(
-                            f"stage_report_status:{report.get(status_key)}"
-                        )
+                        result["errors"].append(f"stage_report_status:{report.get(status_key)}")
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
                     result["state"] = "INVALID"
-                    result["errors"].append(
-                        f"invalid_report:{type(error).__name__}:{error}"
-                    )
+                    result["errors"].append(f"invalid_report:{type(error).__name__}:{error}")
                     errors.extend(result["errors"])
             else:
                 result["state"] = "INVALID"
-                result["errors"].append(
-                    f"unsupported_execution_status:{execution_status}"
-                )
+                result["errors"].append(f"unsupported_execution_status:{execution_status}")
                 errors.extend(result["errors"])
 
         stage_results.append(result)
