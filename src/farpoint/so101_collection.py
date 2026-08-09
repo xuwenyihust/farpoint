@@ -182,7 +182,11 @@ def create_pilot_manifest(
     required_successes = int(pilot.get("required_successes", 0))
     maximum_attempts = int(pilot.get("maximum_attempts", 0))
     kind = pilot.get("kind")
-    if kind in {"targeted_mass_diagnostic_pilot", "targeted_yaw_pilot"}:
+    if kind in {
+        "targeted_mass_diagnostic_pilot",
+        "targeted_yaw_diagnostic_pilot",
+        "targeted_yaw_pilot",
+    }:
         frozen_ids = pilot.get("trial_ids") or []
         if len(trials) != 100:
             raise ValueError("targeted pilot plan must retain all 100 variations")
@@ -197,11 +201,21 @@ def create_pilot_manifest(
             target_mass = float(pilot.get("target_mass_kg", 0.0))
             if target_mass <= 0.0 or masses != {target_mass}:
                 raise ValueError("targeted pilot mass is inconsistent")
-        else:
+        elif kind == "targeted_yaw_pilot":
             if maximum_attempts != 12 or required_successes != 10:
                 raise ValueError("yaw pilot must freeze a 10-of-12 acceptance gate")
             if masses != {0.03, 0.04}:
                 raise ValueError("yaw pilot masses are inconsistent")
+        else:
+            if maximum_attempts != 2 or required_successes != 2:
+                raise ValueError("targeted yaw diagnostic must freeze a 2-of-2 gate")
+            required_cells = pilot.get("required_success_cells") or []
+            selected_cells = {
+                trial["cell_id"] for trial in trials[:maximum_attempts]
+            }
+            if len(required_cells) != 2 or set(required_cells) != selected_cells:
+                raise ValueError("targeted yaw diagnostic cells are inconsistent")
+        if kind in {"targeted_yaw_diagnostic_pilot", "targeted_yaw_pilot"}:
             expected_orientation = pilot.get("orientation_xyzw")
             if any(
                 trial["resolved"]["orientation_xyzw"] != expected_orientation

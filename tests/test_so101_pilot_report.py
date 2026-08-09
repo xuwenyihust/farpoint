@@ -10,6 +10,7 @@ from farpoint.so101_pilot import build_so101_pilot_plan, build_so101_yaw_pilot_p
 from farpoint.so101_pilot_report import (
     _expectation_errors,
     _pilot_status,
+    _required_success_cell_errors,
     build_so101_pilot_report,
     render_so101_pilot_report_markdown,
 )
@@ -162,6 +163,24 @@ def test_targeted_pilot_expectations_check_success_and_failure_roles():
         "collision_trial:expected_success_false",
         "fixed_trial:missing_expected_attempt",
     ]
+
+
+def test_required_yaw_success_cells_cannot_be_masked_by_other_successes():
+    plan = {
+        "pilot": {"required_success_cells": ["r04_c00", "r04_c01"]},
+        "trials": [
+            {"variation_id": "critical-a", "cell_id": "r04_c00"},
+            {"variation_id": "critical-b", "cell_id": "r04_c01"},
+            {"variation_id": "control", "cell_id": "r02_c02"},
+        ],
+    }
+
+    errors = _required_success_cell_errors(
+        plan,
+        [{"variation_id": "critical-a"}, {"variation_id": "control"}],
+    )
+
+    assert errors == ["required_success_cell_failed:r04_c01"]
 
 
 def test_yaw_pilot_report_accepts_twelve_successes_and_audits_pose_and_mass(tmp_path):

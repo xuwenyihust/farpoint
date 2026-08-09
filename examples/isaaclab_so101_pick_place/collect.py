@@ -126,6 +126,7 @@ from farpoint.control import (  # noqa: E402
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
+    so101_post_capture_recenter_step,
     so101_pre_capture_recenter_limit,
     so101_reset_support_is_stable,
     unilateral_contact_recenter_target,
@@ -139,12 +140,14 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_preload_force_floor,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
+    so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
 from farpoint.oracle import (  # noqa: E402
@@ -1744,6 +1747,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     verify_object_start_z = None
     grasp_relative_reference = None
     previous_object_in_gripper = None
+    capture_recenter_side = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
     rows = []
@@ -1810,12 +1814,18 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 *balanced_forces,
                 open_position=open_jaw,
                 closed_position=closed_jaw,
-                # Keep the force controller and grasp validator on the same
-                # bilateral floor.  The former 0.5 N hold allowed a 30 mm
-                # capture to relax to 1.55/1.65 N while the validator still
-                # required 2.0 N, producing a deterministic false contact-loss
-                # failure despite rigid, balanced contact.
-                min_force=(0.5 if settling_capture else 3.0),
+                # The edge-yaw traces entered capture above 2 N on both
+                # fingers, then decayed through 1.4 N before the old 0.5 N
+                # controller reacted. Retain 90% of the unchanged admission
+                # force so the rotary jaw closes while contact still exists;
+                # persistence and maximum-force validation remain independent.
+                min_force=(
+                    capture_preload_force_floor(
+                        grasp_machine.capture_contact_force_n
+                    )
+                    if settling_capture
+                    else 3.0
+                ),
                 # Back off before the independent 30 N safety validator can
                 # trip on a one-control-tick unilateral force spike.
                 max_force=20.0,
@@ -1831,18 +1841,31 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             grasp_jaw_hold = float(jaw_update["position"])
             jaw_force_action = str(jaw_update["action"])
         recenter_active = False
+        recenter_used_memory = False
+        recenter_forces = balanced_forces
         closing_alignment = phase is OraclePhase.CLOSE and (
             grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
         verification_alignment = (
             phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
         )
+        if settling_capture and balanced_forces is not None:
+            recenter_memory = so101_recenter_contact_memory(
+                *balanced_forces,
+                capture_recenter_side,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )
+            recenter_forces = recenter_memory["forces"]
+            capture_recenter_side = recenter_memory["side"]
+            recenter_used_memory = bool(recenter_memory["used_memory"])
+        elif not settling_capture:
+            capture_recenter_side = None
         if (
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
-            and balanced_forces is not None
+            and recenter_forces is not None
             and unilateral_contact_requires_recenter(
-                *balanced_forces,
+                *recenter_forces,
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         ):
@@ -1859,13 +1882,21 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 grasp_hold_nominal_pose,
                 {"center": jaw_center.tolist()},
                 {"center": gripper_center.tolist()},
-                *balanced_forces,
+                *recenter_forces,
                 # Recenter as soon as one side drops below the same 0.1 N
                 # persistence floor used by the grasp state machine. Waiting
                 # for 0.5 N missed the observed 0.12/0.0 N recovery window and
                 # let the light cube escape while the jaw only closed harder.
                 min_force=grasp_machine.minimum_contact_force_n,
-                step=(0.0000625 if settling_capture else 0.000125),
+                # The yaw-30 edge traces needed 1.25--1.63 mm of the frozen
+                # 2 mm corridor but exhausted their contact-loss grace before
+                # getting there. Traverse the same bounded corridor within 16
+                # active ticks; do not relax force, rigidity, or loss limits.
+                step=(
+                    so101_post_capture_recenter_step()
+                    if settling_capture
+                    else 0.000125
+                ),
                 # All six deterministic recovery failures saturated the old
                 # 4 mm bound while the cube translated 6--10 mm under one
                 # finger.  Expand only the pre-capture search corridor; once
@@ -2658,6 +2689,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     ]
                 ).tolist(),
                 "gripper_control": gripper_control,
+                "recenter_contact_memory_side": capture_recenter_side,
+                "recenter_used_contact_memory": recenter_used_memory,
                 "descent_lateral_correction_m": descent_lateral_correction,
                 "grasp_lateral_correction_m": (
                     0.0

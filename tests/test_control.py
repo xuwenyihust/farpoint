@@ -29,6 +29,7 @@ from farpoint.control import (
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
+    so101_post_capture_recenter_step,
     so101_pre_capture_recenter_limit,
     so101_reset_support_is_stable,
     tactile_contact_hold_target,
@@ -100,6 +101,28 @@ def test_so101_capture_contact_loss_grace_is_size_aware():
     assert so101_capture_contact_loss_grace_s(0.04) == pytest.approx(0.20)
     assert so101_capture_contact_loss_grace_s(0.02) == pytest.approx(0.30)
     assert so101_capture_contact_loss_grace_s(0.05) == pytest.approx(0.20)
+
+
+def test_so101_post_capture_recenter_reaches_bound_before_shortest_grace_expires():
+    step = so101_post_capture_recenter_step()
+
+    assert step == pytest.approx(0.000125)
+    assert step * 16 == pytest.approx(0.002)
+    assert 16 < 0.20 * 120
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"maximum_correction_m": 0.0},
+        {"maximum_correction_m": float("nan")},
+        {"active_recovery_steps": 0},
+        {"active_recovery_steps": 1.5},
+    ),
+)
+def test_so101_post_capture_recenter_rejects_invalid_contract(kwargs):
+    with pytest.raises(ValueError):
+        so101_post_capture_recenter_step(**kwargs)
 
 
 @pytest.mark.parametrize("value", (0.0, -0.01, float("nan"), float("inf")))

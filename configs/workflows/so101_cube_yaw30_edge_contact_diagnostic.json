@@ -1,0 +1,16 @@
+{
+  "schema_version": "farpoint.so101-gate-workflow-config.v1",
+  "completion_status": "PILOT_COMPLETE",
+  "stages": [
+    {
+      "stage_id": "yaw30_edge_contact_2",
+      "kind": "targeted_yaw_diagnostic_pilot",
+      "yaw_degrees": 30.0,
+      "required_success_cells": ["r04_c00", "r04_c01"],
+      "trial_profiles": [
+        {"source_trial_id": "cube_r04_c00_s0_k1", "mass_kg": 0.03},
+        {"source_trial_id": "cube_r04_c01_s0_k0", "mass_kg": 0.04}
+      ]
+    }
+  ]
+}

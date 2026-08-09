@@ -84,6 +84,28 @@ def so101_capture_contact_loss_grace_s(object_width_m):
     return 0.30 - 0.10 * interpolation
 
 
+def so101_post_capture_recenter_step(
+    *,
+    maximum_correction_m=0.002,
+    active_recovery_steps=16,
+):
+    """Reach the bounded post-capture correction inside the shortest grace window.
+
+    Contact traces from the yaw-30 edge cells showed the old 0.0625 mm step
+    consuming the entire 0.20 s large-cube contact-loss allowance before the
+    controller could traverse its 2 mm recovery corridor.  Reserve one third
+    of that 24-tick window for contact to settle by reaching the same unchanged
+    corridor bound in at most 16 active recenter ticks.
+    """
+    maximum = float(maximum_correction_m)
+    steps = int(active_recovery_steps)
+    if not math.isfinite(maximum) or maximum <= 0.0:
+        raise ValueError("maximum_correction_m must be finite and positive")
+    if steps <= 0 or steps != active_recovery_steps:
+        raise ValueError("active_recovery_steps must be a positive integer")
+    return maximum / steps
+
+
 def so101_reset_support_is_stable(
     expected_position_m,
     measured_position_m,

@@ -8,11 +8,13 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_preload_force_floor,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     rotary_jaw_capture_hold_target,
+    so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
 
@@ -77,6 +79,33 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
         )
 
 
+def test_capture_preload_force_floor_tracks_admission_threshold():
+    assert capture_preload_force_floor(2.0) == pytest.approx(1.8)
+    assert capture_preload_force_floor(4.0, retention_fraction=0.5) == pytest.approx(
+        2.0
+    )
+
+
+@pytest.mark.parametrize(
+    ("capture_force", "retention_fraction"),
+    [
+        (0.0, 0.90),
+        (float("nan"), 0.90),
+        (2.0, 0.0),
+        (2.0, 1.01),
+        (2.0, float("nan")),
+    ],
+)
+def test_capture_preload_force_floor_rejects_invalid_contract(
+    capture_force, retention_fraction
+):
+    with pytest.raises(ValueError):
+        capture_preload_force_floor(
+            capture_force,
+            retention_fraction=retention_fraction,
+        )
+
+
 def test_unilateral_recenter_starts_before_bilateral_contact():
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.CONTACT_ALIGNMENT)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.SLOW_CLOSE)
@@ -127,6 +156,55 @@ def test_unilateral_recenter_uses_grasp_persistence_force_floor():
     )
     with pytest.raises(ValueError, match="non-negative"):
         unilateral_contact_requires_recenter(0.0, 0.12, minimum_force_n=-0.1)
+
+
+def test_recenter_contact_memory_starts_recovery_during_zero_force_gap():
+    bilateral = so101_recenter_contact_memory(2.1, 3.0)
+    dropout = so101_recenter_contact_memory(0.0, 0.0, bilateral["side"])
+
+    assert bilateral == {
+        "forces": (2.1, 3.0),
+        "side": "right",
+        "used_memory": False,
+    }
+    assert dropout == {
+        "forces": (0.0, 0.10),
+        "side": "right",
+        "used_memory": True,
+    }
+    assert unilateral_contact_requires_recenter(
+        *dropout["forces"], minimum_force_n=0.10
+    )
+
+
+def test_recenter_contact_memory_prefers_live_unilateral_side():
+    result = so101_recenter_contact_memory(0.2, 0.0, "right")
+
+    assert result["forces"] == (0.2, 0.0)
+    assert result["side"] == "left"
+    assert not result["used_memory"]
+
+
+def test_recenter_contact_memory_ignores_bilateral_force_order_noise():
+    result = so101_recenter_contact_memory(3.0, 2.0, "right")
+
+    assert result["forces"] == (3.0, 2.0)
+    assert result["side"] == "right"
+    assert not result["used_memory"]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"left_force_n": -0.1, "right_force_n": 0.0},
+        {"left_force_n": float("nan"), "right_force_n": 0.0},
+        {"left_force_n": 0.0, "right_force_n": 0.0, "previous_side": "center"},
+        {"left_force_n": 0.0, "right_force_n": 0.0, "minimum_force_n": 0.0},
+    ),
+)
+def test_recenter_contact_memory_rejects_invalid_contract(kwargs):
+    with pytest.raises(ValueError):
+        so101_recenter_contact_memory(**kwargs)
 
 
 def test_proof_lift_rebases_once_then_preserves_accumulated_command():
