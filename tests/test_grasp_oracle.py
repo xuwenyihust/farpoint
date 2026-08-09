@@ -80,7 +80,7 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
 
 
 def test_capture_preload_force_floor_tracks_admission_threshold():
-    assert capture_preload_force_floor(2.0) == pytest.approx(1.5)
+    assert capture_preload_force_floor(2.0) == pytest.approx(1.8)
     assert capture_preload_force_floor(4.0, retention_fraction=0.5) == pytest.approx(
         2.0
     )
@@ -89,8 +89,8 @@ def test_capture_preload_force_floor_tracks_admission_threshold():
 @pytest.mark.parametrize(
     ("capture_force", "retention_fraction"),
     [
-        (0.0, 0.75),
-        (float("nan"), 0.75),
+        (0.0, 0.90),
+        (float("nan"), 0.90),
         (2.0, 0.0),
         (2.0, 1.01),
         (2.0, float("nan")),

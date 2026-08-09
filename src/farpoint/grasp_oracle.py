@@ -187,7 +187,7 @@ def rotary_jaw_capture_hold_target(
 def capture_preload_force_floor(
     capture_contact_force_n: float,
     *,
-    retention_fraction: float = 0.75,
+    retention_fraction: float = 0.90,
 ) -> float:
     """Keep a confirmed capture above a bounded fraction of admission force.
 

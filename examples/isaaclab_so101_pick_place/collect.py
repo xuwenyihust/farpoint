@@ -1816,7 +1816,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 closed_position=closed_jaw,
                 # The edge-yaw traces entered capture above 2 N on both
                 # fingers, then decayed through 1.4 N before the old 0.5 N
-                # controller reacted. Retain 75% of the unchanged admission
+                # controller reacted. Retain 90% of the unchanged admission
                 # force so the rotary jaw closes while contact still exists;
                 # persistence and maximum-force validation remain independent.
                 min_force=(
