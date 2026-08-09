@@ -13,6 +13,7 @@ from farpoint.grasp_oracle import (
     gripper_target_for_object_local_offset,
     point_in_local_frame,
     rotary_jaw_capture_hold_target,
+    so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
 
@@ -127,6 +128,55 @@ def test_unilateral_recenter_uses_grasp_persistence_force_floor():
     )
     with pytest.raises(ValueError, match="non-negative"):
         unilateral_contact_requires_recenter(0.0, 0.12, minimum_force_n=-0.1)
+
+
+def test_recenter_contact_memory_starts_recovery_during_zero_force_gap():
+    bilateral = so101_recenter_contact_memory(2.1, 3.0)
+    dropout = so101_recenter_contact_memory(0.0, 0.0, bilateral["side"])
+
+    assert bilateral == {
+        "forces": (2.1, 3.0),
+        "side": "right",
+        "used_memory": False,
+    }
+    assert dropout == {
+        "forces": (0.0, 0.10),
+        "side": "right",
+        "used_memory": True,
+    }
+    assert unilateral_contact_requires_recenter(
+        *dropout["forces"], minimum_force_n=0.10
+    )
+
+
+def test_recenter_contact_memory_prefers_live_unilateral_side():
+    result = so101_recenter_contact_memory(0.2, 0.0, "right")
+
+    assert result["forces"] == (0.2, 0.0)
+    assert result["side"] == "left"
+    assert not result["used_memory"]
+
+
+def test_recenter_contact_memory_ignores_bilateral_force_order_noise():
+    result = so101_recenter_contact_memory(3.0, 2.0, "right")
+
+    assert result["forces"] == (3.0, 2.0)
+    assert result["side"] == "right"
+    assert not result["used_memory"]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"left_force_n": -0.1, "right_force_n": 0.0},
+        {"left_force_n": float("nan"), "right_force_n": 0.0},
+        {"left_force_n": 0.0, "right_force_n": 0.0, "previous_side": "center"},
+        {"left_force_n": 0.0, "right_force_n": 0.0, "minimum_force_n": 0.0},
+    ),
+)
+def test_recenter_contact_memory_rejects_invalid_contract(kwargs):
+    with pytest.raises(ValueError):
+        so101_recenter_contact_memory(**kwargs)
 
 
 def test_proof_lift_rebases_once_then_preserves_accumulated_command():

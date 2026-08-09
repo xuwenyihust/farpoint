@@ -199,6 +199,55 @@ def unilateral_contact_requires_recenter(
     )
 
 
+def so101_recenter_contact_memory(
+    left_force_n,
+    right_force_n,
+    previous_side=None,
+    *,
+    minimum_force_n=0.10,
+):
+    """Preserve a bounded recenter direction across a brief zero-force gap.
+
+    A captured cube can leave both sensors between 120 Hz samples, so waiting
+    for a later unilateral sample starts recovery after the object is already
+    moving out of the aperture. Remember the stronger side while bilateral
+    contact is still present, prefer a live unilateral side, and synthesize
+    only the minimum persistence force when both sides briefly read zero.
+    """
+    forces = (float(left_force_n), float(right_force_n))
+    threshold = float(minimum_force_n)
+    if previous_side not in {None, "left", "right"}:
+        raise ValueError("previous_side must be left, right, or None")
+    if any(not np.isfinite(force) or force < 0.0 for force in forces):
+        raise ValueError("contact forces must be finite and non-negative")
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+
+    left_active = forces[0] >= threshold
+    right_active = forces[1] >= threshold
+    if left_active and right_active:
+        side = previous_side
+        if side is None:
+            if forces[0] > forces[1]:
+                side = "left"
+            elif forces[1] > forces[0]:
+                side = "right"
+        return {"forces": forces, "side": side, "used_memory": False}
+    if left_active or right_active:
+        side = "left" if left_active else "right"
+        return {"forces": forces, "side": side, "used_memory": False}
+    if previous_side is None:
+        return {"forces": forces, "side": None, "used_memory": False}
+    remembered_forces = (
+        (threshold, 0.0) if previous_side == "left" else (0.0, threshold)
+    )
+    return {
+        "forces": remembered_forces,
+        "side": previous_side,
+        "used_memory": True,
+    }
+
+
 @dataclass(frozen=True)
 class GraspEvidence:
     left_force_n: float

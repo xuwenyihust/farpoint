@@ -240,9 +240,12 @@ python scripts/run_so101_gate_workflow.py init \
 ```
 
 The diagnostic runs both `r04_c00` and `r04_c01` even when the first attempt
-fails, and requires both to pass. It changes only post-capture recovery speed:
-the existing 2 mm Cartesian correction corridor is traversed within 16 active
-control ticks. Contact-force thresholds, the contact-loss grace window,
+fails, and requires both to pass. The first attempt to traverse the existing
+2 mm post-capture correction corridor within 16 active control ticks proved
+that speed was not the limiting factor: both traces lost bilateral contact
+before recentering started. The follow-up keeps the last stronger contact side
+during bilateral settle and uses that direction across a brief zero-force gap.
+The 2 mm corridor, contact-force thresholds, contact-loss grace window,
 rigidity checks, proof lift, and success policy remain unchanged. Passing this
 pilot supports the controller fix only; it does not authorize formal yaw
 collection or make the diagnostic episodes release-eligible.

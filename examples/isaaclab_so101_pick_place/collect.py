@@ -146,6 +146,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     point_in_local_frame,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
+    so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
 from farpoint.oracle import (  # noqa: E402
@@ -1745,6 +1746,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     verify_object_start_z = None
     grasp_relative_reference = None
     previous_object_in_gripper = None
+    capture_recenter_side = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
     rows = []
@@ -1832,18 +1834,31 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
             grasp_jaw_hold = float(jaw_update["position"])
             jaw_force_action = str(jaw_update["action"])
         recenter_active = False
+        recenter_used_memory = False
+        recenter_forces = balanced_forces
         closing_alignment = phase is OraclePhase.CLOSE and (
             grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
         verification_alignment = (
             phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
         )
+        if settling_capture and balanced_forces is not None:
+            recenter_memory = so101_recenter_contact_memory(
+                *balanced_forces,
+                capture_recenter_side,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )
+            recenter_forces = recenter_memory["forces"]
+            capture_recenter_side = recenter_memory["side"]
+            recenter_used_memory = bool(recenter_memory["used_memory"])
+        elif not settling_capture:
+            capture_recenter_side = None
         if (
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
-            and balanced_forces is not None
+            and recenter_forces is not None
             and unilateral_contact_requires_recenter(
-                *balanced_forces,
+                *recenter_forces,
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         ):
@@ -1860,7 +1875,7 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 grasp_hold_nominal_pose,
                 {"center": jaw_center.tolist()},
                 {"center": gripper_center.tolist()},
-                *balanced_forces,
+                *recenter_forces,
                 # Recenter as soon as one side drops below the same 0.1 N
                 # persistence floor used by the grasp state machine. Waiting
                 # for 0.5 N missed the observed 0.12/0.0 N recovery window and
@@ -2667,6 +2682,8 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                     ]
                 ).tolist(),
                 "gripper_control": gripper_control,
+                "recenter_contact_memory_side": capture_recenter_side,
+                "recenter_used_contact_memory": recenter_used_memory,
                 "descent_lateral_correction_m": descent_lateral_correction,
                 "grasp_lateral_correction_m": (
                     0.0
