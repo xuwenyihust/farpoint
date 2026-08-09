@@ -12,6 +12,7 @@ from farpoint.grasp_oracle import (
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
+    gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
@@ -128,6 +129,24 @@ def test_first_contact_memory_bridges_handoff_force_dropout():
     assert unilateral_contact_requires_recenter(
         *dropout["forces"], minimum_force_n=0.10
     )
+
+
+def test_xy_aperture_target_corrects_recorded_r01_c00_direction():
+    target = gripper_xy_target_for_object_local_offset(
+        [0.14585812, -0.08612937, 0.04701491],
+        [
+            0.11045856,
+            -0.12946184,
+            0.08191921,
+            -0.57678396,
+            0.00717221,
+            0.24073146,
+            -0.78058785,
+        ],
+        [0.02149719, -0.00846439, -0.05466565],
+    )
+
+    assert target == pytest.approx([0.11417308, -0.12505639, 0.08191921])
 
 
 def test_capture_aperture_alignment_uses_aperture_plane_not_finger_depth():

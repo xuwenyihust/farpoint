@@ -164,6 +164,24 @@ def gripper_target_for_object_local_offset(
     return (object_position - rotation @ local_offset).astype(np.float32)
 
 
+def gripper_xy_target_for_object_local_offset(
+    object_position_world,
+    gripper_pose_xyzw,
+    desired_object_in_gripper,
+) -> np.ndarray:
+    """Align the aperture in XY without changing the captured descent height."""
+    pose = np.asarray(gripper_pose_xyzw, dtype=np.float64)
+    if pose.shape != (7,) or not np.all(np.isfinite(pose)):
+        raise ValueError("gripper pose must be a finite XYZW pose")
+    target = gripper_target_for_object_local_offset(
+        object_position_world,
+        pose[3:7],
+        desired_object_in_gripper,
+    )
+    target[2] = pose[2]
+    return target
+
+
 def rotary_jaw_capture_hold_target(
     measured_position: float,
     *,
