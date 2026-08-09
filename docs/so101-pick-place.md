@@ -227,6 +227,26 @@ python scripts/run_so101_gate_workflow.py init \
   --workflow-config configs/workflows/so101_recovery6_contact_pilot_v2.json
 ```
 
+For a yaw pilot whose only failures are the two bottom-row edge cells, keep the
+failed 12-attempt workflow immutable and use the two-cell contact diagnostic:
+
+```bash
+python scripts/run_so101_gate_workflow.py init \
+  artifacts/so101/yaw30_edge_contact_diagnostic_<sha> \
+  --workflow-id yaw30_edge_contact_diagnostic_<sha> \
+  --git-commit "$(git rev-parse HEAD)" \
+  --workflow-config \
+    configs/workflows/so101_cube_yaw30_edge_contact_diagnostic.json
+```
+
+The diagnostic runs both `r04_c00` and `r04_c01` even when the first attempt
+fails, and requires both to pass. It changes only post-capture recovery speed:
+the existing 2 mm Cartesian correction corridor is traversed within 16 active
+control ticks. Contact-force thresholds, the contact-loss grace window,
+rigidity checks, proof lift, and success policy remain unchanged. Passing this
+pilot supports the controller fix only; it does not authorize formal yaw
+collection or make the diagnostic episodes release-eligible.
+
 For an existing collection, the read-only one-shot check is:
 
 ```bash

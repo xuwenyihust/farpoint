@@ -16,6 +16,7 @@ from farpoint.so101_pilot import (
     build_so101_pilot_plan,
     build_so101_yaw_pilot_plan,
     build_targeted_mass_diagnostic_pilot_plan,
+    build_targeted_yaw_diagnostic_pilot_plan,
 )
 from farpoint.so101_mass_feasibility import (
     build_cube_mass_feasibility_plan,
@@ -57,6 +58,7 @@ def validate_gate_workflow_config(config: dict[str, Any]) -> None:
         "cube_mass_feasibility",
         "cube_mass_workspace_pilot",
         "targeted_mass_diagnostic_pilot",
+        "targeted_yaw_diagnostic_pilot",
         "targeted_yaw_pilot",
         "stratified_success_pilot",
     }
@@ -153,6 +155,16 @@ def build_so101_gate_workflow(
                 required_successes=int(stage_config.get("required_successes", 10)),
                 size_scope=str(stage_config.get("size_scope", "balanced")),
                 required_success_cells=stage_config.get("required_success_cells"),
+            )
+            collector_mode = "pilot"
+            report_kind = "pilot"
+        elif kind == "targeted_yaw_diagnostic_pilot":
+            plan = build_targeted_yaw_diagnostic_pilot_plan(
+                variation_config,
+                pilot_id=plan_id,
+                yaw_degrees=float(stage_config["yaw_degrees"]),
+                trial_profiles=stage_config["trial_profiles"],
+                required_success_cells=stage_config["required_success_cells"],
             )
             collector_mode = "pilot"
             report_kind = "pilot"

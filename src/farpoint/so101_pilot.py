@@ -205,25 +205,28 @@ def build_targeted_mass_diagnostic_pilot_plan(
     return plan
 
 
-def build_so101_yaw_pilot_plan(
+def _build_targeted_yaw_plan(
     variation_config: dict[str, Any],
     *,
     pilot_id: str,
     yaw_degrees: float,
     trial_profiles: list[dict[str, Any]],
-    required_successes: int = 10,
-    size_scope: str = "balanced",
+    required_successes: int,
+    size_scope: str,
     required_success_cells: list[str] | None = None,
+    pilot_kind: str,
+    config_revision_prefix: str,
+    selection_policy: str,
 ) -> dict[str, Any]:
-    """Build a frozen 12-attempt SO-101 yaw pilot across both proven masses."""
+    """Transform named base trials into one bounded, audited yaw pilot."""
     if not pilot_id:
         raise ValueError("pilot_id must be non-empty")
     if not math.isfinite(yaw_degrees) or not 0.0 <= yaw_degrees < 90.0:
         raise ValueError("cube yaw must be finite and in [0, 90) degrees")
-    if len(trial_profiles) != 12:
-        raise ValueError("SO-101 yaw pilot requires exactly 12 trial profiles")
-    if required_successes != 10:
-        raise ValueError("SO-101 yaw pilot requires exactly 10 successes")
+    if not trial_profiles:
+        raise ValueError("yaw pilot requires at least one trial profile")
+    if not 0 < required_successes <= len(trial_profiles):
+        raise ValueError("required successes must fit within the yaw pilot")
     if size_scope not in {"balanced", "30mm"}:
         raise ValueError("yaw pilot size_scope must be balanced or 30mm")
     source_ids = [str(profile.get("source_trial_id", "")) for profile in trial_profiles]
@@ -233,8 +236,8 @@ def build_so101_yaw_pilot_plan(
     if len(required_success_cells) != len(set(required_success_cells)):
         raise ValueError("yaw pilot required success cells must be unique")
     masses = [float(profile.get("mass_kg", 0.0)) for profile in trial_profiles]
-    if set(masses) != {0.03, 0.04} or masses.count(0.03) != 6:
-        raise ValueError("yaw pilot requires six trials at each of 0.03 kg and 0.04 kg")
+    if any(not math.isfinite(value) or value <= 0.0 for value in masses):
+        raise ValueError("yaw pilot masses must be finite and positive")
 
     plan = generate_variation_plan(variation_config)
     by_id = {trial["trial_id"]: trial for trial in plan["trials"]}
@@ -303,29 +306,19 @@ def build_so101_yaw_pilot_plan(
             )
         ),
     }
-    if coverage["splits"] != {"test": 2, "train": 8, "validation": 2}:
-        raise ValueError("yaw pilot split coverage must be train=8, validation=2, test=2")
-    if len(set(coverage["workspace_cells"])) != 12:
-        raise ValueError("yaw pilot must cover 12 distinct workspace cells")
     if not set(required_success_cells).issubset(coverage["workspace_cells"]):
         raise ValueError("yaw pilot required success cells must be covered")
-    if size_scope == "balanced":
-        if sorted(coverage["sizes"].values()) != [6, 6]:
-            raise ValueError("yaw pilot cube sizes must be balanced 6/6")
-    elif coverage["sizes"] != {"size_0": 12}:
-        raise ValueError("30mm yaw pilot requires twelve size_0 trials")
-    if sorted(coverage["colors"].values()) != [6, 6]:
-        raise ValueError("yaw pilot cube colors must be balanced 6/6")
-    if size_scope == "balanced":
-        if sorted(coverage["size_color"].values()) != [3, 3, 3, 3]:
-            raise ValueError("yaw pilot size/color combinations must be balanced 3 each")
-    elif sorted(coverage["size_color"].values()) != [6, 6]:
-        raise ValueError("30mm yaw pilot colors must be balanced within size_0")
     remaining = [trial for trial in plan["trials"] if trial["trial_id"] not in set(source_ids)]
+    mass_counts = {
+        f"{mass_kg:.2f}": count
+        for mass_kg, count in sorted(Counter(masses).items())
+    }
     plan.update(
         {
             "plan_id": pilot_id,
-            "config_revision": f"yaw-pilot:{variation_config['config_revision']}",
+            "config_revision": (
+                f"{config_revision_prefix}:{variation_config['config_revision']}"
+            ),
             "varied_axes": [
                 *plan["varied_axes"],
                 "entities.pick_object.pose.orientation_xyzw",
@@ -341,12 +334,12 @@ def build_so101_yaw_pilot_plan(
                 {
                     "name": "object_mass_kg",
                     "kind": "categorical",
-                    "values": [0.03, 0.04],
+                    "values": sorted(set(masses)),
                 },
             ],
             "trials": transformed + remaining,
             "pilot": {
-                "kind": "targeted_yaw_pilot",
+                "kind": pilot_kind,
                 "required_successes": required_successes,
                 "maximum_attempts": len(transformed),
                 "trial_ids": [trial["trial_id"] for trial in transformed],
@@ -354,14 +347,10 @@ def build_so101_yaw_pilot_plan(
                 "yaw_degrees": float(yaw_degrees),
                 "orientation_xyzw": orientation,
                 "actual_orientation_tolerance_degrees": 2.0,
-                "mass_kg_counts": {"0.03": 6, "0.04": 6},
+                "mass_kg_counts": mass_counts,
                 "actual_mass_tolerance_kg": 1e-6,
                 "size_scope": size_scope,
-                "selection_policy": (
-                    "balanced_representative_yaw_pilot_v1"
-                    if size_scope == "balanced"
-                    else "staged_30mm_yaw_pilot_v1"
-                ),
+                "selection_policy": selection_policy,
                 "coverage": coverage,
                 **(
                     {"required_success_cells": required_success_cells}
@@ -375,4 +364,92 @@ def build_so101_yaw_pilot_plan(
         raise ValueError("yaw pilot trial ids collide with base variations")
     plan.pop("plan_sha256", None)
     plan["plan_sha256"] = _sha256(plan)
+    return plan
+
+
+def build_so101_yaw_pilot_plan(
+    variation_config: dict[str, Any],
+    *,
+    pilot_id: str,
+    yaw_degrees: float,
+    trial_profiles: list[dict[str, Any]],
+    required_successes: int = 10,
+    size_scope: str = "balanced",
+    required_success_cells: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build the frozen 10-of-12 representative yaw feasibility pilot."""
+    if len(trial_profiles) != 12:
+        raise ValueError("SO-101 yaw pilot requires exactly 12 trial profiles")
+    if required_successes != 10:
+        raise ValueError("SO-101 yaw pilot requires exactly 10 successes")
+    masses = [float(profile.get("mass_kg", 0.0)) for profile in trial_profiles]
+    if set(masses) != {0.03, 0.04} or masses.count(0.03) != 6:
+        raise ValueError("yaw pilot requires six trials at each of 0.03 kg and 0.04 kg")
+
+    plan = _build_targeted_yaw_plan(
+        variation_config,
+        pilot_id=pilot_id,
+        yaw_degrees=yaw_degrees,
+        trial_profiles=trial_profiles,
+        required_successes=required_successes,
+        size_scope=size_scope,
+        required_success_cells=required_success_cells,
+        pilot_kind="targeted_yaw_pilot",
+        config_revision_prefix="yaw-pilot",
+        selection_policy=(
+            "balanced_representative_yaw_pilot_v1"
+            if size_scope == "balanced"
+            else "staged_30mm_yaw_pilot_v1"
+        ),
+    )
+    coverage = plan["pilot"]["coverage"]
+    if coverage["splits"] != {"test": 2, "train": 8, "validation": 2}:
+        raise ValueError("yaw pilot split coverage must be train=8, validation=2, test=2")
+    if len(set(coverage["workspace_cells"])) != 12:
+        raise ValueError("yaw pilot must cover 12 distinct workspace cells")
+    if size_scope == "balanced":
+        if sorted(coverage["sizes"].values()) != [6, 6]:
+            raise ValueError("yaw pilot cube sizes must be balanced 6/6")
+        if sorted(coverage["size_color"].values()) != [3, 3, 3, 3]:
+            raise ValueError("yaw pilot size/color combinations must be balanced 3 each")
+    else:
+        if coverage["sizes"] != {"size_0": 12}:
+            raise ValueError("30mm yaw pilot requires twelve size_0 trials")
+        if sorted(coverage["size_color"].values()) != [6, 6]:
+            raise ValueError("30mm yaw pilot colors must be balanced within size_0")
+    if sorted(coverage["colors"].values()) != [6, 6]:
+        raise ValueError("yaw pilot colors must be balanced 6/6")
+    return plan
+
+
+def build_targeted_yaw_diagnostic_pilot_plan(
+    variation_config: dict[str, Any],
+    *,
+    pilot_id: str,
+    yaw_degrees: float,
+    trial_profiles: list[dict[str, Any]],
+    required_success_cells: list[str],
+) -> dict[str, Any]:
+    """Build a two-cell all-planned diagnostic for a failed yaw capture."""
+    if len(trial_profiles) != 2:
+        raise ValueError("targeted yaw diagnostic requires exactly two trial profiles")
+    if len(required_success_cells) != 2:
+        raise ValueError("targeted yaw diagnostic requires exactly two success cells")
+    plan = _build_targeted_yaw_plan(
+        variation_config,
+        pilot_id=pilot_id,
+        yaw_degrees=yaw_degrees,
+        trial_profiles=trial_profiles,
+        required_successes=2,
+        size_scope="30mm",
+        required_success_cells=required_success_cells,
+        pilot_kind="targeted_yaw_diagnostic_pilot",
+        config_revision_prefix="targeted-yaw-diagnostic-pilot",
+        selection_policy="failed_yaw_cells_diagnostic_v1",
+    )
+    coverage = plan["pilot"]["coverage"]
+    if coverage["sizes"] != {"size_0": 2}:
+        raise ValueError("targeted yaw diagnostic requires two 30 mm trials")
+    if set(coverage["workspace_cells"]) != set(required_success_cells):
+        raise ValueError("targeted yaw diagnostic cells must match its required cells")
     return plan

@@ -357,6 +357,33 @@ def test_yaw30_profile_requires_both_previous_gap_cells(tmp_path):
     assert plan["pilot"]["mass_kg_counts"] == {"0.03": 6, "0.04": 6}
 
 
+def test_yaw30_edge_contact_diagnostic_freezes_only_failed_cells(tmp_path):
+    config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
+    profile = json.loads(
+        (ROOT / "configs/workflows/so101_cube_yaw30_edge_contact_diagnostic.json").read_text()
+    )
+
+    workflow, plans = build_so101_gate_workflow(
+        profile, config, policy, workflow_id="yaw30_edge_contact", git_commit=GIT_COMMIT
+    )
+    path = write_so101_gate_workflow(
+        tmp_path / "yaw30_edge_contact", workflow, plans, policy
+    )
+    stage = workflow["stages"][0]
+    plan = plans[stage["stage_id"]]
+
+    assert stage["maximum_attempts"] == 2
+    assert stage["collector_mode"] == "pilot"
+    assert plan["pilot"]["required_successes"] == 2
+    assert plan["pilot"]["required_success_cells"] == ["r04_c00", "r04_c01"]
+    assert [trial["cell_id"] for trial in plan["trials"][:2]] == [
+        "r04_c00",
+        "r04_c01",
+    ]
+    assert evaluate_so101_gate_workflow(path)["next_action"]["kind"] == "COLLECT"
+
+
 def test_structural_contact_handoff_profile_freezes_two_fixes_and_control(tmp_path):
     config = load_variation_config(ROOT / "configs/variations/so101_cube_pick_place_v1.json")
     policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")

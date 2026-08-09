@@ -8,6 +8,7 @@ from farpoint.so101_pilot import (
     build_so101_pilot_plan,
     build_so101_yaw_pilot_plan,
     build_targeted_mass_diagnostic_pilot_plan,
+    build_targeted_yaw_diagnostic_pilot_plan,
 )
 
 
@@ -280,3 +281,28 @@ def test_yaw_pilot_freezes_required_success_cells():
             trial_profiles=_yaw_profiles(),
             required_success_cells=["r04_c01"],
         )
+
+
+def test_targeted_yaw_diagnostic_runs_both_failed_cells_even_after_one_failure():
+    plan = build_targeted_yaw_diagnostic_pilot_plan(
+        _config(),
+        pilot_id="yaw30_edge_contact",
+        yaw_degrees=30.0,
+        trial_profiles=[
+            {"source_trial_id": "cube_r04_c00_s0_k1", "mass_kg": 0.03},
+            {"source_trial_id": "cube_r04_c01_s0_k0", "mass_kg": 0.04},
+        ],
+        required_success_cells=["r04_c00", "r04_c01"],
+    )
+
+    selected = plan["trials"][:2]
+    assert plan["pilot"]["kind"] == "targeted_yaw_diagnostic_pilot"
+    assert plan["pilot"]["required_successes"] == 2
+    assert plan["pilot"]["maximum_attempts"] == 2
+    assert plan["pilot"]["mass_kg_counts"] == {"0.03": 1, "0.04": 1}
+    assert [trial["cell_id"] for trial in selected] == ["r04_c00", "r04_c01"]
+    manifest = create_pilot_manifest(
+        plan, collection_id=plan["plan_id"], git_commit="a" * 40
+    )
+    assert manifest["completion_policy"] == "all_planned_trials"
+    assert manifest["stop_when_success_target_unreachable"] is False

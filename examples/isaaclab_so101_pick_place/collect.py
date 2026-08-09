@@ -126,6 +126,7 @@ from farpoint.control import (  # noqa: E402
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
+    so101_post_capture_recenter_step,
     so101_pre_capture_recenter_limit,
     so101_reset_support_is_stable,
     unilateral_contact_recenter_target,
@@ -1865,7 +1866,15 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
                 # for 0.5 N missed the observed 0.12/0.0 N recovery window and
                 # let the light cube escape while the jaw only closed harder.
                 min_force=grasp_machine.minimum_contact_force_n,
-                step=(0.0000625 if settling_capture else 0.000125),
+                # The yaw-30 edge traces needed 1.25--1.63 mm of the frozen
+                # 2 mm corridor but exhausted their contact-loss grace before
+                # getting there. Traverse the same bounded corridor within 16
+                # active ticks; do not relax force, rigidity, or loss limits.
+                step=(
+                    so101_post_capture_recenter_step()
+                    if settling_capture
+                    else 0.000125
+                ),
                 # All six deterministic recovery failures saturated the old
                 # 4 mm bound while the cube translated 6--10 mm under one
                 # finger.  Expand only the pre-capture search corridor; once
