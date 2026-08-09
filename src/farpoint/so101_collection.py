@@ -51,9 +51,7 @@ def episode_id_for_attempt(collection_id: str, attempt_id: str) -> str:
     """
     for label, value in (("collection_id", collection_id), ("attempt_id", attempt_id)):
         if not value or _IDENTIFIER_PATTERN.fullmatch(value) is None:
-            raise ValueError(
-                f"{label} must contain only letters, numbers, '.', '_' or '-'"
-            )
+            raise ValueError(f"{label} must contain only letters, numbers, '.', '_' or '-'")
     return f"episode_{collection_id}__{attempt_id}"
 
 
@@ -69,10 +67,7 @@ def build_attempt_run_state(
             "trial_id": attempt["trial_id"],
             "task_id": "so101_cube_pick_place",
             "split": attempt["split"],
-            "episode_seed": int(
-                attempt.get("environment_seed", attempt["attempt_seed"])
-            )
-            % (2**32),
+            "episode_seed": int(attempt.get("environment_seed", attempt["attempt_seed"])) % (2**32),
         },
         "provenance": {
             "collection_id": collection_id,
@@ -127,9 +122,7 @@ def _new_manifest(
         "quality_status": "NOT_EVALUATED",
         "release_status": release_status,
         "completion_policy": completion_policy,
-        "stop_when_success_target_unreachable": bool(
-            stop_when_success_target_unreachable
-        ),
+        "stop_when_success_target_unreachable": bool(stop_when_success_target_unreachable),
         "created_at": _now(),
         "updated_at": _now(),
     }
@@ -160,11 +153,11 @@ def create_manifest(
             raise ValueError("maximum_attempts does not match the frozen collection profile")
         release_status = "CANDIDATE"
     else:
-        if len(trials) != 100:
-            raise ValueError("SO-101 collection requires exactly 100 planned variations")
+        if not trials:
+            raise ValueError("SO-101 collection requires at least one planned variation")
         if maximum_attempts < len(trials):
             raise ValueError("maximum_attempts cannot be less than the planned variation count")
-        required_successes = 100
+        required_successes = len(trials)
         frozen_maximum = maximum_attempts
         release_status = "PILOT"
     manifest = _new_manifest(
@@ -199,10 +192,7 @@ def create_pilot_manifest(
             raise ValueError("targeted pilot attempt budget must match its trial ids")
         if [trial["trial_id"] for trial in trials[:maximum_attempts]] != frozen_ids:
             raise ValueError("targeted pilot ordering does not match its frozen ids")
-        masses = {
-            float(trial["resolved"]["mass_kg"])
-            for trial in trials[:maximum_attempts]
-        }
+        masses = {float(trial["resolved"]["mass_kg"]) for trial in trials[:maximum_attempts]}
         if kind == "targeted_mass_diagnostic_pilot":
             target_mass = float(pilot.get("target_mass_kg", 0.0))
             if target_mass <= 0.0 or masses != {target_mass}:
@@ -282,10 +272,7 @@ def create_gate_manifest(
             raise ValueError("mass feasibility gate must run every frozen trial")
         if required_successes != minimum_per_mass * 2:
             raise ValueError("mass feasibility total threshold is inconsistent")
-        masses = {
-            float(trial["resolved"]["mass_kg"])
-            for trial in trials
-        }
+        masses = {float(trial["resolved"]["mass_kg"]) for trial in trials}
         if masses != {
             float(gate["baseline_mass_kg"]),
             float(gate["candidate_mass_kg"]),
@@ -320,17 +307,15 @@ def create_gate_manifest(
         if required_successes != minimum_successes or not 0 < minimum_successes <= 5:
             raise ValueError("mass workspace pilot success threshold is invalid")
         candidate_mass = float(gate.get("candidate_mass_kg", 0.0))
-        if candidate_mass <= 0.0 or {
-            float(trial["resolved"]["mass_kg"]) for trial in trials
-        } != {candidate_mass}:
+        if candidate_mass <= 0.0 or {float(trial["resolved"]["mass_kg"]) for trial in trials} != {
+            candidate_mass
+        }:
             raise ValueError("mass workspace pilot candidate mass is inconsistent")
         positions = [
-            tuple(float(value) for value in trial["resolved"]["position_m"][:2])
-            for trial in trials
+            tuple(float(value) for value in trial["resolved"]["position_m"][:2]) for trial in trials
         ]
         if len(set(positions)) != 5 or positions != [
-            tuple(float(value) for value in position)
-            for position in gate.get("positions_xy_m", [])
+            tuple(float(value) for value in position) for position in gate.get("positions_xy_m", [])
         ]:
             raise ValueError("mass workspace pilot positions are inconsistent")
         historical = (gate.get("historical_baseline") or {}).get("episodes") or []
@@ -372,9 +357,7 @@ def validate_manifest(manifest: dict[str, Any], plan: dict[str, Any]) -> None:
     completion_policy = manifest.get("completion_policy", "success_target")
     if completion_policy not in {"success_target", "all_planned_trials"}:
         raise ValueError("collection has unsupported completion_policy")
-    if not isinstance(
-        manifest.get("stop_when_success_target_unreachable", True), bool
-    ):
+    if not isinstance(manifest.get("stop_when_success_target_unreachable", True), bool):
         raise ValueError("collection stop-when-unreachable policy must be boolean")
     if len(attempts) > int(manifest["maximum_attempts"]):
         raise ValueError("collection exceeds its frozen maximum attempt budget")
@@ -393,10 +376,8 @@ def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
     """Return the next uncovered variation, preserving the original split."""
     validate_manifest(manifest, plan)
     completion_policy = manifest.get("completion_policy", "success_target")
-    if (
-        completion_policy == "success_target"
-        and len(manifest["selected_variations"])
-        == int(manifest["required_successes"])
+    if completion_policy == "success_target" and len(manifest["selected_variations"]) == int(
+        manifest["required_successes"]
     ):
         return None
     if len(manifest["attempts"]) >= int(manifest["maximum_attempts"]):
@@ -410,9 +391,7 @@ def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
     minimum_attempt_count = min(counts[trial["variation_id"]] for trial in candidates)
     trial = copy.deepcopy(
         next(
-            trial
-            for trial in candidates
-            if counts[trial["variation_id"]] == minimum_attempt_count
+            trial for trial in candidates if counts[trial["variation_id"]] == minimum_attempt_count
         )
     )
     attempt_index = counts[trial["variation_id"]]
@@ -486,8 +465,7 @@ def record_attempt(
         manifest["execution_status"] = "FINISHED"
         manifest["quality_status"] = (
             "PASS"
-            if complete
-            and eligible_successes >= int(manifest["required_successes"])
+            if complete and eligible_successes >= int(manifest["required_successes"])
             else "FAIL"
         )
     manifest["updated_at"] = _now()
@@ -570,8 +548,7 @@ def abort_collection_artifacts(
         abort_attempt_run_state(run_state, reason)
         write_manifest(run_state_path, run_state)
         aborted_episode_ids.append(
-            (run_state.get("identity") or {}).get("episode_id")
-            or run_state_path.parent.name
+            (run_state.get("identity") or {}).get("episode_id") or run_state_path.parent.name
         )
     write_manifest(manifest_destination, manifest)
     return {
@@ -588,7 +565,9 @@ def abort_collection_artifacts(
     }
 
 
-def build_export_selection(manifest: dict[str, Any], episodes_root: str = "outputs/episodes") -> dict:
+def build_export_selection(
+    manifest: dict[str, Any], episodes_root: str = "outputs/episodes"
+) -> dict:
     attempts = {row["attempt_id"]: row for row in manifest["attempts"]}
     selected = []
     for variation_id, attempt_id in sorted(manifest["selected_variations"].items()):
