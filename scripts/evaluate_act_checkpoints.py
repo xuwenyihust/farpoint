@@ -135,7 +135,10 @@ def main() -> int:
         preprocessor, _ = make_pre_post_processors(
             policy_cfg=policy.config, pretrained_path=str(pretrained_dir)
         )
-        policy.eval()
+        # ACT's teacher-forced VAE objective is only populated in training mode.
+        # inference_mode below still disables gradients and optimizer/state writes;
+        # a fresh policy is loaded for every checkpoint and never saved again.
+        policy.train()
         totals: dict[str, float] = {}
         sample_total = 0
         with torch.inference_mode():

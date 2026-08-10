@@ -89,3 +89,7 @@ in the validation report.
 The resulting validation loss is a teacher-forced offline diagnostic. It can
 show that optimization is learning a held-out action mapping, but it is not a
 robot-task success rate. Isaac Lab rollouts remain a later, independent gate.
+The evaluator loads a fresh checkpoint and uses ACT's training-mode forward
+semantics under `torch.inference_mode()` because the VAE KL term is not produced
+by ACT's eval-mode forward path; it performs no backward pass or optimizer step
+and never rewrites a checkpoint.
