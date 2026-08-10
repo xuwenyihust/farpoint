@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Version-bound quality report for the Farpoint SO-101 LeRobot dataset." />
+    <meta name="theme-color" content="#f5f4ef" />
+    <title>Farpoint SO-101 Dataset</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="#overview" aria-label="Farpoint SO-101 Dataset home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>FARPOINT <b>SO-101</b></span>
+        </a>
+        <nav aria-label="Report sections">
+          <a href="#integrity">Integrity</a>
+          <a href="#coverage">Coverage</a>
+          <a href="#episode-quality">Motion</a>
+          <a href="#visual-quality">Visual</a>
+        </nav>
+        <a id="dataset-version-link" class="dataset-link" href="https://huggingface.co/datasets/wenyixu101/farpoint-so101" target="_blank" rel="noreferrer">Dataset ↗</a>
+      </header>
+
+      <main>
+        <section id="overview" class="hero section-pad">
+          <div class="hero-copy">
+            <div class="eyebrow-row">
+              <span id="version-badge" class="version-badge">v0.0.3</span>
+              <span class="simulation-badge">Isaac Sim · LeRobot v3</span>
+            </div>
+            <h1>Farpoint SO-101<br />Dataset</h1>
+            <p id="task-copy" class="hero-deck">Loading the immutable quality report…</p>
+            <div class="hero-actions">
+              <a id="dataset-viewer-link" href="https://huggingface.co/datasets/wenyixu101/farpoint-so101/viewer/default/train" target="_blank" rel="noreferrer" class="button primary">Open Dataset Viewer</a>
+              <a id="dataset-card-link" href="https://huggingface.co/datasets/wenyixu101/farpoint-so101" target="_blank" rel="noreferrer" class="button secondary">Read dataset card</a>
+            </div>
+          </div>
+          <div class="hero-panel" aria-label="Dataset summary">
+            <div class="robot-orbit" aria-hidden="true">
+              <div class="orbit orbit-a"></div>
+              <div class="orbit orbit-b"></div>
+              <div class="joint joint-a"></div>
+              <div class="joint joint-b"></div>
+              <div class="joint joint-c"></div>
+              <div class="arm arm-a"></div>
+              <div class="arm arm-b"></div>
+              <div class="gripper"><i></i><i></i></div>
+              <div class="cube"></div>
+            </div>
+            <div class="report-lock"><span class="status-dot"></span><span>Bound to immutable tag</span></div>
+          </div>
+        </section>
+
+        <section class="stats-strip" aria-label="Dataset statistics">
+          <article><strong id="stat-episodes">—</strong><span>episodes</span></article>
+          <article><strong id="stat-frames">—</strong><span>frames</span></article>
+          <article><strong id="stat-hours">—</strong><span>hours at 30 Hz</span></article>
+          <article><strong id="stat-splits">—</strong><span>train · val · test</span></article>
+        </section>
+
+        <section id="integrity" class="report-section section-pad">
+          <div class="section-heading">
+            <div><span class="section-number">01</span><p class="kicker">Data contract</p></div>
+            <div><h2>Integrity</h2><p>Every published artifact is checked before a metric is shown.</p></div>
+            <div id="integrity-status" class="large-status">—</div>
+          </div>
+          <div id="integrity-grid" class="integrity-grid" aria-live="polite"></div>
+          <div class="provenance-line"><span>Dataset commit</span><code id="dataset-commit">—</code><span>Report hash</span><code id="report-hash">—</code></div>
+        </section>
+
+        <section id="coverage" class="report-section section-pad soft-section">
+          <div class="section-heading">
+            <div><span class="section-number">02</span><p class="kicker">Variation density</p></div>
+            <div><h2>Variation Coverage</h2><p>Coverage and repetition are shown separately. Filter any axis to inspect the actual density.</p></div>
+            <div class="coverage-total"><strong id="coverage-matches">—</strong><span>matching episodes</span></div>
+          </div>
+          <div id="coverage-filters" class="filter-bar" aria-label="Coverage filters"></div>
+          <div class="coverage-layout">
+            <article class="panel heatmap-panel">
+              <div class="panel-title"><div><p class="kicker">Cube position</p><h3>5 × 5 workspace grid</h3></div><div class="legend"><span>0</span><i></i><i></i><i></i><i></i><span>more</span></div></div>
+              <div class="heatmap-wrap"><div class="axis-y">Cube Y ↓</div><div id="position-heatmap" class="heatmap" role="img" aria-label="Episode count by cube position"></div><div class="axis-x">Cube X →</div></div>
+              <p id="position-bounds" class="panel-note"></p>
+            </article>
+            <article class="panel axis-panel">
+              <div class="panel-title"><div><p class="kicker">Selected view</p><h3>Axis distribution</h3></div></div>
+              <div id="axis-distribution" class="axis-distribution"></div>
+            </article>
+          </div>
+          <div class="coverage-facts">
+            <article><strong id="covered-cells">—</strong><span>position cells</span></article>
+            <article><strong id="exact-combinations">—</strong><span>exact combinations</span></article>
+            <article><strong id="median-repetition">—</strong><span>median repetition</span></article>
+          </div>
+        </section>
+
+        <section id="episode-quality" class="report-section section-pad">
+          <div class="section-heading">
+            <div><span class="section-number">03</span><p class="kicker">Control signal</p></div>
+            <div><h2>Episode &amp; Action Quality</h2><p>Temporal shape, actuator range and motion continuity across the exported demonstrations.</p></div>
+          </div>
+          <div class="quality-summary">
+            <article><span>Median duration</span><strong id="median-duration">—</strong></article>
+            <article><span>Idle transitions</span><strong id="idle-ratio">—</strong></article>
+            <article><span>p95 max action step</span><strong id="action-step">—</strong></article>
+            <article><span>Duplicate trajectories</span><strong id="duplicate-count">—</strong></article>
+          </div>
+          <div class="motion-layout">
+            <article class="panel chart-panel">
+              <div class="panel-title"><div><p class="kicker">Duration</p><h3>Episode distribution</h3></div><span class="mono">seconds</span></div>
+              <div id="duration-chart" class="histogram" aria-label="Episode duration histogram"></div>
+            </article>
+            <article class="panel joint-panel">
+              <div class="panel-title"><div><p class="kicker">Action range</p><h3>Joint targets</h3></div><span class="mono">q01 · q50 · q99</span></div>
+              <div id="joint-ranges" class="joint-ranges"></div>
+            </article>
+          </div>
+          <p id="motion-definition" class="method-note"></p>
+        </section>
+
+        <section id="visual-quality" class="report-section section-pad dark-section">
+          <div class="section-heading light-heading">
+            <div><span class="section-number">04</span><p class="kicker">Front camera</p></div>
+            <div><h2>Visual Quality</h2><p>Deterministic timeline samples selected across position, yaw, mass, size, color and split.</p></div>
+          </div>
+          <div class="visual-summary">
+            <article><span>Decoded frames</span><strong id="decoded-frames">—</strong></article>
+            <article><span>Resolution</span><strong id="resolution">—</strong></article>
+            <article><span>Median brightness</span><strong id="brightness">—</strong></article>
+            <article><span>Median contrast</span><strong id="contrast">—</strong></article>
+          </div>
+          <div id="visual-gallery" class="visual-gallery"></div>
+          <p class="visual-note">Frames are sampled at 15%, 40%, 65% and 88% of each episode. They are timeline references, not inferred task-phase labels.</p>
+        </section>
+      </main>
+
+      <footer>
+        <div><span class="brand footer-brand"><span class="brand-mark"><i></i><i></i><i></i></span>FARPOINT</span><p>Precomputed from an immutable LeRobot dataset release.</p></div>
+        <div class="footer-links"><a href="https://huggingface.co/datasets/wenyixu101/farpoint-so101" target="_blank" rel="noreferrer">Dataset</a><a href="https://github.com/xuwenyihust/farpoint" target="_blank" rel="noreferrer">Code</a></div>
+      </footer>
+    </div>
+    <div id="error-state" class="error-state" hidden><strong>Report unavailable</strong><p id="error-message"></p></div>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

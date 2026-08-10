@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/xuwenyihust/farpoint/src/farpoint/schemas/dataset_quality_report_v1.schema.json",
+  "title": "Farpoint Dataset Quality Report v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "identity",
+    "overview",
+    "integrity",
+    "variation_coverage",
+    "episode_action_quality",
+    "visual_quality",
+    "report_sha256"
+  ],
+  "properties": {
+    "schema_version": {"const": "farpoint.dataset-quality-report.v1"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "dataset_repo",
+        "dataset_tag",
+        "resolved_dataset_commit",
+        "generator_commit",
+        "generated_at",
+        "source_hashes",
+        "source_hashes_sha256"
+      ],
+      "properties": {
+        "dataset_repo": {"type": "string", "minLength": 1},
+        "dataset_tag": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "resolved_dataset_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "generator_commit": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "source_hashes": {"type": "object", "minProperties": 1},
+        "source_hashes_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "overview": {
+      "type": "object",
+      "required": [
+        "title", "episodes", "frames", "fps", "duration_hours", "robot",
+        "task", "camera_features", "state_dimension", "action_dimension",
+        "split_episodes", "split_frames"
+      ]
+    },
+    "integrity": {
+      "type": "object",
+      "required": ["status", "checks", "external_evidence"],
+      "properties": {
+        "status": {"enum": ["PASS", "FAIL"]},
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "status", "detail"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "status": {"enum": ["PASS", "FAIL"]},
+              "detail": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "variation_coverage": {
+      "type": "object",
+      "required": [
+        "episodes", "axis_counts", "position_counts", "position_cells_covered",
+        "exact_combinations", "combination_repetition", "position_bounds_m"
+      ]
+    },
+    "episode_action_quality": {
+      "type": "object",
+      "required": [
+        "definitions", "episode_length_frames", "episode_duration_s",
+        "state_by_joint", "action_by_joint", "max_action_step",
+        "idle_transition_ratio", "episode_metrics"
+      ]
+    },
+    "visual_quality": {
+      "type": "object",
+      "required": [
+        "definitions", "decoded_frames_by_file", "decoded_frames", "resolutions",
+        "sampled_frames", "brightness", "contrast", "dark_pixel_ratio",
+        "bright_pixel_ratio", "samples"
+      ]
+    },
+    "report_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
