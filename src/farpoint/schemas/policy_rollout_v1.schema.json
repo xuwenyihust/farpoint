@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://farpoint.dev/schemas/policy_rollout_v1.schema.json",
+  "title": "Farpoint policy rollout contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite_id", "task", "checkpoint", "environment", "control", "acceptance", "scenes"],
+  "properties": {
+    "schema_version": {"const": "farpoint.policy-rollout.v1"},
+    "suite_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+    "task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "instruction", "evaluation_class"],
+      "properties": {
+        "task_id": {"const": "so101_cube_pick_place"},
+        "instruction": {"type": "string", "minLength": 1},
+        "evaluation_class": {"const": "interface_smoke"}
+      }
+    },
+    "checkpoint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policy_type", "training_run_id", "training_git_commit", "training_image_id", "step", "model_sha256", "dataset"],
+      "properties": {
+        "policy_type": {"const": "act"},
+        "training_run_id": {"type": "string", "minLength": 1},
+        "training_git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "training_image_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "step": {"type": "integer", "minimum": 1},
+        "model_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "dataset": {
+          "type": "object", "additionalProperties": false,
+          "required": ["repo_id", "revision", "resolved_commit", "train_episodes", "validation_episodes", "excluded_test_episodes"],
+          "properties": {
+            "repo_id": {"type": "string", "pattern": "^[^/]+/[^/]+$"},
+            "revision": {"type": "string", "minLength": 1},
+            "resolved_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "train_episodes": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
+            "validation_episodes": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
+            "excluded_test_episodes": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gym_id", "isaac_lab_ref", "isaac_sim_version", "isaac_base_image_id", "lerobot_version", "camera_features"],
+      "properties": {
+        "gym_id": {"const": "Farpoint-SO101-PickPlace-Cube-v0"},
+        "isaac_lab_ref": {"const": "release/3.0.0-beta2"},
+        "isaac_sim_version": {"const": "6.0.0"},
+        "isaac_base_image_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "lerobot_version": {"const": "0.4.4"},
+        "camera_features": {"const": ["observation.images.front"]}
+      }
+    },
+    "control": {
+      "type": "object", "additionalProperties": false,
+      "required": ["physics_hz", "policy_hz", "max_policy_steps", "max_delta_calibrated", "stable_steps"],
+      "properties": {
+        "physics_hz": {"const": 120},
+        "policy_hz": {"const": 30},
+        "max_policy_steps": {"type": "integer", "minimum": 1},
+        "max_delta_calibrated": {"type": "number", "exclusiveMinimum": 0},
+        "stable_steps": {"type": "integer", "minimum": 1}
+      }
+    },
+    "acceptance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["required_completed_episodes", "minimum_task_successes", "maximum_nonfinite_actions", "maximum_hard_range_violations"],
+      "properties": {
+        "required_completed_episodes": {"type": "integer", "minimum": 1},
+        "minimum_task_successes": {"type": "integer", "minimum": 0},
+        "maximum_nonfinite_actions": {"type": "integer", "minimum": 0},
+        "maximum_hard_range_violations": {"type": "integer", "minimum": 0}
+      }
+    },
+    "scenes": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["scene_id", "seed", "object"],
+        "properties": {
+          "scene_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]+$"},
+          "seed": {"type": "integer", "minimum": 0},
+          "object": {
+            "type": "object", "additionalProperties": false,
+            "required": ["shape", "dimensions_m", "position_m", "orientation_xyzw", "rgba", "mass_kg"],
+            "properties": {
+              "shape": {"const": "cube"},
+              "dimensions_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}},
+              "position_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "orientation_xyzw": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+              "rgba": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
+              "mass_kg": {"type": "number", "exclusiveMinimum": 0}
+            }
+          }
+        }
+      }
+    }
+  }
+}
