@@ -255,9 +255,10 @@ def _run_episode(env, scene_spec, spec, root):
     hard_range_violations = 0
     delta_limited = 0
     nonfinite = 0
-    traces = []
+    policy_steps = 0
     task_success = False
     writer = VideoWriter(episode_root / "front.mp4", control["policy_hz"])
+    trace_file = (episode_root / "actions.jsonl").open("w", encoding="utf-8")
     try:
         for step in range(control["max_policy_steps"]):
             front = _image(scene)
@@ -292,7 +293,7 @@ def _run_episode(env, scene_spec, spec, root):
                 margin_m=TARGET_MARGIN_M,
             )
             released = float(robot.data.joint_pos[0, 5].item()) >= SO101_HOME_JOINTS[5] - 0.10
-            stable = float(np.linalg.norm(cube_velocity)) < 0.03
+            stable = bool(float(np.linalg.norm(cube_velocity)) < 0.03)
             ever_contact = ever_contact or contact
             ever_bilateral = ever_bilateral or bilateral
             ever_lifted = ever_lifted or lifted
@@ -300,30 +301,29 @@ def _run_episode(env, scene_spec, spec, root):
             valid_settle = ever_lifted and in_target and released and stable
             stable_steps = stable_steps + 1 if valid_settle else 0
             task_success = stable_steps >= control["stable_steps"]
-            traces.append(
-                {
-                    "policy_step": step,
-                    "state_calibrated": state.tolist(),
-                    "raw_action_calibrated": raw_action.tolist(),
-                    "applied_action_calibrated": applied.tolist(),
-                    "target_radians": target_radians.tolist(),
-                    "action_safety": safety,
-                    "cube_pose_xyzw": cube_pose.tolist(),
-                    "cube_velocity_mps": cube_velocity.tolist(),
-                    "contact_forces_n": list(forces),
-                    "cube_in_target": in_target,
-                    "gripper_released": released,
-                    "cube_stable": stable,
-                }
-            )
+            trace_row = {
+                "policy_step": step,
+                "state_calibrated": state.tolist(),
+                "raw_action_calibrated": raw_action.tolist(),
+                "applied_action_calibrated": applied.tolist(),
+                "target_radians": target_radians.tolist(),
+                "action_safety": safety,
+                "cube_pose_xyzw": cube_pose.tolist(),
+                "cube_velocity_mps": cube_velocity.tolist(),
+                "contact_forces_n": list(forces),
+                "cube_in_target": in_target,
+                "gripper_released": released,
+                "cube_stable": stable,
+            }
+            trace_file.write(json.dumps(trace_row, sort_keys=True) + "\n")
+            policy_steps += 1
+            if policy_steps % control["policy_hz"] == 0:
+                trace_file.flush()
             if task_success:
                 break
     finally:
+        trace_file.close()
         writer.close()
-    (episode_root / "actions.jsonl").write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in traces),
-        encoding="utf-8",
-    )
     if task_success:
         terminal_reason = "success"
     elif not ever_contact:
@@ -339,7 +339,7 @@ def _run_episode(env, scene_spec, spec, root):
         "execution_status": "FINISHED",
         "task_success": task_success,
         "terminal_reason": terminal_reason,
-        "policy_steps": len(traces),
+        "policy_steps": policy_steps,
         "video": str((episode_root / "front.mp4").relative_to(root)),
         "trace": str((episode_root / "actions.jsonl").relative_to(root)),
         "reset_audit": reset_audit,
