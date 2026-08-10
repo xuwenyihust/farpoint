@@ -4,6 +4,22 @@ This changelog tracks published versions of
 `wenyixu101/farpoint-so101`. Dataset versions are independent of Farpoint
 Python package and schema versions.
 
+## v0.0.3
+
+Adds a 30° cube-yaw increment while preserving the policy feature schema:
+
+- 160 successful SO-101 cube pick-and-place demonstrations
+- 116,240 policy frames at 30 Hz
+- 128 train, 14 validation, and 18 test episodes
+- 100 demonstrations at 45° cube yaw, 30 at 0°, and 30 at 30°
+- 80 demonstrations at 0.03 kg and 80 at 0.04 kg
+- 110 demonstrations with 0.03 m cube edges and 50 with 0.04 m cube edges
+- 80 red-cube and 80 blue-cube demonstrations
+- complete 5 x 5 cube-position grid coverage overall and within the new 30°
+  increment
+- one 640 x 480 front-camera RGB stream; no wrist-camera feature
+- unchanged six-dimensional joint state and joint-position action schema
+
 ## v0.0.2
 
 Adds a 0° cube-yaw increment while preserving the policy feature schema:
