@@ -43,9 +43,8 @@ def supports_legacy_episode_report(artifact_path):
         metadata = json.loads(required[0].read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    return (
-        metadata.get("schema_version") != "farpoint.episode.v3"
-        and any((artifact_path / "preview").glob("*.png"))
+    return metadata.get("schema_version") != "farpoint.episode.v3" and any(
+        (artifact_path / "preview").glob("*.png")
     )
 
 
@@ -102,6 +101,10 @@ def build_reports(registry):
             sys.executable,
             str(PROJECT_ROOT / "scripts" / "build_benchmark_report.py"),
             str(manifest),
+            "--episodes-root",
+            str(registry.layout.episodes),
+            "--reports-root",
+            str(registry.layout.reports),
         ]
         if row.get("display_name"):
             command.extend(["--display-name", row["display_name"]])
