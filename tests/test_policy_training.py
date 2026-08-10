@@ -90,3 +90,15 @@ def test_episode_stats_unflatten_and_smoke_arguments_are_split_safe(tmp_path):
     assert episode_arg.startswith("--dataset.episodes=[0,1,2")
     assert episode_arg.endswith(",127]")
     assert ",128" not in episode_arg
+
+
+def test_training_image_preserves_ngc_cuda_torch_builds():
+    dockerfile = (ROOT / "docker" / "so101-lerobot-training" / "Dockerfile").read_text()
+    constraints = (
+        ROOT / "docker" / "so101-lerobot-training" / "constraints.txt"
+    ).read_text()
+
+    assert "--constraint /opt/farpoint-training-constraints.txt" in dockerfile
+    assert "torch.version.cuda is not None" in dockerfile
+    assert "torch==2.11.0a0+a6c236b9fd.nv26.3.46836102" in constraints
+    assert "torchvision==0.25.0a0+b7d91027.nv26.3.46836102" in constraints

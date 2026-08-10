@@ -10,8 +10,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m pip install --no-cache-dir "lerobot==${LEROBOT_VERSION}" \
-    && python -c "import av, importlib.metadata as m; assert m.version('lerobot') == '${LEROBOT_VERSION}'; av.codec.Codec('av1', 'r')" \
+COPY docker/so101-lerobot-training/constraints.txt /opt/farpoint-training-constraints.txt
+
+RUN python -m pip install --no-cache-dir --pre \
+      --constraint /opt/farpoint-training-constraints.txt \
+      "lerobot==${LEROBOT_VERSION}" \
+    && python -c "import av, importlib.metadata as m, torch; assert m.version('lerobot') == '${LEROBOT_VERSION}'; assert torch.version.cuda is not None; av.codec.Codec('av1', 'r')" \
     && python -m pip freeze > /opt/farpoint-training-python-freeze.txt
 
 LABEL org.opencontainers.image.title="Farpoint SO-101 LeRobot training" \
