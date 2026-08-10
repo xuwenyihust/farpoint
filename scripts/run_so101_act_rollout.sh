@@ -124,4 +124,9 @@ rollout_command=(
 )
 printf -v rollout_command_q '%q ' "${rollout_command[@]}"
 
+set +e
 docker run "${docker_args[@]}" "${ISAAC_IMAGE}" "${rollout_command_q}"
+rollout_status=$?
+set -e
+echo "FARPOINT_ACT_ROLLOUT_EXIT status=${rollout_status}" >&2
+exit "${rollout_status}"

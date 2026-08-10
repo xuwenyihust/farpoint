@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+import faulthandler
 import io
 import json
 import os
 import random
 import subprocess
 import sys
+import traceback
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,6 +43,7 @@ def parse_args():
 
 
 args_cli = parse_args()
+faulthandler.enable()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
@@ -319,8 +322,25 @@ def _run_episode(env, scene_spec, spec, root):
             policy_steps += 1
             if policy_steps % control["policy_hz"] == 0:
                 trace_file.flush()
+                print(
+                    f"SO101_ACT_ROLLOUT_PROGRESS scene={scene_spec['scene_id']} "
+                    f"steps={policy_steps}",
+                    flush=True,
+                )
             if task_success:
                 break
+    except BaseException as error:
+        failure = {
+            "scene_id": scene_spec["scene_id"],
+            "execution_status": "ABORTED",
+            "policy_steps": policy_steps,
+            "exception_type": type(error).__name__,
+            "exception_message": str(error),
+        }
+        _write_json(episode_root / "error.json", failure)
+        print(f"SO101_ACT_ROLLOUT_ERROR {json.dumps(failure, sort_keys=True)}", flush=True)
+        traceback.print_exc()
+        raise
     finally:
         trace_file.close()
         writer.close()
@@ -438,6 +458,14 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
+        exit_code = main()
+    except BaseException as error:
+        print(
+            f"SO101_ACT_ROLLOUT_FATAL type={type(error).__name__} message={error}",
+            flush=True,
+        )
+        traceback.print_exc()
+        raise
     finally:
         simulation_app.close()
+    raise SystemExit(exit_code)
