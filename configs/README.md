@@ -12,6 +12,7 @@ Recommended configuration layers:
 - `collections/`: resource budgets, source imports, coverage, and stopping rules
 - `selections/`: reusable balanced-subset policies and coverage constraints
 - `workflows/`: frozen multi-stage admission gates and watchdog policies
+- `training/`: pinned policy-training contracts without machine-specific paths
 - `machines/`: local examples only; do not commit private hostnames or tokens
 
 Generated experiment plans live under `plans/`. A committed plan is immutable:
