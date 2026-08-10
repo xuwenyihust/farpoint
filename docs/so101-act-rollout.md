@@ -43,7 +43,7 @@ scripts/build_so101_rollout_image.sh
 
 The build refuses an unexpected Isaac base image ID and preserves its CUDA
 PyTorch and torchvision packages while adding exactly LeRobot 0.4.4. It also
-pins a standard ARM64 Pillow build so LeRobot does not import the binary copy
+pins a standard ARM64 Pillow 12.1.1 build so LeRobot does not import the binary copy
 inside Isaac's extension cache, whose private shared-library path is valid only
 for selected Kit extensions.
 
