@@ -32,6 +32,9 @@ At 30 Hz the runner:
 Each episode records an MP4, a per-step action/truth trace, reset and mass
 audits, action-safety counts, contact/lift/target/release evidence, and a task
 result. The report distinguishes interface acceptance from task success.
+Checkpoint loading disables redundant ImageNet backbone initialization because
+the complete backbone is already stored in `model.safetensors`; inference does
+not require network access.
 
 ## DGX image and run
 

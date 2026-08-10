@@ -205,6 +205,11 @@ def _load_policy(checkpoint: Path):
     config = PreTrainedConfig.from_pretrained(checkpoint, local_files_only=True)
     config.pretrained_path = str(checkpoint)
     config.device = "cuda"
+    # The checkpoint already contains the complete vision backbone. Avoid the
+    # ACT constructor's redundant ImageNet initialization download before the
+    # saved weights are restored, so rollout remains network-independent.
+    if hasattr(config, "pretrained_backbone_weights"):
+        config.pretrained_backbone_weights = None
     policy_class = get_policy_class(config.type)
     policy = policy_class.from_pretrained(
         checkpoint, config=config, local_files_only=True, strict=True
