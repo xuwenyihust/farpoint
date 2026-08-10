@@ -21,6 +21,7 @@ SCHEMA_FILES = {
     "farpoint.variation.v2": "farpoint_variation_v2.schema.json",
     "farpoint.benchmark.v2": "farpoint_benchmark_v2.schema.json",
     "farpoint.collection.v1": "farpoint_collection_v1.schema.json",
+    "farpoint.dataset-quality-report.v1": "dataset_quality_report_v1.schema.json",
 }
 SPLITS = ("train", "validation", "test")
 SHAPE_TERMS = {
