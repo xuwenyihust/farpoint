@@ -36,19 +36,18 @@ Checkpoint loading disables redundant ImageNet backbone initialization because
 the complete backbone is already stored in `model.safetensors`; inference does
 not require network access.
 
-## DGX image and run
+## DGX containers and run
 
-Build the combined Isaac Lab + LeRobot inference image on the DGX Spark:
+The launcher deliberately uses two existing, independently verified images:
 
-```bash
-scripts/build_so101_rollout_image.sh
-```
+- `farpoint-so101-isaaclab:3.0-beta2` runs Isaac Lab and the environment;
+- `farpoint-so101-lerobot-training:0.4.4` loads ACT and serves actions on a
+  loopback-only HTTP endpoint.
 
-The build refuses an unexpected Isaac base image ID and preserves its CUDA
-PyTorch and torchvision packages while adding exactly LeRobot 0.4.4. It also
-pins a standard ARM64 Pillow 12.1.1 build so LeRobot does not import the binary copy
-inside Isaac's extension cache, whose private shared-library path is valid only
-for selected Kit extensions.
+This boundary prevents LeRobot dependencies from replacing Python packages in
+Isaac Kit. The launcher verifies both image IDs, the exact model SHA256, the
+LeRobot version, and the source commit before starting the five scenes. The
+policy server is stopped when the Isaac runner exits.
 
 Run from one exact reviewed commit and a complete checkpoint directory:
 

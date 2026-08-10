@@ -4,10 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import json
 import os
 import random
+import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,9 +44,9 @@ args_cli = parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-import av  # noqa: E402
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
+from PIL import Image  # noqa: E402
 
 import farpoint_so101_env  # noqa: E402,F401
 from farpoint.oracle import oriented_box_footprint_inside_target  # noqa: E402
@@ -117,21 +121,54 @@ def _cube_contact_forces(scene) -> tuple[float, float]:
 
 class VideoWriter:
     def __init__(self, path: Path, fps: int):
-        self.container = av.open(str(path), mode="w")
-        self.stream = self.container.add_stream("libx264", rate=fps)
-        self.stream.width = 640
-        self.stream.height = 480
-        self.stream.pix_fmt = "yuv420p"
+        self.process = subprocess.Popen(
+            [
+                "ffmpeg", "-loglevel", "error", "-y",
+                "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "640x480",
+                "-r", str(fps), "-i", "-", "-an", "-c:v", "libx264",
+                "-pix_fmt", "yuv420p", str(path),
+            ],
+            stdin=subprocess.PIPE,
+        )
 
     def write(self, image: np.ndarray) -> None:
-        frame = av.VideoFrame.from_ndarray(image, format="rgb24")
-        for packet in self.stream.encode(frame):
-            self.container.mux(packet)
+        if self.process.stdin is None:
+            raise RuntimeError("ffmpeg video pipe is closed")
+        self.process.stdin.write(np.ascontiguousarray(image).tobytes())
 
     def close(self) -> None:
-        for packet in self.stream.encode():
-            self.container.mux(packet)
-        self.container.close()
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        return_code = self.process.wait()
+        if return_code != 0:
+            raise RuntimeError(f"ffmpeg video writer exited {return_code}")
+
+
+def _policy_request(path: str, payload: dict | None = None) -> dict:
+    data = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+    policy_url = os.environ.get("FARPOINT_ACT_POLICY_URL", "http://127.0.0.1:8766")
+    request = urllib.request.Request(
+        f"{policy_url.rstrip('/')}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"} if data is not None else {},
+        method="POST" if data is not None else "GET",
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read())
+
+
+def _policy_action(state: np.ndarray, front: np.ndarray, task: str) -> np.ndarray:
+    buffer = io.BytesIO()
+    Image.fromarray(front, mode="RGB").save(buffer, format="JPEG", quality=95)
+    response = _policy_request(
+        "/action",
+        {
+            "state": state.tolist(),
+            "front_jpeg": base64.b64encode(buffer.getvalue()).decode("ascii"),
+            "task": task,
+        },
+    )
+    return np.asarray(response["action"], dtype=np.float32)
 
 
 def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
@@ -198,38 +235,11 @@ def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
     }
 
 
-def _load_policy(checkpoint: Path):
-    from lerobot.configs.policies import PreTrainedConfig
-    from lerobot.policies.factory import get_policy_class, make_pre_post_processors
-
-    config = PreTrainedConfig.from_pretrained(checkpoint, local_files_only=True)
-    config.pretrained_path = str(checkpoint)
-    config.device = "cuda"
-    # The checkpoint already contains the complete vision backbone. Avoid the
-    # ACT constructor's redundant ImageNet initialization download before the
-    # saved weights are restored, so rollout remains network-independent.
-    if hasattr(config, "pretrained_backbone_weights"):
-        config.pretrained_backbone_weights = None
-    policy_class = get_policy_class(config.type)
-    policy = policy_class.from_pretrained(
-        checkpoint, config=config, local_files_only=True, strict=True
-    ).to("cuda")
-    policy.eval()
-    preprocessor, postprocessor = make_pre_post_processors(
-        policy_cfg=config, pretrained_path=str(checkpoint)
-    )
-    return policy, preprocessor, postprocessor
-
-
-def _run_episode(env, scene_spec, spec, policy, preprocessor, postprocessor, root):
-    from lerobot.utils.control_utils import predict_action
-
+def _run_episode(env, scene_spec, spec, root):
     episode_root = root / "episodes" / scene_spec["scene_id"]
     episode_root.mkdir(parents=True)
     active_name, reset_audit = _reset_scene(env, scene_spec)
-    for component in (policy, preprocessor, postprocessor):
-        if hasattr(component, "reset"):
-            component.reset()
+    _policy_request("/reset", {})
     scene = env.scene
     robot = scene["robot"]
     active = scene[active_name]
@@ -254,21 +264,7 @@ def _run_episode(env, scene_spec, spec, policy, preprocessor, postprocessor, roo
             writer.write(front)
             joint_radians = _numpy(robot.data.joint_pos[0]).astype(np.float32)
             state = radians_to_lerobot(joint_radians, clip=True)
-            observation = {
-                "observation.state": state,
-                "observation.images.front": front,
-            }
-            action_tensor = predict_action(
-                observation,
-                policy,
-                torch.device("cuda"),
-                preprocessor,
-                postprocessor,
-                use_amp=False,
-                task=spec["task"]["instruction"],
-                robot_type="so101",
-            )
-            raw_action = _numpy(action_tensor).reshape(-1)
+            raw_action = _policy_action(state, front, spec["task"]["instruction"])
             if raw_action.shape != (6,) or not np.all(np.isfinite(raw_action)):
                 nonfinite += 1
                 raise RuntimeError(f"invalid policy action at step {step}: {raw_action}")
@@ -370,16 +366,27 @@ def main() -> int:
     if file_sha256(model_file) != spec["checkpoint"]["model_sha256"]:
         raise RuntimeError("checkpoint model SHA256 does not match the frozen rollout spec")
     rollout_git_commit = os.environ.get("FARPOINT_GIT_COMMIT", "")
-    rollout_image_id = os.environ.get("FARPOINT_ROLLOUT_IMAGE_ID", "")
+    isaac_image_id = os.environ.get("FARPOINT_ISAAC_IMAGE_ID", "")
+    policy_image_id = os.environ.get("FARPOINT_POLICY_IMAGE_ID", "")
     base_image_id = os.environ.get("FARPOINT_SO101_BASE_IMAGE_ID", "")
     if len(rollout_git_commit) != 40:
         raise RuntimeError("FARPOINT_GIT_COMMIT must bind rollout evidence")
-    if not rollout_image_id.startswith("sha256:"):
-        raise RuntimeError("FARPOINT_ROLLOUT_IMAGE_ID must bind rollout evidence")
+    if not isaac_image_id.startswith("sha256:"):
+        raise RuntimeError("FARPOINT_ISAAC_IMAGE_ID must bind rollout evidence")
+    if policy_image_id != spec["checkpoint"]["training_image_id"]:
+        raise RuntimeError("policy server image ID does not match checkpoint provenance")
     if base_image_id != spec["environment"]["isaac_base_image_id"]:
         raise RuntimeError("Isaac base image ID does not match the frozen rollout spec")
     args_cli.output_root.mkdir(parents=True)
-    policy, preprocessor, postprocessor = _load_policy(args_cli.checkpoint)
+    policy_health = _policy_request("/health")
+    if policy_health.get("status") != "ready":
+        raise RuntimeError("policy server is not ready")
+    if policy_health.get("model_sha256") != spec["checkpoint"]["model_sha256"]:
+        raise RuntimeError("policy server checkpoint identity mismatch")
+    if policy_health.get("policy_image_id") != policy_image_id:
+        raise RuntimeError("policy server image identity mismatch")
+    if policy_health.get("lerobot_version") != spec["environment"]["lerobot_version"]:
+        raise RuntimeError("policy server LeRobot version mismatch")
     from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
 
     env_cfg = SO101CubePickPlaceEnvCfg()
@@ -390,15 +397,7 @@ def main() -> int:
     results = []
     try:
         for scene_spec in spec["scenes"]:
-            result = _run_episode(
-                env,
-                scene_spec,
-                spec,
-                policy,
-                preprocessor,
-                postprocessor,
-                args_cli.output_root,
-            )
+            result = _run_episode(env, scene_spec, spec, args_cli.output_root)
             results.append(result)
             print(
                 f"SO101_ACT_ROLLOUT scene={result['scene_id']} "
@@ -414,7 +413,8 @@ def main() -> int:
         "suite_id": spec["suite_id"],
         "status": acceptance["status"],
         "rollout_git_commit": rollout_git_commit,
-        "rollout_image_id": rollout_image_id,
+        "isaac_image_id": isaac_image_id,
+        "policy_server": policy_health,
         "isaac_base_image_id": base_image_id,
         "spec_sha256": canonical_sha256(spec),
         "checkpoint": spec["checkpoint"],

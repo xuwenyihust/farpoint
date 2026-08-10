@@ -20,15 +20,22 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
         "  if [[ \"$3\" == farpoint-so101-isaaclab:3.0-beta2 ]]; then\n"
         "    echo sha256:ddcd4daa68cef3ece67f4fbad4eb8f5257d8236a55aba04d0697b55e7679fd04\n"
         "  else\n"
-        "    echo sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        "    echo sha256:d99274c14bc7e1064f3ad534deb1feecdcbeb271c9d04b3e46377d464c720293\n"
         "  fi\n"
         "  exit 0\n"
         "fi\n"
+        "if [[ \"$1\" == run && \"$2\" == -d ]]; then touch \"$TEST_POLICY_STARTED\"; echo policy-container; exit 0; fi\n"
+        "if [[ \"$1\" == inspect || \"$1\" == logs || \"$1\" == stop ]]; then exit 0; fi\n"
         "for final_arg in \"$@\"; do :; done\n"
         "printf '%s\\n' \"${final_arg}\"\n",
         encoding="utf-8",
     )
     docker.chmod(0o755)
+    curl = bin_dir / "curl"
+    curl.write_text(
+        "#!/usr/bin/env bash\n[[ -f \"$TEST_POLICY_STARTED\" ]]\n", encoding="utf-8"
+    )
+    curl.chmod(0o755)
     checkpoint = tmp_path / "checkpoint"
     checkpoint.mkdir()
     (checkpoint / "model.safetensors").write_bytes(b"model")
@@ -41,6 +48,7 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
         "FARPOINT_SO101_ASSET": str(asset),
         "FARPOINT_ACT_CHECKPOINT": str(checkpoint),
         "FARPOINT_GIT_COMMIT": "a" * 40,
+        "TEST_POLICY_STARTED": str(tmp_path / "policy-started"),
     }
     completed = subprocess.run(
         [
