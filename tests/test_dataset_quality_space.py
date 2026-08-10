@@ -39,6 +39,7 @@ def test_stage_quality_space_copies_one_version(tmp_path):
     assert index["default_version"] == "v0.0.3"
     assert (tmp_path / "output/index.html").read_text() == "quality"
     assert (tmp_path / "output/reports/v0.0.3/asset.jpg").read_bytes() == b"jpeg"
+    assert not (tmp_path / "output/.gitignore").exists()
     assert audit_quality_space(tmp_path / "output")["valid"]
 
 

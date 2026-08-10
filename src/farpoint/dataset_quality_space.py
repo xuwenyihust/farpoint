@@ -74,7 +74,11 @@ def stage_quality_space(
         raise ValueError("only PASS quality reports may be staged")
     version = str(report["identity"]["dataset_tag"])
 
-    shutil.copytree(template, output, ignore=shutil.ignore_patterns("reports"))
+    shutil.copytree(
+        template,
+        output,
+        ignore=shutil.ignore_patterns("reports", ".gitignore"),
+    )
     version_dir = output / "reports" / version
     shutil.copytree(report_root, version_dir)
     index = {
