@@ -95,7 +95,7 @@ def test_episode_stats_unflatten_and_smoke_arguments_are_split_safe(tmp_path):
 def test_training_image_preserves_ngc_cuda_torch_builds():
     dockerfile = (ROOT / "docker" / "so101-lerobot-training" / "Dockerfile").read_text()
 
-    assert "FROM nvcr.io/nvidia/pytorch:26.01-py3" in dockerfile
+    assert "FROM nvcr.io/nvidia/pytorch:26.01-py3@sha256:" in dockerfile
     assert "--constraint /opt/farpoint-training-constraints.txt" in dockerfile
     assert "torch.version.cuda is not None" in dockerfile
     assert "m.version('torch')" in dockerfile

@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:26.01-py3
+FROM nvcr.io/nvidia/pytorch:26.01-py3@sha256:38ed2ecb2c16d10677006d73fb0a150855d6ec81db8fc66e800b5ae92741007e
 
 ARG LEROBOT_VERSION=0.4.4
 
