@@ -93,3 +93,23 @@ The evaluator loads a fresh checkpoint and uses ACT's training-mode forward
 semantics under `torch.inference_mode()` because the VAE KL term is not produced
 by ACT's eval-mode forward path; it performs no backward pass or optimizer step
 and never rewrites a checkpoint.
+
+## 20,000-step baseline
+
+The execution contract
+`configs/training/so101_act_v0_0_3_baseline_20k.json` preserves the same
+train/validation/test partition and trains for 20,000 optimizer steps. It saves
+checkpoints at steps 5,000, 10,000, 15,000, and 20,000, then selects the lowest
+teacher-forced objective on the same fixed 128-frame validation sample. Test
+episodes remain excluded from both training and checkpoint selection.
+
+Run it only from an exact merged commit and a new run ID:
+
+```bash
+FARPOINT_GIT_COMMIT=<40-character-merged-commit> \
+  scripts/run_so101_act_baseline_20k.sh act-v0.0.3-baseline-20k-<git-sha>
+```
+
+After validation passes, run the selected checkpoint through the immutable
+five-scene Isaac rollout suite. The step-1,000 rollout remains the baseline and
+is not replaced or reinterpreted.

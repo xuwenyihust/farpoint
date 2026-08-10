@@ -13,12 +13,16 @@ from farpoint.policy_training import (
     training_arguments,
     unflatten_episode_stats,
     validate_dataset_info,
+    validation_profile,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "training" / "so101_act_v0_0_3_baseline.json"
 PILOT_CONFIG = ROOT / "configs" / "training" / "so101_act_v0_0_3_pilot.json"
+BASELINE_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_0_3_baseline_20k.json"
+)
 
 
 def test_frozen_act_contract_is_valid_and_partitions_all_episodes():
@@ -107,6 +111,21 @@ def test_pilot_contract_and_arguments_are_frozen_and_split_safe(tmp_path):
     episode_arg = next(arg for arg in arguments if arg.startswith("--dataset.episodes="))
     assert episode_arg.endswith(",127]")
     assert ",128" not in episode_arg
+
+
+def test_20k_baseline_contract_selects_training_checkpoints(tmp_path):
+    spec = load_training_spec(BASELINE_20K_CONFIG)
+    assert validation_profile(spec) == "training"
+    assert spec["training"]["steps"] == 20000
+    assert spec["training"]["save_freq"] == 5000
+    arguments = training_arguments(spec, tmp_path / "view", tmp_path / "out", "training")
+    assert "--steps=20000" in arguments
+    assert "--save_freq=5000" in arguments
+    assert "--policy.push_to_hub=false" in arguments
+    assert spec["dataset"]["splits"]["test"] == "142:160"
+    runner = (ROOT / "scripts" / "run_so101_act_baseline_20k.sh").read_text()
+    assert "--profile training" in runner
+    assert "evaluate_act_checkpoints.py" in runner
 
 
 def test_evenly_spaced_validation_indices_cover_boundaries_without_duplicates():

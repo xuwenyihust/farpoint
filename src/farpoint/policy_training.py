@@ -59,22 +59,36 @@ def validate_split_partition(spec: dict[str, Any]) -> None:
 
 
 def validate_training_profiles(spec: dict[str, Any]) -> None:
-    if "pilot" not in spec and "validation" not in spec:
+    if "validation" not in spec:
         return
-    if "pilot" not in spec or "validation" not in spec:
-        raise ValueError("pilot and validation must be configured together")
-    pilot = spec["pilot"]
-    save_freq = pilot.get("save_freq")
-    if not pilot["save_checkpoint"] or save_freq is None:
-        raise ValueError("pilot must save checkpoints at a fixed frequency")
-    if pilot["steps"] % save_freq != 0:
-        raise ValueError("pilot steps must be divisible by save_freq")
-    if pilot["steps"] // save_freq < 2:
-        raise ValueError("pilot must produce at least two checkpoints")
     validation = spec["validation"]
+    profile = validation_profile(spec)
+    run = spec.get(profile)
+    if run is None:
+        raise ValueError(f"validation profile is not configured: {profile}")
+    save_freq = run.get("save_freq")
+    if not run["save_checkpoint"] or save_freq is None:
+        raise ValueError(f"{profile} must save checkpoints at a fixed frequency")
+    if run["steps"] % save_freq != 0:
+        raise ValueError(f"{profile} steps must be divisible by save_freq")
+    if run["steps"] // save_freq < 2:
+        raise ValueError(f"{profile} must produce at least two checkpoints")
     available_frames = spec["dataset"]["expected"]["selected_frames"][validation["split"]]
     if validation["sample_count"] > available_frames:
         raise ValueError("validation sample_count exceeds available split frames")
+
+
+def validation_profile(spec: dict[str, Any]) -> str:
+    """Resolve the checkpoint-producing profile while preserving pilot v1 specs."""
+    validation = spec.get("validation")
+    if validation is None:
+        raise ValueError("training spec does not define validation")
+    explicit = validation.get("profile")
+    if explicit is not None:
+        return str(explicit)
+    if "pilot" in spec:
+        return "pilot"
+    return "training"
 
 
 def validate_dataset_info(spec: dict[str, Any], info: dict[str, Any]) -> None:

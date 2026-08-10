@@ -78,6 +78,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["split", "sample_count", "batch_size", "num_workers", "seed", "minimum_relative_improvement"],
       "properties": {
+        "profile": {"enum": ["pilot", "training"]},
         "split": {"const": "validation"},
         "sample_count": {"type": "integer", "minimum": 2},
         "batch_size": {"type": "integer", "minimum": 1},
