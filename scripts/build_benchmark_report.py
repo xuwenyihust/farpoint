@@ -38,7 +38,7 @@ REPORT_NAV_CSS = """
 
 
 def report_navigation(current):
-    return f'''<nav class="app-nav" aria-label="Farpoint Data navigation">
+    return f"""<nav class="app-nav" aria-label="Farpoint Data navigation">
       <div class="app-nav__crumbs">
         <a href="/">Farpoint Data</a><span class="app-nav__sep">/</span>
         <a href="/?view=benchmarks">Benchmarks</a><span class="app-nav__sep">/</span>
@@ -48,7 +48,7 @@ def report_navigation(current):
         <a href="/">Home</a><a href="/?view=episodes">Episodes</a><a href="/?view=benchmarks">Benchmarks</a>
         <a class="app-nav__back" href="/?view=benchmarks" onclick="if (history.length > 1) {{ history.back(); return false; }}">Back</a>
       </div>
-    </nav>'''
+    </nav>"""
 
 
 def read_json(path):
@@ -64,9 +64,7 @@ def write_json(path, payload):
 def normalize_manifest(manifest):
     """Map legacy position-pilot fields onto the benchmark report contract."""
     normalized = dict(manifest)
-    normalized["benchmark_id"] = normalized.get("benchmark_id") or normalized.get(
-        "pilot_id"
-    )
+    normalized["benchmark_id"] = normalized.get("benchmark_id") or normalized.get("pilot_id")
     normalized["task_name"] = normalized.get("task_name") or normalized.get(
         "task_id", "unknown_task"
     )
@@ -146,9 +144,7 @@ def normalize_manifest(manifest):
         normalized["planned_trials"] = len(trials)
         normalized["completed_trials"] = len(trials)
         normalized["passed_trials"] = int(nested_acceptance.get("observed_successes", 0))
-        normalized["success_rate"] = float(
-            nested_acceptance.get("observed_success_rate", 0.0)
-        )
+        normalized["success_rate"] = float(nested_acceptance.get("observed_success_rate", 0.0))
         normalized["accepted"] = nested_acceptance.get("accepted") is True
         acceptance.update(
             {
@@ -209,9 +205,17 @@ def relative_path(path, start):
     return Path(os.path.relpath(Path(path).absolute(), Path(start).absolute()))
 
 
-def load_trial(trial, report_dir):
+def load_trial(
+    trial,
+    report_dir,
+    *,
+    episodes_root=None,
+    reports_root=None,
+):
+    episodes_root = Path(episodes_root or EPISODES_ROOT)
+    reports_root = Path(reports_root or REPORTS_ROOT)
     episode_id = trial.get("episode_id")
-    episode_dir = EPISODES_ROOT / episode_id if episode_id else None
+    episode_dir = episodes_root / episode_id if episode_id else None
     row = {}
     metadata = {}
     metrics = {}
@@ -223,25 +227,25 @@ def load_trial(trial, report_dir):
         if metrics_path.exists():
             metrics = read_json(metrics_path)
         if metadata and metrics and (episode_dir / "trajectory.jsonl").exists():
-            row = load_run_row(episode_dir, REPORTS_ROOT, rebuild_reports=True)
+            row = load_run_row(episode_dir, reports_root, rebuild_reports=True)
 
     preview_images = sorted((episode_dir / "preview").glob("*.png")) if episode_dir else []
-    preview_directory = "preview"
     if not preview_images and episode_dir:
         preview_images = sorted((episode_dir / "rgb").glob("*.png"))
-        preview_directory = "rgb"
+    if not preview_images and episode_dir:
+        preview_images = sorted((episode_dir / "rgb").glob("**/*.png"))
     preview = preview_images[len(preview_images) // 2] if preview_images else None
-    preview_name = preview.name if preview else None
+    preview_relative_path = preview.relative_to(episode_dir) if preview else None
     recording = metadata.get("recording") or {}
     cameras = recording.get("cameras") or []
     frame_count = int(recording.get("frame_count") or 0)
-    if not preview_name and cameras and frame_count > 0:
+    if preview_relative_path is None and cameras and frame_count > 0:
         camera_name = str(cameras[0]).rsplit(".", 1)[-1]
         if re.fullmatch(r"[A-Za-z0-9_-]+", camera_name):
-            preview_directory = "rgb"
-            preview_name = f"{camera_name}_{frame_count // 2:06d}.png"
+            preview_relative_path = Path("rgb", f"{camera_name}_{frame_count // 2:06d}.png")
     resolved_position = (
         (metadata.get("variation") or {}).get("resolved", {}).get("object_position_m")
+        or (metadata.get("variation") or {}).get("resolved", {}).get("position_m")
         or []
     )
     planned_position = trial.get("object_position_xy_m") or []
@@ -250,15 +254,21 @@ def load_trial(trial, report_dir):
         pick_object_xy = resolved_position[:2]
     if not pick_object_xy and len(planned_position) >= 2:
         pick_object_xy = planned_position[:2]
-    episode_report = REPORTS_ROOT / episode_id / "index.html" if episode_id else None
+    episode_report = reports_root / episode_id / "index.html" if episode_id else None
     if episode_report and episode_report.is_file():
         report_href = relative_path(episode_report, report_dir).as_posix()
     elif episode_id and metadata.get("schema_version") == "farpoint.episode.v3":
         report_href = f"/?view=episodes&search={quote(episode_id, safe='')}"
     else:
         report_href = None
+    variation_id = trial.get("variation_id") or trial.get("trial_id") or ""
+    cell_match = re.search(r"(?:^|_)r(\d{2})_c(\d{2})(?:_|$)", variation_id)
+    cell_id = trial.get("cell_id") or (
+        f"r{cell_match.group(1)}_c{cell_match.group(2)}" if cell_match else None
+    )
     return {
         **trial,
+        "cell_id": cell_id,
         "success": bool(trial["success"] if "success" in trial else metrics.get("success")),
         "failure_category": metrics.get("failure_category") or trial.get("failure_category"),
         "failure_reason": metrics.get("failure_reason") or trial.get("failure_reason"),
@@ -292,9 +302,7 @@ def load_trial(trial, report_dir):
         ),
         "grasp_constraint": metrics.get("grasp_constraint"),
         "dataset_valid": (
-            trial["dataset_valid"]
-            if "dataset_valid" in trial
-            else metrics.get("dataset_valid")
+            trial["dataset_valid"] if "dataset_valid" in trial else metrics.get("dataset_valid")
         ),
         "dataset_observation_count": metrics.get(
             "dataset_observation_count",
@@ -306,9 +314,9 @@ def load_trial(trial, report_dir):
         "warning_count": row.get("warning_count"),
         "report_href": report_href,
         "preview_href": (
-            f"/files/episodes/{quote(episode_id, safe='')}/{preview_directory}/"
-            f"{quote(preview_name, safe='')}"
-            if preview_name and episode_id
+            f"/files/episodes/{quote(episode_id, safe='')}/"
+            + "/".join(quote(part, safe="") for part in preview_relative_path.parts)
+            if preview_relative_path is not None and episode_id
             else None
         ),
     }
@@ -386,9 +394,7 @@ def summarize(manifest, trials, reproducibility_trials=None):
         "y_span_m": max(y_values) - min(y_values) if y_values else None,
     }
     failure_counts = Counter(
-        trial.get("failure_category") or "unclassified"
-        for trial in trials
-        if not trial["success"]
+        trial.get("failure_category") or "unclassified" for trial in trials if not trial["success"]
     )
     acceptance = manifest["acceptance"]
     threshold_checks = []
@@ -400,11 +406,9 @@ def summarize(manifest, trials, reproducibility_trials=None):
             and float(trial["final_target_xy_distance"])
             <= float(acceptance["max_final_target_xy_distance"])
             and trial.get("object_lift_height") is not None
-            and float(trial["object_lift_height"])
-            >= float(acceptance["min_object_lift_height"])
+            and float(trial["object_lift_height"]) >= float(acceptance["min_object_lift_height"])
             and trial.get("release_settle_frames") is not None
-            and int(trial["release_settle_frames"])
-            >= int(acceptance["min_release_settle_frames"])
+            and int(trial["release_settle_frames"]) >= int(acceptance["min_release_settle_frames"])
         )
     failures_classified = all(
         trial.get("failure_category") and trial.get("failure_reason")
@@ -415,17 +419,16 @@ def summarize(manifest, trials, reproducibility_trials=None):
     acceptance_checks = {
         "planned_trials_completed": completed == int(manifest["planned_trials"]),
         "minimum_success_rate": success_rate >= float(acceptance["min_success_rate"]),
-        "successful_trials_meet_task_thresholds": bool(threshold_checks)
-        and all(threshold_checks),
+        "successful_trials_meet_task_thresholds": bool(threshold_checks) and all(threshold_checks),
         "failures_are_classified": failures_classified,
-        "reproducibility": reproducibility["consistent"]
-        if reproducibility["evaluated"]
-        else None,
+        "reproducibility": reproducibility["consistent"] if reproducibility["evaluated"] else None,
     }
     if is_collection:
         nested = manifest.get("acceptance") or {}
         if manifest.get("schema_version") == "farpoint.collection-selection.v1":
             balance = nested.get("selection_balance") or {}
+            balance_total = int(balance.get("total", manifest["planned_trials"]))
+            balance_axes = {key: value for key, value in balance.items() if isinstance(value, dict)}
             acceptance_checks["successful_trials_meet_task_thresholds"] = bool(
                 quality_trials
             ) and all(
@@ -438,32 +441,20 @@ def summarize(manifest, trials, reproducibility_trials=None):
             acceptance_checks["selected_episode_target"] = completed == int(
                 manifest["planned_trials"]
             )
-            acceptance_checks["grid_cell_coverage"] = len(
-                balance.get("workspace_cells") or {}
-            ) == 25
-            acceptance_checks["dataset_split_counts"] = balance.get("splits") == {
-                "train": 40,
-                "validation": 5,
-                "test": 5,
-            }
-            acceptance_checks["balanced_sizes"] = sorted(
-                (balance.get("sizes") or {}).values()
-            ) == [25, 25]
-            acceptance_checks["balanced_colors"] = sorted(
-                (balance.get("colors") or {}).values()
-            ) == [25, 25]
-            acceptance_checks["balanced_size_color"] = (
-                len(balance.get("size_color") or {}) == 4
-                and max((balance.get("size_color") or {}).values())
-                - min((balance.get("size_color") or {}).values())
-                <= 1
+            cells = balance.get("workspace_cells") or {}
+            acceptance_checks["grid_cell_coverage"] = (
+                bool(cells)
+                and all(int(value) > 0 for value in cells.values())
+                and sum(int(value) for value in cells.values()) == balance_total
             )
-            acceptance_checks["balanced_workspace_rows"] = set(
-                (balance.get("workspace_rows") or {}).values()
-            ) == {10}
-            acceptance_checks["balanced_workspace_columns"] = set(
-                (balance.get("workspace_columns") or {}).values()
-            ) == {10}
+            acceptance_checks["dataset_split_counts"] = dict(
+                sorted(Counter(trial.get("split") for trial in trials).items())
+            ) == balance.get("splits")
+            acceptance_checks["selection_balance_totals"] = balance_total == completed and all(
+                sum(int(count) for count in axis.values()) == balance_total
+                for axis in balance_axes.values()
+            )
+            acceptance_checks["selection_quality_status"] = manifest.get("quality_status") == "PASS"
         else:
             selected_per_cell = nested.get("selected_per_cell") or {}
             acceptance_checks["planned_trials_completed"] = (
@@ -471,23 +462,21 @@ def summarize(manifest, trials, reproducibility_trials=None):
                 if manifest.get("execution_status") == "PILOT_COMPLETE"
                 else manifest.get("execution_status") == "FINISHED"
             )
-            acceptance_checks["selected_episode_target"] = (
-                nested.get("observed_selected_episodes")
-                == nested.get("required_selected_episodes")
-            )
-            acceptance_checks["grid_cell_coverage"] = (
-                nested.get("observed_covered_cells") == nested.get("required_cells")
-            )
+            acceptance_checks["selected_episode_target"] = nested.get(
+                "observed_selected_episodes"
+            ) == nested.get("required_selected_episodes")
+            acceptance_checks["grid_cell_coverage"] = nested.get(
+                "observed_covered_cells"
+            ) == nested.get("required_cells")
             acceptance_checks["balanced_cell_quota"] = bool(selected_per_cell) and set(
                 selected_per_cell.values()
             ) == {nested.get("required_selected_per_cell")}
-            acceptance_checks["dataset_split_counts"] = (
-                nested.get("observed_splits") == nested.get("required_splits")
+            acceptance_checks["dataset_split_counts"] = nested.get("observed_splits") == nested.get(
+                "required_splits"
             )
-            acceptance_checks["attempt_budget"] = (
-                nested.get("observed_task_attempts", completed)
-                <= nested.get("maximum_task_attempts", completed)
-            )
+            acceptance_checks["attempt_budget"] = nested.get(
+                "observed_task_attempts", completed
+            ) <= nested.get("maximum_task_attempts", completed)
     if acceptance.get("max_perception_xy_error") is not None:
         acceptance_checks["perception_accuracy"] = bool(quality_trials) and all(
             trial.get("initial_object_perception_xy_error") is not None
@@ -529,21 +518,20 @@ def summarize(manifest, trials, reproducibility_trials=None):
     )
     if enforce_all_episode_checks and any(trial.get("checks") for trial in trials):
         acceptance_checks["pilot_episode_checks"] = bool(trials) and all(
-            checks
-            and all(bool(value) for value in checks.values())
+            checks and all(bool(value) for value in checks.values())
             for checks in (trial.get("checks") for trial in trials)
         )
     if acceptance.get("min_selected_x_span_m") is not None:
-        acceptance_checks["workspace_x_span"] = (
-            workspace_coverage["x_span_m"] is not None
-            and workspace_coverage["x_span_m"]
-            >= float(acceptance["min_selected_x_span_m"])
+        acceptance_checks["workspace_x_span"] = workspace_coverage[
+            "x_span_m"
+        ] is not None and workspace_coverage["x_span_m"] >= float(
+            acceptance["min_selected_x_span_m"]
         )
     if acceptance.get("min_selected_y_span_m") is not None:
-        acceptance_checks["workspace_y_span"] = (
-            workspace_coverage["y_span_m"] is not None
-            and workspace_coverage["y_span_m"]
-            >= float(acceptance["min_selected_y_span_m"])
+        acceptance_checks["workspace_y_span"] = workspace_coverage[
+            "y_span_m"
+        ] is not None and workspace_coverage["y_span_m"] >= float(
+            acceptance["min_selected_y_span_m"]
         )
     required_checks = [
         acceptance_checks["planned_trials_completed"],
@@ -565,6 +553,9 @@ def summarize(manifest, trials, reproducibility_trials=None):
             "reproducibility",
         }
     )
+    selection_balance = (manifest.get("acceptance") or {}).get("selection_balance") or {}
+    selection_cells = selection_balance.get("workspace_cells") or {}
+    is_selection = manifest.get("schema_version") == "farpoint.collection-selection.v1"
     return {
         "schema_version": "benchmark-summary.v1",
         "benchmark_id": manifest["benchmark_id"],
@@ -582,9 +573,7 @@ def summarize(manifest, trials, reproducibility_trials=None):
         "p95_perception_xy_error": percentile(perception_errors, 0.95),
         "median_runtime_seconds": statistics.median(runtimes) if runtimes else None,
         "peak_gpu_percent": max(peak_gpu_values) if peak_gpu_values else None,
-        "peak_workload_memory_mib": max(workload_memory_values)
-        if workload_memory_values
-        else None,
+        "peak_workload_memory_mib": max(workload_memory_values) if workload_memory_values else None,
         "peak_host_memory_pressure_percent": max(host_pressure_values)
         if host_pressure_values
         else None,
@@ -599,39 +588,28 @@ def summarize(manifest, trials, reproducibility_trials=None):
         "report_kind": manifest.get("report_kind", "benchmark"),
         "execution_status": manifest.get("execution_status"),
         "collection": {
-            "selected_episodes": (
-                (manifest.get("acceptance") or {}).get("selection_balance") or {}
-            ).get(
+            "selected_episodes": selection_balance.get(
                 "total",
                 (manifest.get("acceptance") or {}).get("observed_selected_episodes", 0),
             ),
             "required_selected_episodes": (
                 manifest.get("planned_trials")
-                if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+                if is_selection
                 else (manifest.get("acceptance") or {}).get("required_selected_episodes", 0)
             ),
-            "covered_cells": len(
-                ((manifest.get("acceptance") or {}).get("selection_balance") or {}).get(
-                    "workspace_cells", {}
-                )
-            )
-            if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+            "covered_cells": len(selection_cells)
+            if is_selection
             else (manifest.get("acceptance") or {}).get("observed_covered_cells", 0),
-            "required_cells": 25
-            if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+            "required_cells": len(selection_cells)
+            if is_selection
             else (manifest.get("acceptance") or {}).get("required_cells", 0),
             "selected_per_cell": (
-                ((manifest.get("acceptance") or {}).get("selection_balance") or {}).get(
-                    "workspace_cells", {}
-                )
-                if manifest.get("schema_version") == "farpoint.collection-selection.v1"
+                selection_cells
+                if is_selection
                 else (manifest.get("acceptance") or {}).get("selected_per_cell", {})
             ),
-            "variable_cell_quota": manifest.get("schema_version")
-            == "farpoint.collection-selection.v1",
-            "imported_attempts": sum(
-                trial.get("origin") == "imported" for trial in trials
-            ),
+            "variable_cell_quota": is_selection,
+            "imported_attempts": sum(trial.get("origin") == "imported" for trial in trials),
             "new_attempts": sum(trial.get("origin") == "new" for trial in trials),
         },
     }
@@ -643,15 +621,21 @@ def fmt_metric(value, suffix="", digits=3):
     return f"{float(value):.{digits}f}{suffix}"
 
 
-def build_report(manifest_path, display_name=None):
+def build_report(
+    manifest_path,
+    display_name=None,
+    *,
+    episodes_root=None,
+    reports_root=None,
+):
+    episodes_root = Path(episodes_root or EPISODES_ROOT)
+    reports_root = Path(reports_root or REPORTS_ROOT)
     raw_manifest = read_json(manifest_path)
     if raw_manifest.get("schema_version") == "farpoint.benchmark.v2":
         run_state_path = manifest_path.parent / "run-state.json"
         if run_state_path.is_file():
             run_state = read_json(run_state_path)
-            details = {
-                trial.get("trial_id"): trial for trial in run_state.get("trials", [])
-            }
+            details = {trial.get("trial_id"): trial for trial in run_state.get("trials", [])}
             raw_manifest["trials"] = [
                 {**details.get(trial.get("trial_id"), {}), **trial}
                 for trial in raw_manifest.get("trials", [])
@@ -659,11 +643,24 @@ def build_report(manifest_path, display_name=None):
     manifest = normalize_manifest(raw_manifest)
     benchmark_id = manifest["benchmark_id"]
     display_name = (display_name or benchmark_id).strip()
-    report_dir = REPORTS_ROOT / "benchmarks" / benchmark_id
+    report_dir = reports_root / "benchmarks" / benchmark_id
     report_dir.mkdir(parents=True, exist_ok=True)
-    trials = [load_trial(trial, report_dir) for trial in manifest.get("trials", [])]
+    trials = [
+        load_trial(
+            trial,
+            report_dir,
+            episodes_root=episodes_root,
+            reports_root=reports_root,
+        )
+        for trial in manifest.get("trials", [])
+    ]
     reproducibility_trials = [
-        load_trial(trial, report_dir)
+        load_trial(
+            trial,
+            report_dir,
+            episodes_root=episodes_root,
+            reports_root=reports_root,
+        )
         for trial in manifest.get("reproducibility_trials", [])
     ]
     summary = summarize(manifest, trials, reproducibility_trials)
@@ -707,27 +704,27 @@ def build_report(manifest_path, display_name=None):
         )
         table_rows.append(
             f'<tr data-status="{status}" data-failure="{html.escape(category)}">'
-            f'<td>{preview}</td>'
+            f"<td>{preview}</td>"
             f"<td>{seed}</td>"
             f"<td>{position_text}</td>"
-            f'<td>{int(trial.get("repeat", 0)) + 1}</td>'
-            f'<td>{episode}</td>'
+            f"<td>{int(trial.get('repeat', 0)) + 1}</td>"
+            f"<td>{episode}</td>"
             f'<td class="{status_class}">{status}</td>'
-            f'<td>{html.escape(str(trial.get("origin") or "native").title())}</td>'
-            f'<td>{"YES" if trial.get("selected_for_dataset") else "NO"}</td>'
-            f'<td>{html.escape(str(trial.get("cell_id") or "Unavailable"))}</td>'
-            f'<td>{html.escape(category.replace("_", " ").title())}</td>'
+            f"<td>{html.escape(str(trial.get('origin') or 'native').title())}</td>"
+            f"<td>{'YES' if trial.get('selected_for_dataset') else 'NO'}</td>"
+            f"<td>{html.escape(str(trial.get('cell_id') or 'Unavailable'))}</td>"
+            f"<td>{html.escape(category.replace('_', ' ').title())}</td>"
             f'<td class="reason">{html.escape(reason)}</td>'
-            f'<td>{fmt_metric(trial.get("final_target_xy_distance"), " m", 4)}</td>'
-            f'<td>{fmt_metric(trial.get("initial_object_perception_xy_error"), " m", 4)}</td>'
-            f'<td>{fmt_metric(trial.get("object_lift_height"), " m", 4)}</td>'
-            f'<td>{trial.get("bilateral_contact_frames") if trial.get("bilateral_contact_frames") is not None else "Unavailable"}</td>'
-            f'<td>{"PASS" if trial.get("dataset_valid") else "FAIL"}</td>'
-            f'<td>{trial.get("release_settle_frames") if trial.get("release_settle_frames") is not None else "Unavailable"}</td>'
-            f'<td>{fmt_metric(trial.get("elapsed_seconds"), " s", 1)}</td>'
-            f'<td>{format_number(trial.get("peak_gpu"), "%", 0)}</td>'
-            f'<td>{format_memory_mib(trial.get("workload_memory"))}</td>'
-            f'<td>{format_number(trial.get("host_pressure"), "%", 1)}</td>'
+            f"<td>{fmt_metric(trial.get('final_target_xy_distance'), ' m', 4)}</td>"
+            f"<td>{fmt_metric(trial.get('initial_object_perception_xy_error'), ' m', 4)}</td>"
+            f"<td>{fmt_metric(trial.get('object_lift_height'), ' m', 4)}</td>"
+            f"<td>{trial.get('bilateral_contact_frames') if trial.get('bilateral_contact_frames') is not None else 'Unavailable'}</td>"
+            f"<td>{'PASS' if trial.get('dataset_valid') else 'FAIL'}</td>"
+            f"<td>{trial.get('release_settle_frames') if trial.get('release_settle_frames') is not None else 'Unavailable'}</td>"
+            f"<td>{fmt_metric(trial.get('elapsed_seconds'), ' s', 1)}</td>"
+            f"<td>{format_number(trial.get('peak_gpu'), '%', 0)}</td>"
+            f"<td>{format_memory_mib(trial.get('workload_memory'))}</td>"
+            f"<td>{format_number(trial.get('host_pressure'), '%', 1)}</td>"
             "</tr>"
         )
 
@@ -737,7 +734,7 @@ def build_report(manifest_path, display_name=None):
         width = count / max_failure_count * 100
         failure_bars.append(
             '<div class="failure-row">'
-            f'<span>{html.escape(category.replace("_", " ").title())}</span>'
+            f"<span>{html.escape(category.replace('_', ' ').title())}</span>"
             f'<div class="bar-track"><div class="bar-fill" style="width:{width:.1f}%"></div></div>'
             f"<strong>{count}</strong>"
             "</div>"
@@ -761,14 +758,11 @@ def build_report(manifest_path, display_name=None):
         "workspace_x_span": "Selected positions cover the required X span",
         "workspace_y_span": "Selected positions cover the required Y span",
         "selected_episode_target": "Selected episode target is complete",
-        "grid_cell_coverage": "All 25 grid cells are covered",
+        "grid_cell_coverage": "Every declared workspace cell is covered",
         "balanced_cell_quota": "Every cell contains exactly two selected episodes",
-        "balanced_sizes": "Object sizes are balanced 25 / 25",
-        "balanced_colors": "Object colors are balanced 25 / 25",
-        "balanced_size_color": "Size/color groups differ by at most one",
-        "balanced_workspace_rows": "Every workspace row contains 10 episodes",
-        "balanced_workspace_columns": "Every workspace column contains 10 episodes",
-        "dataset_split_counts": "Dataset split counts are 34/8/8",
+        "dataset_split_counts": "Episode splits match the frozen selection balance",
+        "selection_balance_totals": "Every frozen balance axis accounts for all selected episodes",
+        "selection_quality_status": "Selection quality status is PASS",
         "attempt_budget": "Task attempts remain within the resource budget",
     }
     for key, value in summary["acceptance_checks"].items():
@@ -797,12 +791,8 @@ def build_report(manifest_path, display_name=None):
     progress = min(100.0, summary["completed_trials"] / max(summary["planned_trials"], 1) * 100)
     success_width = min(100.0, summary["success_rate"] * 100)
     if summary["reproducibility"]["evaluated"]:
-        reproducibility_state = (
-            "PASS" if summary["reproducibility"]["consistent"] else "FAIL"
-        )
-        reproducibility_class = (
-            "pass" if summary["reproducibility"]["consistent"] else "fail"
-        )
+        reproducibility_state = "PASS" if summary["reproducibility"]["consistent"] else "FAIL"
+        reproducibility_class = "pass" if summary["reproducibility"]["consistent"] else "fail"
     else:
         reproducibility_state = "NOT RUN"
         reproducibility_class = "pending"
@@ -820,9 +810,9 @@ def build_report(manifest_path, display_name=None):
     if coverage["x_span_m"] is not None:
         coverage_metrics = (
             '<div class="metric"><span>Position X Span</span>'
-            f'<strong>{coverage["x_span_m"]:.3f} m</strong></div>'
+            f"<strong>{coverage['x_span_m']:.3f} m</strong></div>"
             '<div class="metric"><span>Position Y Span</span>'
-            f'<strong>{coverage["y_span_m"]:.3f} m</strong></div>'
+            f"<strong>{coverage['y_span_m']:.3f} m</strong></div>"
         )
     collection_metrics = ""
     collection_grid = ""
@@ -830,27 +820,30 @@ def build_report(manifest_path, display_name=None):
         collection = summary["collection"]
         collection_metrics = (
             '<div class="metric"><span>Selected Episodes</span>'
-            f'<strong>{collection["selected_episodes"]} / {collection["required_selected_episodes"]}</strong></div>'
+            f"<strong>{collection['selected_episodes']} / {collection['required_selected_episodes']}</strong></div>"
             '<div class="metric"><span>Covered Cells</span>'
-            f'<strong>{collection["covered_cells"]} / {collection["required_cells"]}</strong></div>'
+            f"<strong>{collection['covered_cells']} / {collection['required_cells']}</strong></div>"
             '<div class="metric"><span>Imported / New Attempts</span>'
-            f'<strong>{collection["imported_attempts"]} / {collection["new_attempts"]}</strong></div>'
+            f"<strong>{collection['imported_attempts']} / {collection['new_attempts']}</strong></div>"
         )
         cells = []
-        for row in range(5):
-            for column in range(5):
-                cell_id = f"r{row:02d}_c{column:02d}"
-                count = int(collection["selected_per_cell"].get(cell_id, 0))
-                variable_quota = collection.get("variable_cell_quota")
-                state = (
-                    "complete"
-                    if (count > 0 if variable_quota else count == 2)
-                    else ("partial" if count else "empty")
-                )
-                count_label = str(count) if variable_quota else f"{count} / 2"
-                cells.append(
-                    f'<div class="cell {state}"><span>{cell_id}</span><strong>{count_label}</strong></div>'
-                )
+        variable_quota = collection.get("variable_cell_quota")
+        cell_ids = (
+            sorted(collection["selected_per_cell"])
+            if variable_quota
+            else [f"r{row:02d}_c{column:02d}" for row in range(5) for column in range(5)]
+        )
+        for cell_id in cell_ids:
+            count = int(collection["selected_per_cell"].get(cell_id, 0))
+            state = (
+                "complete"
+                if (count > 0 if variable_quota else count == 2)
+                else ("partial" if count else "empty")
+            )
+            count_label = str(count) if variable_quota else f"{count} / 2"
+            cells.append(
+                f'<div class="cell {state}"><span>{cell_id}</span><strong>{count_label}</strong></div>'
+            )
         collection_grid = (
             '<section class="panel"><h2>Grid Cell Coverage</h2>'
             f'<div class="cell-grid">{"".join(cells)}</div></section>'
@@ -1025,8 +1018,15 @@ def main():
     parser = argparse.ArgumentParser(description="Build a static randomized benchmark report.")
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--display-name")
+    parser.add_argument("--episodes-root", type=Path, default=EPISODES_ROOT)
+    parser.add_argument("--reports-root", type=Path, default=REPORTS_ROOT)
     args = parser.parse_args()
-    build_report(args.manifest.resolve(), display_name=args.display_name)
+    build_report(
+        args.manifest.resolve(),
+        display_name=args.display_name,
+        episodes_root=args.episodes_root.resolve(),
+        reports_root=args.reports_root.resolve(),
+    )
 
 
 if __name__ == "__main__":

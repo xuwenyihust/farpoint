@@ -99,7 +99,9 @@ class BenchmarkReportTests(unittest.TestCase):
         balance = {
             "total": 50,
             "splits": {"train": 40, "validation": 5, "test": 5},
-            "workspace_cells": {f"r{row:02d}_c{column:02d}": 2 for row in range(5) for column in range(5)},
+            "workspace_cells": {
+                f"r{row:02d}_c{column:02d}": 2 for row in range(5) for column in range(5)
+            },
             "workspace_rows": {f"r{row:02d}": 10 for row in range(5)},
             "workspace_columns": {f"c{column:02d}": 10 for column in range(5)},
             "sizes": {"size_0": 25, "size_1": 25},
@@ -147,10 +149,131 @@ class BenchmarkReportTests(unittest.TestCase):
         ]
         summary = summarize(result, trials)
         self.assertTrue(summary["accepted"])
-        self.assertTrue(
-            summary["acceptance_checks"]["successful_trials_meet_task_thresholds"]
-        )
+        self.assertTrue(summary["acceptance_checks"]["successful_trials_meet_task_thresholds"])
         self.assertTrue(summary["acceptance_checks"]["dataset_valid"])
+
+    def test_selection_acceptance_uses_its_frozen_30_episode_balance(self):
+        attempts = [
+            {
+                "attempt_id": str(index),
+                "trial_id": f"cube_r{index // 5:02d}_c{index % 5:02d}",
+                "episode_id": f"episode_{index}",
+                "split": "train" if index < 24 else "validation" if index < 27 else "test",
+                "success": True,
+                "dataset_valid": True,
+            }
+            for index in range(30)
+        ]
+        balance = {
+            "total": 30,
+            "splits": {"train": 24, "validation": 3, "test": 3},
+            "workspace_cells": {
+                f"r{row:02d}_c{column:02d}": 2 if row == 0 else 1
+                for row in range(5)
+                for column in range(5)
+            },
+            "sizes": {"size_0": 30},
+            "colors": {"color_0": 15, "color_1": 15},
+            "masses_kg": {"0.03": 15, "0.04": 15},
+            "yaw_degrees": {"30.0": 30},
+        }
+        manifest = normalize_manifest(
+            {
+                "schema_version": "farpoint.collection-selection.v1",
+                "collection_id": "yaw30",
+                "task_id": "so101_cube_pick_place",
+                "execution_status": "FINISHED",
+                "quality_status": "PASS",
+                "required_successes": 30,
+                "attempts": attempts,
+                "balance": balance,
+            }
+        )
+        trials = [{**trial, "dataset_observation_count": 10} for trial in manifest["trials"]]
+
+        summary = summarize(manifest, trials)
+
+        self.assertTrue(summary["accepted"])
+        self.assertEqual(summary["collection"]["required_cells"], 25)
+        self.assertEqual(summary["collection"]["selected_episodes"], 30)
+        self.assertTrue(summary["acceptance_checks"]["selection_balance_totals"])
+
+    def test_report_uses_configured_dashboard_roots_and_v3_preview(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            episodes_root = root / "dashboard" / "episodes"
+            reports_root = root / "dashboard" / "reports"
+            episode_id = "episode_so101_custom_root"
+            episode = episodes_root / episode_id
+            rgb = episode / "rgb"
+            rgb.mkdir(parents=True)
+            (episode / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "farpoint.episode.v3",
+                        "variation": {"resolved": {"position_m": [0.15, -0.10, 0.047]}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (episode / "metrics.json").write_text(
+                json.dumps({"success": True, "dataset_valid": True, "observation_count": 3}),
+                encoding="utf-8",
+            )
+            (rgb / "front_000001.png").write_bytes(b"png")
+            manifest_path = root / "source" / "manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "farpoint.collection-selection.v1",
+                        "collection_id": "custom-root-selection",
+                        "task_id": "so101_cube_pick_place",
+                        "execution_status": "FINISHED",
+                        "quality_status": "PASS",
+                        "required_successes": 1,
+                        "attempts": [
+                            {
+                                "attempt_id": "attempt_0",
+                                "trial_id": "cube_r00_c00",
+                                "variation_id": "cube_r00_c00",
+                                "episode_id": episode_id,
+                                "split": "train",
+                                "success": True,
+                                "dataset_valid": True,
+                            }
+                        ],
+                        "balance": {
+                            "total": 1,
+                            "splits": {"train": 1},
+                            "workspace_cells": {"r00_c00": 1},
+                            "sizes": {"size_0": 1},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = build_report(
+                manifest_path,
+                episodes_root=episodes_root,
+                reports_root=reports_root,
+            )
+            rendered = report.read_text(encoding="utf-8")
+
+        self.assertEqual(
+            report,
+            reports_root / "benchmarks" / "custom-root-selection" / "index.html",
+        )
+        self.assertIn(
+            "/files/episodes/episode_so101_custom_root/rgb/front_000001.png",
+            rendered,
+        )
+        self.assertIn("/?view=episodes&amp;search=episode_so101_custom_root", rendered)
+        self.assertNotIn("No preview", rendered)
+
     def test_report_links_do_not_follow_snapshot_symlinks(self):
         from tempfile import TemporaryDirectory
 
@@ -217,9 +340,7 @@ class BenchmarkReportTests(unittest.TestCase):
         self.assertFalse(result["consistent"])
 
     def test_reproducibility_ignores_incomplete_trials_without_seed(self):
-        result = reproducibility_summary(
-            [{"trial_id": "missing", "success": False}]
-        )
+        result = reproducibility_summary([{"trial_id": "missing", "success": False}])
 
         self.assertFalse(result["evaluated"])
         self.assertEqual(result["repeated_seed_count"], 0)
@@ -441,7 +562,7 @@ class BenchmarkReportTests(unittest.TestCase):
         self.assertIn("UR10e Cube Position Balanced Collection", rendered)
         self.assertIn("Collection ID: <code>collection-report</code>", rendered)
         self.assertIn("PILOT COMPLETE", rendered)
-        self.assertIn("All planned trials completed</td><td class=\"pending\">NOT RUN", rendered)
+        self.assertIn('All planned trials completed</td><td class="pending">NOT RUN', rendered)
         self.assertIn("Selected Episodes", rendered)
         self.assertIn("Grid Cell Coverage", rendered)
         self.assertIn("r04_c04", rendered)

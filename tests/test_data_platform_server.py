@@ -4,6 +4,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 SCRIPTS_ROOT = Path(__file__).resolve().parents[1] / "scripts"
@@ -16,7 +18,7 @@ from data_platform_server import (  # noqa: E402
     resolve_registered_episode_asset,
     valid_basic_auth,
 )
-from data_platform_cli import supports_legacy_episode_report  # noqa: E402
+from data_platform_cli import build_reports, supports_legacy_episode_report  # noqa: E402
 
 
 class DataPlatformAuthenticationTests(unittest.TestCase):
@@ -29,6 +31,51 @@ class DataPlatformAuthenticationTests(unittest.TestCase):
         self.assertFalse(valid_basic_auth(f"Basic {wrong_user}", "secret-token"))
         self.assertFalse(valid_basic_auth(f"Basic {wrong_token}", "secret-token"))
         self.assertFalse(valid_basic_auth("", "secret-token"))
+
+
+class DataPlatformReportBuildTests(unittest.TestCase):
+    def test_benchmark_builder_receives_registry_episode_and_report_roots(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = root / "benchmarks" / "selection" / "manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text("{}", encoding="utf-8")
+            layout = SimpleNamespace(
+                episodes=root / "registered-episodes",
+                reports=root / "registered-reports",
+                display_names=root / ".data-platform" / "display-names.json",
+            )
+
+            class Registry:
+                def __init__(self):
+                    self.layout = layout
+
+                def list_episodes(self, limit):
+                    self.limit = limit
+                    return []
+
+                def list_benchmarks(self):
+                    return [
+                        {
+                            "benchmark_id": "selection",
+                            "manifest_path": str(manifest),
+                            "display_name": None,
+                        }
+                    ]
+
+                def scan(self):
+                    self.scanned = True
+
+            registry = Registry()
+            with mock.patch("data_platform_cli.subprocess.run") as run:
+                run.return_value.returncode = 0
+
+                result = build_reports(registry)
+
+        command = run.call_args.args[0]
+        self.assertEqual(result["benchmark_reports"], 1)
+        self.assertEqual(command[command.index("--episodes-root") + 1], str(layout.episodes))
+        self.assertEqual(command[command.index("--reports-root") + 1], str(layout.reports))
 
 
 class PreviewManifestTests(unittest.TestCase):
@@ -65,9 +112,7 @@ class PreviewManifestTests(unittest.TestCase):
                 episode.name,
                 registry_row={"collection_id": "pilot_live", "managed": 0},
             )
-            preview = build_preview_manifest(
-                Path(temporary), episode.name, episode_dir=episode
-            )
+            preview = build_preview_manifest(Path(temporary), episode.name, episode_dir=episode)
 
             self.assertEqual(detail["variation"]["variation_id"], "cube_live")
             self.assertEqual(detail["task"]["task_id"], "so101_cube_pick_place")
@@ -103,9 +148,7 @@ class PreviewManifestTests(unittest.TestCase):
                         "scene": {"entities": [entity]},
                         "variation": {
                             "variation_id": "box_pose_01",
-                            "varied_axes": [
-                                "entities.placement_target.pose.position_m"
-                            ],
+                            "varied_axes": ["entities.placement_target.pose.position_m"],
                             "requested": {"entities": requested},
                             "resolved": {"entities": resolved},
                         },
@@ -167,9 +210,7 @@ class PreviewManifestTests(unittest.TestCase):
             )
 
             with self.assertRaises(ValueError):
-                resolve_registered_episode_asset(
-                    episode, "episode_so101_001", "metadata.json"
-                )
+                resolve_registered_episode_asset(episode, "episode_so101_001", "metadata.json")
             with self.assertRaises(ValueError):
                 resolve_registered_episode_asset(episode, "different", "../outside")
 
@@ -245,17 +286,13 @@ class EpisodeReportCompatibilityTests(unittest.TestCase):
             source = root / "source" / "episode_001"
             preview = source / "preview"
             preview.mkdir(parents=True)
-            (source / "metadata.json").write_text(
-                '{"episode_id":"episode_001"}', encoding="utf-8"
-            )
+            (source / "metadata.json").write_text('{"episode_id":"episode_001"}', encoding="utf-8")
             frame = preview / "rgb_0001.png"
             frame.write_bytes(b"png")
             episodes.mkdir()
             (episodes / "episode_001").symlink_to(source, target_is_directory=True)
 
-            resolved = resolve_episode_asset(
-                episodes, "episode_001/preview/rgb_0001.png"
-            )
+            resolved = resolve_episode_asset(episodes, "episode_001/preview/rgb_0001.png")
             manifest = build_preview_manifest(episodes, "episode_001")
 
             self.assertEqual(resolved, frame.resolve())
@@ -268,9 +305,7 @@ class EpisodeReportCompatibilityTests(unittest.TestCase):
             source = root / "source" / "episode_001"
             source.mkdir(parents=True)
             episodes.mkdir()
-            (source / "metadata.json").write_text(
-                '{"episode_id":"different"}', encoding="utf-8"
-            )
+            (source / "metadata.json").write_text('{"episode_id":"different"}', encoding="utf-8")
             (episodes / "episode_001").symlink_to(source, target_is_directory=True)
 
             with self.assertRaises(ValueError):
