@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://farpoint.dev/schemas/policy_training_v1.schema.json",
+  "title": "Farpoint policy training contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "experiment_id", "dataset", "environment", "policy", "training", "smoke"],
+  "properties": {
+    "schema_version": {"const": "farpoint.policy-training.v1"},
+    "experiment_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]+$"},
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo_id", "revision", "resolved_commit", "codebase_version", "splits", "expected", "video_backend", "required_features"],
+      "properties": {
+        "repo_id": {"type": "string", "pattern": "^[^/]+/[^/]+$"},
+        "revision": {"type": "string", "minLength": 1},
+        "resolved_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "codebase_version": {"const": "v3.0"},
+        "splits": {
+          "type": "object", "additionalProperties": false,
+          "required": ["train", "validation", "test"],
+          "properties": {
+            "train": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
+            "validation": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
+            "test": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
+          }
+        },
+        "expected": {
+          "type": "object", "additionalProperties": false,
+          "required": ["total_episodes", "total_frames", "fps", "selected_frames"],
+          "properties": {
+            "total_episodes": {"type": "integer", "minimum": 1},
+            "total_frames": {"type": "integer", "minimum": 1},
+            "fps": {"type": "integer", "minimum": 1},
+            "selected_frames": {
+              "type": "object", "additionalProperties": false,
+              "required": ["train", "validation", "test"],
+              "properties": {
+                "train": {"type": "integer", "minimum": 1},
+                "validation": {"type": "integer", "minimum": 1},
+                "test": {"type": "integer", "minimum": 1}
+              }
+            }
+          }
+        },
+        "video_backend": {"const": "pyav"},
+        "required_features": {
+          "type": "object", "minProperties": 3,
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false,
+            "required": ["dtype", "shape"],
+            "properties": {
+              "dtype": {"type": "string"},
+              "shape": {"type": "array", "items": {"type": "integer", "minimum": 1}}
+            }
+          }
+        }
+      }
+    },
+    "environment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lerobot_version", "requires_cuda", "architecture"],
+      "properties": {
+        "lerobot_version": {"const": "0.4.4"},
+        "requires_cuda": {"const": true},
+        "architecture": {"const": "aarch64"}
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "device"],
+      "properties": {"type": {"const": "act"}, "device": {"const": "cuda"}}
+    },
+    "training": {"$ref": "#/$defs/run"},
+    "smoke": {"$ref": "#/$defs/run"}
+  },
+  "$defs": {
+    "run": {
+      "type": "object", "additionalProperties": false,
+      "required": ["seed", "batch_size", "steps", "num_workers", "save_checkpoint", "push_to_hub", "wandb_enable", "log_freq"],
+      "properties": {
+        "seed": {"type": "integer", "minimum": 0},
+        "batch_size": {"type": "integer", "minimum": 1},
+        "steps": {"type": "integer", "minimum": 1},
+        "num_workers": {"type": "integer", "minimum": 0},
+        "save_checkpoint": {"type": "boolean"},
+        "save_freq": {"type": "integer", "minimum": 1},
+        "push_to_hub": {"const": false},
+        "wandb_enable": {"type": "boolean"},
+        "log_freq": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}
