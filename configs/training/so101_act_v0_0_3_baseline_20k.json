@@ -1,0 +1,40 @@
+{
+  "schema_version": "farpoint.policy-training.v1",
+  "experiment_id": "so101_act_v0_0_3_baseline_20k",
+  "dataset": {
+    "repo_id": "wenyixu101/farpoint-so101",
+    "revision": "v0.0.3",
+    "resolved_commit": "64bbefdd493ff76cab3bf9ce75a69e7e29714e67",
+    "codebase_version": "v3.0",
+    "splits": {"train": "0:128", "validation": "128:142", "test": "142:160"},
+    "expected": {
+      "total_episodes": 160,
+      "total_frames": 116240,
+      "fps": 30,
+      "selected_frames": {"train": 93162, "validation": 10164, "test": 12914}
+    },
+    "video_backend": "pyav",
+    "required_features": {
+      "observation.state": {"dtype": "float32", "shape": [6]},
+      "observation.images.front": {"dtype": "video", "shape": [480, 640, 3]},
+      "action": {"dtype": "float32", "shape": [6]}
+    }
+  },
+  "environment": {"lerobot_version": "0.4.4", "requires_cuda": true, "architecture": "aarch64"},
+  "policy": {"type": "act", "device": "cuda"},
+  "training": {
+    "seed": 1000, "batch_size": 8, "steps": 20000, "num_workers": 4,
+    "save_checkpoint": true, "save_freq": 5000, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 100
+  },
+  "validation": {
+    "profile": "training", "split": "validation", "sample_count": 128,
+    "batch_size": 8, "num_workers": 2, "seed": 1000,
+    "minimum_relative_improvement": 0.05
+  },
+  "smoke": {
+    "seed": 1000, "batch_size": 2, "steps": 1, "num_workers": 0,
+    "save_checkpoint": false, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 1
+  }
+}

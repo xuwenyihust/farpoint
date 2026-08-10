@@ -21,6 +21,7 @@ from farpoint.policy_training import (
     load_training_spec,
     parse_episode_slice,
     select_validation_checkpoint,
+    validation_profile,
 )
 
 
@@ -31,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--preflight-report", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--profile", choices=("pilot", "training"))
     return parser.parse_args()
 
 
@@ -53,9 +55,12 @@ def main() -> int:
     validation = spec.get("validation")
     if validation is None:
         raise ValueError("training spec does not define validation")
+    profile = args.profile or validation_profile(spec)
+    if profile != validation_profile(spec):
+        raise ValueError("requested profile differs from the frozen validation profile")
     preflight = json.loads(args.preflight_report.read_text(encoding="utf-8"))
-    if preflight.get("status") != "PASS" or preflight["execution"]["profile"] != "pilot":
-        raise ValueError("pilot preflight/training evidence is not PASS")
+    if preflight.get("status") != "PASS" or preflight["execution"]["profile"] != profile:
+        raise ValueError(f"{profile} preflight/training evidence is not PASS")
 
     import torch
     from lerobot.configs.policies import PreTrainedConfig
@@ -77,7 +82,7 @@ def main() -> int:
         for path in (args.output_dir / "checkpoints").iterdir()
         if path.name != "last" and (path / "training_state" / "training_step.json").is_file()
     )
-    expected_count = spec["pilot"]["steps"] // spec["pilot"]["save_freq"]
+    expected_count = spec[profile]["steps"] // spec[profile]["save_freq"]
     if len(checkpoint_dirs) != expected_count:
         raise RuntimeError(
             f"expected {expected_count} checkpoints, found {len(checkpoint_dirs)}"
@@ -172,6 +177,7 @@ def main() -> int:
         "status": "PASS",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "experiment_id": spec["experiment_id"],
+        "training_profile": profile,
         "farpoint_git_commit": git_commit,
         "training_image_id": image_id,
         "config_sha256": canonical_sha256(spec),
