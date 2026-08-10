@@ -34,7 +34,6 @@ function renderOverview() {
   $("#dataset-version-link").href = `${datasetRoot}/tree/${report.identity.dataset_tag}`;
   $("#dataset-card-link").href = `${datasetRoot}/blob/${report.identity.dataset_tag}/README.md`;
   $("#dataset-viewer-link").href = `${datasetRoot}/viewer/default/train`;
-  $("#task-copy").textContent = o.task;
   $("#stat-episodes").textContent = formatInteger(o.episodes);
   $("#stat-frames").textContent = formatInteger(o.frames);
   $("#stat-hours").textContent = o.duration_hours.toFixed(2);
