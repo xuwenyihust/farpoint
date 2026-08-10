@@ -28,7 +28,7 @@ def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
 
     assert spec["dataset_id"] == "farpoint_so101"
     assert spec["hf_repo_id"] == "wenyixu101/farpoint-so101"
-    assert spec["dataset_tag"] == "v0.0.2"
+    assert spec["dataset_tag"] == "v0.0.3"
     assert spec["dataset_schema"] == "farpoint.dataset.v3"
     assert spec["variation_schema"] == "farpoint.variation.v3"
     assert check_versions(SO101_RELEASE_SPEC) == []
@@ -40,6 +40,7 @@ def test_so101_changelog_keeps_published_version_history():
         encoding="utf-8"
     )
 
+    assert "## v0.0.3" in changelog
     assert "## v0.0.2" in changelog
     assert "## v0.0.1" in changelog
     assert "## v0.0.0" in changelog
