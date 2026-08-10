@@ -65,3 +65,27 @@ of Git.
 It does not start the 20,000-step run, select a checkpoint, evaluate validation
 or test, run Isaac Lab rollouts, publish a model, or upload training artifacts.
 Those are separate, evidence-gated steps after this smoke gate passes.
+
+## Short training pilot
+
+The deterministic pilot contract is
+`configs/training/so101_act_v0_0_3_pilot.json`. It trains on the same train-only
+view for 1,000 optimizer steps and saves checkpoints every 250 steps. It never
+pushes to the Hub or enables external experiment tracking.
+
+Run it in a detached DGX session from one exact reviewed commit:
+
+```bash
+FARPOINT_GIT_COMMIT=<40-character-commit> \
+  scripts/pilot_so101_act_training.sh act-v0.0.3-pilot-<git-sha>
+```
+
+After training, the wrapper scores all four checkpoints on 128 deterministic,
+evenly spaced frames from validation episodes `128:142`. It selects the lowest
+mean ACT training objective and requires at least 5% improvement relative to
+the first checkpoint. Test episodes `142:160` are excluded and recorded as such
+in the validation report.
+
+The resulting validation loss is a teacher-forced offline diagnostic. It can
+show that optimization is learning a held-out action mapping, but it is not a
+robot-task success rate. Isaac Lab rollouts remain a later, independent gate.

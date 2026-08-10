@@ -6,8 +6,10 @@ import pytest
 from farpoint.contracts import load_schema, validate_contract
 from farpoint.policy_training import (
     create_training_view,
+    evenly_spaced_indices,
     load_training_spec,
     parse_episode_slice,
+    select_validation_checkpoint,
     training_arguments,
     unflatten_episode_stats,
     validate_dataset_info,
@@ -16,6 +18,7 @@ from farpoint.policy_training import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "training" / "so101_act_v0_0_3_baseline.json"
+PILOT_CONFIG = ROOT / "configs" / "training" / "so101_act_v0_0_3_pilot.json"
 
 
 def test_frozen_act_contract_is_valid_and_partitions_all_episodes():
@@ -90,6 +93,49 @@ def test_episode_stats_unflatten_and_smoke_arguments_are_split_safe(tmp_path):
     assert episode_arg.startswith("--dataset.episodes=[0,1,2")
     assert episode_arg.endswith(",127]")
     assert ",128" not in episode_arg
+
+
+def test_pilot_contract_and_arguments_are_frozen_and_split_safe(tmp_path):
+    spec = load_training_spec(PILOT_CONFIG)
+    assert spec["pilot"]["steps"] == 1000
+    assert spec["pilot"]["save_freq"] == 250
+    assert spec["validation"]["split"] == "validation"
+    arguments = training_arguments(spec, tmp_path / "view", tmp_path / "out", "pilot")
+    assert "--steps=1000" in arguments
+    assert "--save_freq=250" in arguments
+    assert "--policy.push_to_hub=false" in arguments
+    episode_arg = next(arg for arg in arguments if arg.startswith("--dataset.episodes="))
+    assert episode_arg.endswith(",127]")
+    assert ",128" not in episode_arg
+
+
+def test_evenly_spaced_validation_indices_cover_boundaries_without_duplicates():
+    indices = evenly_spaced_indices(10164, 128)
+    assert len(indices) == len(set(indices)) == 128
+    assert indices[0] == 0
+    assert indices[-1] == 10163
+    assert indices == sorted(indices)
+    with pytest.raises(ValueError):
+        evenly_spaced_indices(3, 4)
+
+
+def test_validation_selection_requires_a_later_meaningful_improvement():
+    results = [
+        {"step": 250, "mean_loss": 10.0},
+        {"step": 500, "mean_loss": 8.0},
+        {"step": 750, "mean_loss": 8.5},
+    ]
+    best, improvement = select_validation_checkpoint(results, 0.05)
+    assert best["step"] == 500
+    assert improvement == pytest.approx(0.2)
+    with pytest.raises(ValueError, match="no later checkpoint"):
+        select_validation_checkpoint(
+            [{"step": 250, "mean_loss": 8.0}, {"step": 500, "mean_loss": 9.0}], 0
+        )
+    with pytest.raises(ValueError, match="below"):
+        select_validation_checkpoint(
+            [{"step": 250, "mean_loss": 10.0}, {"step": 500, "mean_loss": 9.8}], 0.05
+        )
 
 
 def test_training_image_preserves_ngc_cuda_torch_builds():

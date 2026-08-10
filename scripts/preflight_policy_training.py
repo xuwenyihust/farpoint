@@ -31,7 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--view-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--profile", choices=("smoke", "pilot", "training"), default="smoke")
     parser.add_argument("--run-act-step", action="store_true")
+    parser.add_argument("--run-profile", action="store_true")
     return parser.parse_args()
 
 
@@ -128,9 +130,12 @@ def main() -> int:
         if not torch.isfinite(value).all():
             raise RuntimeError(f"sample {feature} contains non-finite values")
 
-    command = training_arguments(spec, args.view_root, args.output_dir, "smoke")
+    if args.run_act_step and args.profile != "smoke":
+        raise ValueError("--run-act-step is retained only for the smoke profile")
+    should_run = args.run_act_step or args.run_profile
+    command = training_arguments(spec, args.view_root, args.output_dir, args.profile)
     return_code = None
-    if args.run_act_step:
+    if should_run:
         completed = subprocess.run(command, check=False)
         return_code = completed.returncode
         if return_code != 0:
@@ -168,12 +173,19 @@ def main() -> int:
             "av1_decoder": True,
         },
         "sample_shapes": sample_shapes,
-        "act_smoke": {
-            "requested": args.run_act_step,
+        "execution": {
+            "profile": args.profile,
+            "requested": should_run,
             "return_code": return_code,
             "command": command,
         },
     }
+    if args.profile == "smoke":
+        report["act_smoke"] = {
+            "requested": should_run,
+            "return_code": return_code,
+            "command": command,
+        }
     args.report.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.report.with_suffix(args.report.suffix + ".tmp")
     temporary.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
