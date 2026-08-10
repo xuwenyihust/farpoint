@@ -29,9 +29,10 @@ Build the independent ARM64 GPU image on the DGX Spark:
 scripts/build_so101_training_image.sh
 ```
 
-The image preserves the CUDA-enabled PyTorch and torchvision builds shipped in
-the pinned NVIDIA base image. A checked-in constraint prevents pip from
-silently replacing them with CPU-only ARM64 wheels while resolving LeRobot.
+The image uses NVIDIA's 26.01 CUDA base, whose PyTorch 2.10 pre-release is
+inside LeRobot 0.4.4's supported range. During the build it records the exact
+preinstalled torch and torchvision versions as pip constraints, preventing
+their replacement with CPU-only ARM64 wheels.
 
 Set writable storage roots if the repository cache is not appropriate:
 

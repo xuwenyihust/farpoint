@@ -1,5 +1,0 @@
-# Preserve the CUDA-enabled packages supplied by nvcr.io/nvidia/pytorch:26.03-py3.
-# Unconstrained pip otherwise replaces these pre-release NVIDIA builds with
-# CPU-only PyPI aarch64 wheels while resolving LeRobot.
-torch==2.11.0a0+a6c236b9fd.nv26.3.46836102
-torchvision==0.25.0a0+b7d91027.nv26.3.46836102

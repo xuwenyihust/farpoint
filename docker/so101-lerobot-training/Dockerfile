@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:26.03-py3
+FROM nvcr.io/nvidia/pytorch:26.01-py3
 
 ARG LEROBOT_VERSION=0.4.4
 
@@ -10,12 +10,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY docker/so101-lerobot-training/constraints.txt /opt/farpoint-training-constraints.txt
-
-RUN python -m pip install --no-cache-dir --pre \
+RUN python -c "import importlib.metadata as m, pathlib; pathlib.Path('/opt/farpoint-training-constraints.txt').write_text('torch==' + m.version('torch') + '\\ntorchvision==' + m.version('torchvision') + '\\n')" \
+    && python -m pip install --no-cache-dir --pre \
       --constraint /opt/farpoint-training-constraints.txt \
       "lerobot==${LEROBOT_VERSION}" \
-    && python -c "import av, importlib.metadata as m, torch; assert m.version('lerobot') == '${LEROBOT_VERSION}'; assert torch.version.cuda is not None; av.codec.Codec('av1', 'r')" \
+    && python -c "import av, importlib.metadata as m, torch; from packaging.version import Version; assert m.version('lerobot') == '${LEROBOT_VERSION}'; assert Version(m.version('torch')) < Version('2.11.0'); assert torch.version.cuda is not None; av.codec.Codec('av1', 'r')" \
     && python -m pip freeze > /opt/farpoint-training-python-freeze.txt
 
 LABEL org.opencontainers.image.title="Farpoint SO-101 LeRobot training" \
