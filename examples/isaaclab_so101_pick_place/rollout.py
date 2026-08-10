@@ -56,6 +56,7 @@ from farpoint.oracle import oriented_box_footprint_inside_target  # noqa: E402
 from farpoint.policy_rollout import (  # noqa: E402
     constrain_policy_action,
     evaluate_rollout_acceptance,
+    json_default,
     load_rollout_spec,
 )
 from farpoint.policy_training import canonical_sha256, file_sha256  # noqa: E402
@@ -82,7 +83,10 @@ def _numpy(value):
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(payload, default=json_default, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     temporary.replace(path)
 
 
@@ -318,7 +322,9 @@ def _run_episode(env, scene_spec, spec, root):
                 "gripper_released": released,
                 "cube_stable": stable,
             }
-            trace_file.write(json.dumps(trace_row, sort_keys=True) + "\n")
+            trace_file.write(
+                json.dumps(trace_row, default=json_default, sort_keys=True) + "\n"
+            )
             policy_steps += 1
             if policy_steps % control["policy_hz"] == 0:
                 trace_file.flush()
@@ -338,7 +344,11 @@ def _run_episode(env, scene_spec, spec, root):
             "exception_message": str(error),
         }
         _write_json(episode_root / "error.json", failure)
-        print(f"SO101_ACT_ROLLOUT_ERROR {json.dumps(failure, sort_keys=True)}", flush=True)
+        print(
+            "SO101_ACT_ROLLOUT_ERROR "
+            + json.dumps(failure, default=json_default, sort_keys=True),
+            flush=True,
+        )
         traceback.print_exc()
         raise
     finally:
@@ -452,7 +462,7 @@ def main() -> int:
         ),
     }
     _write_json(args_cli.output_root / "report.json", report)
-    print(json.dumps(report, indent=2), flush=True)
+    print(json.dumps(report, default=json_default, indent=2), flush=True)
     return 0 if report["status"] == "PASS" else 2
 
 

@@ -12,6 +12,13 @@ from farpoint.contracts import validate_contract
 from farpoint.so101 import LEROBOT_MAX, LEROBOT_MIN
 
 
+def json_default(value: Any) -> Any:
+    """Convert NumPy scalar values emitted by simulation into JSON scalars."""
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
+
+
 def load_rollout_spec(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     errors = validate_contract(payload)

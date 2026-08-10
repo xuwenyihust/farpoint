@@ -8,8 +8,16 @@ from farpoint.contracts import load_schema, validate_contract
 from farpoint.policy_rollout import (
     constrain_policy_action,
     evaluate_rollout_acceptance,
+    json_default,
     load_rollout_spec,
 )
+
+
+def test_json_default_converts_numpy_scalars_and_rejects_unknown_objects():
+    assert json.dumps({"flag": np.bool_(True)}, default=json_default) == '{"flag": true}'
+    assert json.dumps({"value": np.float32(1.25)}, default=json_default) == '{"value": 1.25}'
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        json.dumps({"value": object()}, default=json_default)
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -19,6 +19,14 @@ POLICY_PORT="${FARPOINT_ACT_POLICY_PORT:-8766}"
 CONTAINER_ASSET=/workspace/farpoint-assets/SO-ARM101-USD.usd
 CONTAINER_CHECKPOINT=/workspace/policy
 GIT_COMMIT="${FARPOINT_GIT_COMMIT:-}"
+ROLLOUT_ARGUMENTS=("$@")
+CONTAINER_OUTPUT_ROOT=""
+
+for ((argument_index = 0; argument_index < ${#ROLLOUT_ARGUMENTS[@]}; argument_index++)); do
+  if [[ "${ROLLOUT_ARGUMENTS[argument_index]}" == "--output-root" ]]; then
+    CONTAINER_OUTPUT_ROOT="${ROLLOUT_ARGUMENTS[argument_index + 1]:-}"
+  fi
+done
 
 if [[ ! "${GIT_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "FARPOINT_GIT_COMMIT must identify the exact 40-character source commit" >&2
@@ -28,6 +36,11 @@ if [[ -z "${CHECKPOINT}" || ! -s "${CHECKPOINT}/model.safetensors" ]]; then
   echo "FARPOINT_ACT_CHECKPOINT must name a complete pretrained_model directory" >&2
   exit 2
 fi
+if [[ "${CONTAINER_OUTPUT_ROOT}" != /workspace/farpoint-data/* ]]; then
+  echo "--output-root must be below /workspace/farpoint-data" >&2
+  exit 2
+fi
+HOST_OUTPUT_ROOT="${DATA_ROOT}/${CONTAINER_OUTPUT_ROOT#/workspace/farpoint-data/}"
 if [[ ! -f "${ASSET}" ]]; then
   python3 "${PROJECT_ROOT}/scripts/fetch_so101_assets.py" --destination "${ASSET}"
 fi
@@ -120,7 +133,7 @@ rollout_command=(
   --mode "${MODE}"
   --checkpoint "${CONTAINER_CHECKPOINT}"
   "${launcher_args[@]}"
-  "$@"
+  "${ROLLOUT_ARGUMENTS[@]}"
 )
 printf -v rollout_command_q '%q ' "${rollout_command[@]}"
 
@@ -128,5 +141,14 @@ set +e
 docker run "${docker_args[@]}" "${ISAAC_IMAGE}" "${rollout_command_q}"
 rollout_status=$?
 set -e
+if [[ ! -s "${HOST_OUTPUT_ROOT}/report.json" ]]; then
+  echo "rollout did not produce report.json" >&2
+  rollout_status=1
+else
+  report_status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "${HOST_OUTPUT_ROOT}/report.json")"
+  if [[ "${report_status}" != "PASS" ]]; then
+    rollout_status=2
+  fi
+fi
 echo "FARPOINT_ACT_ROLLOUT_EXIT status=${rollout_status}" >&2
 exit "${rollout_status}"

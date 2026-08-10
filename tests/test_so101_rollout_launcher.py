@@ -26,6 +26,8 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
         "fi\n"
         "if [[ \"$1\" == run && \"$2\" == -d ]]; then touch \"$TEST_POLICY_STARTED\"; echo policy-container; exit 0; fi\n"
         "if [[ \"$1\" == inspect || \"$1\" == logs || \"$1\" == stop ]]; then exit 0; fi\n"
+        "mkdir -p \"$TEST_REPORT_ROOT\"\n"
+        "printf '%s\\n' '{\"status\":\"PASS\"}' > \"$TEST_REPORT_ROOT/report.json\"\n"
         "for final_arg in \"$@\"; do :; done\n"
         "printf '%s\\n' \"${final_arg}\"\n",
         encoding="utf-8",
@@ -49,6 +51,7 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
         "FARPOINT_ACT_CHECKPOINT": str(checkpoint),
         "FARPOINT_GIT_COMMIT": "a" * 40,
         "TEST_POLICY_STARTED": str(tmp_path / "policy-started"),
+        "TEST_REPORT_ROOT": str(tmp_path / "data" / "run"),
     }
     completed = subprocess.run(
         [
