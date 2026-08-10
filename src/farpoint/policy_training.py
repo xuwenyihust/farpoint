@@ -43,6 +43,7 @@ def load_training_spec(path: Path) -> dict[str, Any]:
     if errors:
         raise ValueError("invalid policy training contract:\n" + "\n".join(errors))
     validate_split_partition(payload)
+    validate_training_profiles(payload)
     return payload
 
 
@@ -55,6 +56,25 @@ def validate_split_partition(spec: dict[str, Any]) -> None:
     expected_total = spec["dataset"]["expected"]["total_episodes"]
     if len(flat) != expected_total or sorted(flat) != list(range(expected_total)):
         raise ValueError("train, validation, and test must partition all episode indices exactly")
+
+
+def validate_training_profiles(spec: dict[str, Any]) -> None:
+    if "pilot" not in spec and "validation" not in spec:
+        return
+    if "pilot" not in spec or "validation" not in spec:
+        raise ValueError("pilot and validation must be configured together")
+    pilot = spec["pilot"]
+    save_freq = pilot.get("save_freq")
+    if not pilot["save_checkpoint"] or save_freq is None:
+        raise ValueError("pilot must save checkpoints at a fixed frequency")
+    if pilot["steps"] % save_freq != 0:
+        raise ValueError("pilot steps must be divisible by save_freq")
+    if pilot["steps"] // save_freq < 2:
+        raise ValueError("pilot must produce at least two checkpoints")
+    validation = spec["validation"]
+    available_frames = spec["dataset"]["expected"]["selected_frames"][validation["split"]]
+    if validation["sample_count"] > available_frames:
+        raise ValueError("validation sample_count exceeds available split frames")
 
 
 def validate_dataset_info(spec: dict[str, Any], info: dict[str, Any]) -> None:
@@ -133,7 +153,7 @@ def create_training_view(
 def training_arguments(
     spec: dict[str, Any], dataset_root: Path, output_dir: Path, profile: str
 ) -> list[str]:
-    if profile not in {"training", "smoke"}:
+    if profile not in spec or profile not in {"training", "pilot", "smoke"}:
         raise ValueError(f"unsupported training profile: {profile}")
     run = spec[profile]
     episodes = parse_episode_slice(spec["dataset"]["splits"]["train"])
@@ -160,3 +180,43 @@ def training_arguments(
     if run.get("save_freq") is not None:
         arguments.append(f"--save_freq={run['save_freq']}")
     return arguments
+
+
+def evenly_spaced_indices(length: int, sample_count: int) -> list[int]:
+    """Return deterministic, unique indices spanning an entire sequence."""
+    if length < 1:
+        raise ValueError("length must be positive")
+    if sample_count < 1:
+        raise ValueError("sample_count must be positive")
+    if sample_count > length:
+        raise ValueError("sample_count cannot exceed length")
+    if sample_count == 1:
+        return [length // 2]
+    return [round(index * (length - 1) / (sample_count - 1)) for index in range(sample_count)]
+
+
+def select_validation_checkpoint(
+    checkpoints: list[dict[str, Any]], minimum_relative_improvement: float
+) -> tuple[dict[str, Any], float]:
+    """Select the lowest-loss checkpoint and enforce a meaningful pilot trend."""
+    if len(checkpoints) < 2:
+        raise ValueError("at least two validation checkpoints are required")
+    if not 0 <= minimum_relative_improvement < 1:
+        raise ValueError("minimum_relative_improvement must be in [0, 1)")
+    ordered = sorted(checkpoints, key=lambda result: int(result["step"]))
+    losses = [float(result["mean_loss"]) for result in ordered]
+    if not np.isfinite(losses).all():
+        raise ValueError("validation losses must all be finite")
+    first = losses[0]
+    if first <= 0:
+        raise ValueError("first validation loss must be positive")
+    best = min(ordered, key=lambda result: float(result["mean_loss"]))
+    improvement = (first - float(best["mean_loss"])) / first
+    if int(best["step"]) <= int(ordered[0]["step"]):
+        raise ValueError("no later checkpoint improves on the first checkpoint")
+    if improvement < minimum_relative_improvement:
+        raise ValueError(
+            f"relative validation improvement {improvement:.6f} is below "
+            f"{minimum_relative_improvement:.6f}"
+        )
+    return best, improvement

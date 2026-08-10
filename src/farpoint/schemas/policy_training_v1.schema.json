@@ -73,6 +73,19 @@
       "properties": {"type": {"const": "act"}, "device": {"const": "cuda"}}
     },
     "training": {"$ref": "#/$defs/run"},
+    "pilot": {"$ref": "#/$defs/run"},
+    "validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["split", "sample_count", "batch_size", "num_workers", "seed", "minimum_relative_improvement"],
+      "properties": {
+        "split": {"const": "validation"},
+        "sample_count": {"type": "integer", "minimum": 2},
+        "batch_size": {"type": "integer", "minimum": 1},
+        "num_workers": {"type": "integer", "minimum": 0},
+        "seed": {"type": "integer", "minimum": 0},
+        "minimum_relative_improvement": {"type": "number", "minimum": 0, "exclusiveMaximum": 1}
+      }
+    },
     "smoke": {"$ref": "#/$defs/run"}
   },
   "$defs": {
