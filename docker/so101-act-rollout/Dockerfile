@@ -7,7 +7,8 @@ RUN /isaac-sim/python.sh -c "import importlib.metadata as m, pathlib; pathlib.Pa
     && /isaac-sim/python.sh -m pip install --no-cache-dir --pre \
       --constraint /opt/farpoint-rollout-constraints.txt \
       "lerobot==${LEROBOT_VERSION}" \
-    && /isaac-sim/python.sh -c "import av, importlib.metadata as m, torch; assert m.version('lerobot') == '${LEROBOT_VERSION}'; assert torch.version.cuda is not None; av.codec.Codec('libx264', 'w')" \
+    && /isaac-sim/python.sh -m pip install --no-cache-dir --ignore-installed "pillow==12.1.0" \
+    && /isaac-sim/python.sh -c "import av, importlib.metadata as m, PIL, torch; assert m.version('lerobot') == '${LEROBOT_VERSION}'; assert m.version('pillow') == '12.1.0'; assert '/isaac-sim/kit/python/lib/' in PIL.__file__; assert torch.version.cuda is not None; av.codec.Codec('libx264', 'w')" \
     && /isaac-sim/python.sh -m pip freeze > /opt/farpoint-rollout-python-freeze.txt
 
 LABEL org.opencontainers.image.title="Farpoint SO-101 ACT rollout" \
