@@ -1,5 +1,6 @@
 import json
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
@@ -8,8 +9,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from export_lerobot_dataset import _so101_sidecar, export_dataset
+from farpoint.campaign import create_segment
+from farpoint.episode_v4 import build_so101_episode_v4
 from farpoint.scene_entities import bind_scene_entities
 from farpoint.so101 import SIM_JOINT_NAMES, radians_to_lerobot
+from farpoint.v010_pilot import (
+    build_v010_integration_pilot_plan,
+    load_v010_pilot_config,
+)
 
 
 class FakeLeRobotDataset:
@@ -120,18 +127,117 @@ def _episode(root, metadata):
     root.mkdir()
     (root / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
     (root / "metrics.json").write_text(json.dumps({"success": True, "dataset_valid": True}), encoding="utf-8")
+    camera_features = [
+        camera if isinstance(camera, str) else camera["feature_key"]
+        for camera in metadata["recording"]["cameras"]
+    ]
     rows = []
     for index in range(2):
         cameras = (("front", (255, 0, 0)),)
-        if "observation.images.wrist" in metadata["recording"]["cameras"]:
+        if "observation.images.wrist" in camera_features:
             cameras += (("wrist", (0, 255, 0)),)
         for name, color in cameras:
             Image.new("RGB", (8, 6), color=color).save(root / f"{name}-{index}.png")
         row = {"frame": index, "timestamp_seconds": index / 30, "rgb_path": f"front-{index}.png", "joint_names": list(SIM_JOINT_NAMES), "joint_positions": [0.0] * 6, "action_joint_positions": [0.1] * 6}
-        if "observation.images.wrist" in metadata["recording"]["cameras"]:
+        if "observation.images.wrist" in camera_features:
             row["wrist_rgb_path"] = f"wrist-{index}.png"
         rows.append(row)
     (root / "observations.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+
+def _metadata_v4():
+    config = load_v010_pilot_config(
+        Path(__file__).resolve().parents[1]
+        / "configs/variations/so101_v010_integration_pilot.json"
+    )
+    plan = build_v010_integration_pilot_plan(
+        config, pilot_id="so101-v010-export-fixture"
+    )
+    campaign = plan["campaign_contract"]
+    segment = create_segment(
+        {
+            "campaign_id": campaign["campaign_id"],
+            "campaign_sha256": campaign["campaign_sha256"],
+            "segment_id": "segment-000",
+            "segment_index": 0,
+            "git_commit": "a" * 40,
+            "plan_sha256": plan["plan_sha256"],
+            "parent_manifest_sha256": None,
+            "oracle_profile_allowlist": [plan["oracle_profile_id"]],
+            "execution_status": "RUNNING",
+            "quality_status": "NOT_EVALUATED",
+            "attempts": [],
+        }
+    )
+
+    def camera(camera_id):
+        return {
+            "camera_id": camera_id,
+            "feature_key": f"observation.images.{camera_id}",
+            "width": 640,
+            "height": 480,
+            "config_version": "so101-front-wrist-v1",
+            "config_sha256": "c" * 64,
+            "calibration": {"model": "pinhole"},
+            "mount_transform": {
+                "parent_frame": "isaac_world",
+                "position_m": [0.0, 0.0, 0.0],
+                "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+            },
+            "frame_timestamp_source": "simulation_control_tick",
+            "video_artifact": {
+                "path": f"videos/{camera_id}.mp4",
+                "container": "mp4",
+                "codec": "h264",
+                "frame_count": 2,
+                "width": 640,
+                "height": 480,
+                "fps": 30,
+                "size_bytes": 100,
+                "sha256": "d" * 64,
+                "decode_verified": True,
+            },
+        }
+
+    trial = plan["trials"][0]
+    return build_so101_episode_v4(
+        episode_id="episode-v4-export",
+        campaign=campaign,
+        segment=segment,
+        plan=plan,
+        trial=trial,
+        attempt_seed=123,
+        git_commit="a" * 40,
+        simulator_image_digest="sha256:" + "b" * 64,
+        resolved_object=deepcopy(trial["resolved"]),
+        target=plan["target"],
+        table=plan["table"],
+        camera_records=[camera("front"), camera("wrist")],
+        embodiment={
+            "robot": "so101",
+            "gripper": "so101_jaw",
+            "arm_dof": 5,
+            "gripper_dof": 1,
+            "joint_mapping": {
+                "sim_joint_names": list(SIM_JOINT_NAMES),
+                "joint_order": [
+                    "shoulder_pan.pos",
+                    "shoulder_lift.pos",
+                    "elbow_flex.pos",
+                    "wrist_flex.pos",
+                    "wrist_roll.pos",
+                    "gripper.pos",
+                ],
+            },
+        },
+        frame_count=2,
+        control_hz=120,
+        success=True,
+        dataset_valid=True,
+        failure_category=None,
+        failure_reason=None,
+        physics_audit={"mass": {"verified": True}},
+    )
 
 
 def test_export_so101_v0_writes_six_dof_and_front_camera_only(tmp_path):
@@ -166,6 +272,46 @@ def test_export_so101_retains_dual_camera_compatibility(tmp_path):
 
     export_dataset(manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset)
     assert FakeLeRobotDataset.last_instance.frames[0]["observation.images.wrist"].shape == (6, 8, 3)
+
+
+def test_export_so101_episode_v4_uses_dual_camera_six_dof_path(tmp_path):
+    metadata = _metadata_v4()
+    source = tmp_path / "episode-v4-export"
+    _episode(source, metadata)
+    manifest = tmp_path / "selection.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "dataset_id": "so101-v4-dual-camera-fixture",
+                "episodes": [
+                    {
+                        "episode_dir": str(source),
+                        "trial_id": "trial-v4",
+                        "split": "train",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = export_dataset(
+        manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset
+    )
+
+    features = FakeLeRobotDataset.last_instance.kwargs["features"]
+    assert features["observation.state"]["shape"] == (6,)
+    assert features["action"]["shape"] == (6,)
+    assert "observation.images.front" in features
+    assert "observation.images.wrist" in features
+    assert FakeLeRobotDataset.last_instance.frames[0][
+        "observation.images.wrist"
+    ].shape == (6, 8, 3)
+    sidecar = json.loads((output / "meta/farpoint_v3.json").read_text())
+    assert sidecar["contracts"]["episode"] == "farpoint.episode.v4"
+    assert sidecar["splits"] == {"train": 1, "validation": 0, "test": 0}
+    assert sidecar["recording"]["recording_stride"] == 4
 
 
 def test_export_so101_indexes_generic_scene_entities_without_policy_features(tmp_path):

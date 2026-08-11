@@ -259,6 +259,78 @@ def _campaign_directories(roots: Iterable[Path]) -> tuple[Path, ...]:
     return tuple(sorted(found))
 
 
+def _campaign_segment_progress(root: Path, campaign: dict[str, Any]) -> dict[str, Any] | None:
+    """Aggregate immutable segment manifests by exact campaign quota identity."""
+    index_path = root / "evidence-index.json"
+    if not index_path.is_file():
+        return None
+    try:
+        index = _read_json(index_path)
+    except (OSError, ValueError):
+        return None
+    quota_fields = (
+        "object_variant_id",
+        "yaw_stratum_id",
+        "region_band",
+        "split",
+        "quota_ordinal",
+    )
+    selected_quotas = set()
+    completed_attempts = 0
+    segment_rows = []
+
+    def evidence_path(value: Any) -> Path:
+        relative = Path(str(value))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("invalid campaign evidence path")
+        resolved = (root / relative).resolve()
+        if resolved != root and root not in resolved.parents:
+            raise ValueError("campaign evidence path escapes root")
+        return resolved
+
+    for entry in index.get("segments") or []:
+        try:
+            segment_path = evidence_path(entry["segment"])
+            plan_path = evidence_path(entry["plan"])
+            manifest_path = evidence_path(entry["manifest"])
+            segment = _read_json(segment_path)
+            plan = _read_json(plan_path)
+            manifest = _read_json(manifest_path)
+        except (KeyError, OSError, ValueError):
+            continue
+        trials = {
+            trial["variation_id"]: trial for trial in plan.get("trials") or []
+        }
+        completed_attempts += len(manifest.get("attempts") or [])
+        for variation_id in (manifest.get("selected_variations") or {}):
+            trial = trials.get(variation_id) or {}
+            if all(field in trial for field in quota_fields):
+                selected_quotas.add(tuple(trial[field] for field in quota_fields))
+        segment_rows.append(
+            {
+                "segment_id": segment.get("segment_id"),
+                "segment_index": segment.get("segment_index"),
+                "git_commit": segment.get("git_commit"),
+                "plan_sha256": plan.get("plan_sha256"),
+                "execution_status": manifest.get("execution_status"),
+                "quality_status": manifest.get("quality_status"),
+                "completed_attempts": len(manifest.get("attempts") or []),
+                "successful_episodes": len(manifest.get("selected_variations") or {}),
+                "manifest_path": str(manifest_path),
+            }
+        )
+    return {
+        "completed_attempts": completed_attempts,
+        "successful_episodes": len(selected_quotas),
+        "target_successful_episodes": int(
+            (campaign.get("target") or {}).get("successful_episodes", 0)
+        ),
+        "segments": sorted(
+            segment_rows, key=lambda row: int(row.get("segment_index") or 0)
+        ),
+    }
+
+
 @dataclass(frozen=True)
 class CampaignDashboardIndex:
     roots: tuple[Path, ...]
@@ -285,27 +357,46 @@ class CampaignDashboardIndex:
                 and (not isinstance(heartbeat, (int, float)) or now - float(heartbeat) > self.stale_after_seconds)
             )
             target = campaign.get("target") or {}
+            aggregate = _campaign_segment_progress(root, campaign)
+            completed_attempts = int(status.get("completed_attempts", 0))
+            successful_episodes = int(status.get("successful_episodes", 0))
+            target_successes = int(
+                status.get(
+                    "target_successful_episodes",
+                    target.get("successful_episodes", 0),
+                )
+            )
+            execution_status = status.get("execution_status", "NOT_STARTED")
+            quality_status = status.get("quality_status", "NOT_EVALUATED")
+            if aggregate is not None:
+                completed_attempts = aggregate["completed_attempts"]
+                successful_episodes = aggregate["successful_episodes"]
+                target_successes = aggregate["target_successful_episodes"]
+                if execution_status == "FINISHED" and successful_episodes < target_successes:
+                    execution_status = "PAUSED"
+                    quality_status = "NOT_EVALUATED"
+                elif (
+                    execution_status == "FINISHED"
+                    and successful_episodes == target_successes
+                    and quality_status == "PASS"
+                ):
+                    quality_status = "PASS"
             rows.append(
                 {
                     "campaign_id": campaign.get("campaign_id") or root.name,
                     "campaign_version": campaign.get("campaign_version"),
                     "campaign_kind": campaign.get("campaign_kind"),
                     "task_id": campaign.get("task_id"),
-                    "execution_status": "STALE" if stale else status.get("execution_status", "NOT_STARTED"),
-                    "quality_status": status.get("quality_status", "NOT_EVALUATED"),
+                    "execution_status": "STALE" if stale else execution_status,
+                    "quality_status": quality_status,
                     "heartbeat_unix": heartbeat,
                     "started_unix": status.get("started_unix"),
                     "updated_unix": status.get("updated_unix"),
                     "started_at": _iso_timestamp(status.get("started_unix")),
                     "updated_at": _iso_timestamp(status.get("updated_unix")),
-                    "completed_attempts": int(status.get("completed_attempts", 0)),
-                    "successful_episodes": int(status.get("successful_episodes", 0)),
-                    "target_successful_episodes": int(
-                        status.get(
-                            "target_successful_episodes",
-                            target.get("successful_episodes", 0),
-                        )
-                    ),
+                    "completed_attempts": completed_attempts,
+                    "successful_episodes": successful_episodes,
+                    "target_successful_episodes": target_successes,
                     "active_attempt_id": status.get("active_attempt_id"),
                     "segment_id": status.get("segment_id"),
                     "stale": stale,
@@ -347,6 +438,7 @@ class CampaignDashboardIndex:
 
     def campaign_detail(self, campaign_id: str) -> dict[str, Any]:
         root = self.campaign_root(campaign_id)
+        campaign = _read_json(root / "campaign.json")
         segments = []
         for path in sorted((root / "segments").glob("*/segment.json")):
             try:
@@ -354,9 +446,10 @@ class CampaignDashboardIndex:
             except (OSError, ValueError):
                 continue
         return {
-            "campaign": _read_json(root / "campaign.json"),
+            "campaign": campaign,
             "status": _read_json(root / "status.json") if (root / "status.json").is_file() else None,
             "segments": segments,
+            "aggregate": _campaign_segment_progress(root, campaign),
         }
 
     def segment_detail(self, campaign_id: str, segment_id: str) -> dict[str, Any]:

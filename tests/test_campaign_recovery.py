@@ -2,6 +2,7 @@ from copy import deepcopy
 
 from farpoint.campaign import canonical_sha256, create_campaign, create_segment
 from farpoint.campaign_recovery import (
+    build_campaign_export_selection,
     build_replacement_requests,
     create_continuation_segment,
     diagnostic_clusters,
@@ -287,7 +288,7 @@ def test_continuation_binds_exact_parent_manifest_hash_and_next_index():
     assert continuation["git_commit"] == "abcdef2"
 
 
-def test_campaign_reuses_parent_successes_and_completes_from_continuation():
+def test_campaign_reuses_parent_successes_and_completes_from_continuation(tmp_path):
     campaign = _campaign()
     parent_plan = _plan(campaign)
     parent_manifest = create_manifest(
@@ -364,6 +365,31 @@ def test_campaign_reuses_parent_successes_and_completes_from_continuation():
         "attempted_count": 5,
         "segment_count": 2,
     }
+    selection = build_campaign_export_selection(
+        campaign,
+        [
+            {
+                "segment": parent_segment,
+                "plan": parent_plan,
+                "manifest": parent_manifest,
+                "episodes_root": str(tmp_path / "parent-episodes"),
+            },
+            {
+                "segment": continuation_segment,
+                "plan": continuation_plan,
+                "manifest": continuation_manifest,
+                "episodes_root": str(tmp_path / "continuation-episodes"),
+            },
+        ],
+        dataset_id="farpoint-so101",
+    )
+    assert selection["schema_version"] == "farpoint.export-selection.v1"
+    assert len(selection["episodes"]) == 2
+    assert {row["segment_id"] for row in selection["episodes"]} == {
+        "segment-000",
+        "segment-001",
+    }
+    assert all(row["split"] == "train" for row in selection["episodes"])
 
 
 def test_diagnostic_clusters_use_distinct_variations():

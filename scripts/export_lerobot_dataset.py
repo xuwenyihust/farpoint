@@ -178,14 +178,29 @@ SO101_CAMERA_ROW_KEYS = {
 
 
 def _so101_cameras(records: list[dict[str, Any]]) -> list[str]:
-    cameras = list(records[0]["recording"]["cameras"])
+    def features(record):
+        values = []
+        for camera in record["recording"]["cameras"]:
+            feature = (
+                camera
+                if isinstance(camera, str)
+                else camera.get("feature_key")
+                if isinstance(camera, dict)
+                else None
+            )
+            if not feature:
+                raise ValueError("SO-101 camera records must define feature_key")
+            values.append(feature)
+        return values
+
+    cameras = features(records[0])
     if "observation.images.front" not in cameras:
         raise ValueError("SO-101 episodes must include observation.images.front")
     unsupported = sorted(set(cameras).difference(SO101_CAMERA_ROW_KEYS))
     if unsupported:
         raise ValueError(f"unsupported SO-101 camera features: {unsupported}")
     for record in records[1:]:
-        if list(record["recording"]["cameras"]) != cameras:
+        if features(record) != cameras:
             raise ValueError("SO-101 episodes must use the same ordered camera features")
         for key in ("control_hz", "recording_stride"):
             if record["recording"].get(key) != records[0]["recording"].get(key):
@@ -203,6 +218,13 @@ def _so101_sidecar(
     cameras: list[str],
 ) -> dict[str, Any]:
     first = records[0]
+    control_hz = first["recording"].get("control_hz", fps)
+    recording_stride = first["recording"].get("recording_stride")
+    if recording_stride is None:
+        ratio = float(control_hz) / float(fps)
+        if not ratio.is_integer():
+            raise ValueError("SO-101 control_hz must be an integer multiple of fps")
+        recording_stride = int(ratio)
     tasks = {record["task"]["task_id"]: record["task"] for record in records}
     episode_scene_metadata = []
     for record in records:
@@ -249,8 +271,8 @@ def _so101_sidecar(
         },
         "recording": {
             "fps": fps,
-            "control_hz": first["recording"].get("control_hz", fps),
-            "recording_stride": first["recording"].get("recording_stride", 1),
+            "control_hz": control_hz,
+            "recording_stride": recording_stride,
             "cameras": cameras,
             "image_width": width,
             "image_height": height,
@@ -262,7 +284,14 @@ def _so101_sidecar(
         },
         "joint_mapping": first["embodiment"]["joint_mapping"],
         "episode_scene_metadata": episode_scene_metadata,
-        "contracts": {"episode": "farpoint.episode.v3", "variation": "farpoint.variation.v3"},
+        "contracts": {
+            "episode": first["schema_version"],
+            "variation": (
+                "farpoint.variation.v3"
+                if first["schema_version"] == "farpoint.episode.v3"
+                else "farpoint.episode.v4#variation"
+            ),
+        },
     }
     if selection_policy:
         sidecar["selection_policy"] = selection_policy
@@ -277,9 +306,12 @@ def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
     first_front = _read_rgb(first_dir, first_rows[0], "rgb_path")
     height, width = first_front.shape[:2]
     fps = infer_fps(first_rows)
+    episode_schema = loaded[0][2].get("schema_version")
+    if episode_schema not in {"farpoint.episode.v3", "farpoint.episode.v4"}:
+        raise ValueError("unsupported SO-101 episode contract")
     records = []
     for index, (entry, episode_dir, metadata, rows, metrics) in enumerate(loaded):
-        if metadata.get("schema_version") != "farpoint.episode.v3":
+        if metadata.get("schema_version") != episode_schema:
             raise ValueError("SO-101 export cannot mix episode contract versions")
         if infer_fps(rows) != fps:
             raise ValueError(f"episode has a different recording rate: {episode_dir}")
@@ -386,7 +418,10 @@ def export_dataset(
             raise ValueError(f"release selection contains an unsuccessful episode: {episode_dir}")
         loaded.append((entry, episode_dir, metadata, observations, metrics))
 
-    if loaded[0][2].get("schema_version") == "farpoint.episode.v3":
+    if loaded[0][2].get("schema_version") in {
+        "farpoint.episode.v3",
+        "farpoint.episode.v4",
+    }:
         return _export_so101_dataset(manifest, output_dir, loaded, dataset_class)
 
     from PIL import Image
