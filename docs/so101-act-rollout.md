@@ -1,19 +1,25 @@
 # SO-101 ACT closed-loop rollout
 
-The first rollout gate evaluates the 1,000-step ACT pilot checkpoint in the
-same Isaac Lab SO-101 environment used to generate the demonstrations. Its
-frozen contract is
-`configs/evaluations/so101_act_v0_0_3_rollout_smoke.json`.
+The rollout gate evaluates saved ACT checkpoints in the same Isaac Lab SO-101
+environment used to generate the demonstrations. The immutable contracts are:
+
+- `configs/evaluations/so101_act_v0_0_3_rollout_smoke.json` for the 1,000-step
+  pilot checkpoint;
+- `configs/evaluations/so101_act_v0_0_3_baseline_20k_rollout_smoke.json` for
+  the validation-selected 20,000-step baseline checkpoint.
+
+Both contracts use the same five scenes, seeds, control limits, and acceptance
+criteria so their closed-loop results can be compared directly.
 
 ## Scope
 
-This is an interface smoke, not a policy benchmark. It freezes five new scene
+This is an interface smoke, not a policy benchmark. It freezes five scene
 seeds spanning position, size, color, mass, and yaw. All five episodes must
 finish with finite actions and no calibrated hard-range violation. Task success
 and stage progress are measured, but the minimum required success count is zero
-because the checkpoint saw only 1,000 optimizer steps (about 0.086 train
-epochs). Raising a task-success threshold belongs to a later benchmark spec and
-must not mutate this smoke after observing its results.
+to preserve comparability with the original 1,000-step smoke. Raising a
+task-success threshold belongs to a later benchmark spec and must not mutate
+either smoke after observing its results.
 
 The suite consumes no dataset rows. The training and validation episode ranges
 are provenance only; test episodes `142:160` remain explicitly excluded.
@@ -63,5 +69,4 @@ scripts/run_so101_act_rollout.sh headless \
 ```
 
 Generated videos, traces, checkpoints, and reports remain outside Git. A PASS
-does not authorize longer training, model publication, or a formal rollout
-benchmark.
+does not authorize model publication or a formal rollout benchmark.
