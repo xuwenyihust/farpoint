@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import io
 import json
 import os
 import signal
@@ -102,10 +103,24 @@ def parse_args():
         default=PROJECT_ROOT / "configs/cameras/so101_front_wrist_v1.json",
         help="Versioned dual-camera profile used by v0.1.0 collection and diagnostics.",
     )
+    parser.add_argument(
+        "--campaign-root",
+        type=Path,
+        help="Campaign directory for atomic status, heartbeat, preview, and events.",
+    )
+    parser.add_argument("--campaign-id")
+    parser.add_argument("--segment-id")
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
     if args.require_dual_camera:
         args.enable_wrist_camera = True
+    campaign_values = (args.campaign_root, args.campaign_id, args.segment_id)
+    if any(value is not None for value in campaign_values) and not all(
+        value is not None for value in campaign_values
+    ):
+        parser.error(
+            "--campaign-root, --campaign-id, and --segment-id must be provided together"
+        )
     args.headless = resolve_headless_mode(
         args.mode,
         args.livestream,
@@ -135,6 +150,7 @@ from farpoint.camera_profiles import (  # noqa: E402
     load_camera_profile,
     resolved_mounts_from_profile,
 )
+from farpoint.campaign_live import LiveCampaignPublisher  # noqa: E402
 from farpoint.control import (  # noqa: E402
     advance_so101_slow_close_target,
     bounded_position_target,
@@ -1562,6 +1578,7 @@ def run_attempt(
     git_commit: str,
     collection_id: str,
     camera_profile=None,
+    live_publisher=None,
 ):
     from farpoint.so101_mass_feasibility import audit_resolved_mass
 
@@ -2746,6 +2763,12 @@ def run_attempt(
                 if args_cli.enable_wrist_camera
                 else None
             )
+            if live_publisher is not None and live_publisher.preview_due():
+                preview = io.BytesIO()
+                Image.fromarray(front, mode="RGB").save(
+                    preview, format="JPEG", quality=75, optimize=False
+                )
+                live_publisher.publish_preview(preview.getvalue())
             row = _write_frame(
                 root,
                 frame,
@@ -3080,6 +3103,20 @@ def main():
     # Persist RUNNING before Isaac environment construction. A SIGINT/SIGTERM
     # during the expensive RTX startup must still leave a terminal manifest.
     write_manifest(args_cli.manifest, manifest)
+    live_publisher = None
+    if args_cli.campaign_root is not None:
+        live_publisher = LiveCampaignPublisher(
+            args_cli.campaign_root,
+            args_cli.campaign_id,
+            args_cli.segment_id,
+        )
+        live_publisher.start(
+            payload={
+                "collection_id": manifest["collection_id"],
+                "target_successful_episodes": int(manifest["required_successes"]),
+                "git_commit": os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+            }
+        )
     previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
     signal.signal(signal.SIGTERM, raise_collection_signal_abort)
@@ -3179,6 +3216,10 @@ def main():
             if attempt is None:
                 break
             active_attempt = attempt
+            if live_publisher is not None:
+                live_publisher.attempt_started(
+                    attempt["attempt_id"], attempt["variation_id"]
+                )
             try:
                 episode_id, success, valid, category, reason = run_attempt(
                     env,
@@ -3187,6 +3228,7 @@ def main():
                     os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
                     manifest["collection_id"],
                     camera_profile,
+                    live_publisher,
                 )
             except Exception as error:
                 details = traceback.format_exc()
@@ -3239,6 +3281,15 @@ def main():
                 )
             record_attempt(manifest, plan, attempt, episode_id=episode_id, success=success, dataset_valid=valid, failure_category=category, failure_reason=reason)
             write_manifest(args_cli.manifest, manifest)
+            if live_publisher is not None:
+                live_publisher.attempt_completed(
+                    attempt_id=attempt["attempt_id"],
+                    variation_id=attempt["variation_id"],
+                    success=success,
+                    dataset_valid=valid,
+                    episode_id=episode_id,
+                    failure_reason=reason,
+                )
             print(f"SO101_ATTEMPT {attempt['attempt_id']} success={success} phase={category or 'complete'}", flush=True)
             active_attempt = None
             if watchdog_policy is not None:
@@ -3272,6 +3323,14 @@ def main():
         raise
     finally:
         signal.signal(signal.SIGTERM, previous_sigterm_handler)
+        if live_publisher is not None:
+            execution_status = manifest.get("execution_status")
+            live_publisher.finish(
+                execution_status=(
+                    "FINISHED" if execution_status == "FINISHED" else "PAUSED"
+                ),
+                quality_status=manifest.get("quality_status", "NOT_EVALUATED"),
+            )
         if env is not None:
             env.close()
         simulation_app.close()

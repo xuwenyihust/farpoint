@@ -20,6 +20,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from data_platform_cli import build_reports  # noqa: E402
+from farpoint.campaign_live import CampaignDashboardIndex  # noqa: E402
 from farpoint.registry import EpisodeRegistry  # noqa: E402
 from farpoint.retention import RetentionManager  # noqa: E402
 
@@ -181,6 +182,7 @@ class PlatformState:
         scan_interval,
         incomplete_timeout,
         episode_roots=None,
+        campaign_roots=None,
     ):
         self.registry = EpisodeRegistry(
             outputs_root,
@@ -188,6 +190,9 @@ class PlatformState:
             episode_roots=episode_roots,
         )
         self.retention = RetentionManager(self.registry)
+        self.campaigns = CampaignDashboardIndex(
+            campaign_roots or [], stale_after_seconds=60
+        )
         self.scan_interval = scan_interval
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -256,6 +261,46 @@ class PlatformHandler(BaseHTTPRequestHandler):
                     else None
                 )
             self._json({"episodes": rows, "count": len(rows)})
+        elif parsed.path == "/api/live-runs":
+            self._json({"live_runs": self.state.campaigns.live_runs()})
+        elif parsed.path == "/api/collections":
+            self._json({"collections": self.state.campaigns.collections()})
+        elif parsed.path == "/api/events":
+            self._serve_campaign_events(parsed)
+        elif (
+            parsed.path.startswith("/api/campaigns/")
+            and parsed.path.endswith("/active-preview")
+        ):
+            campaign_id = unquote(
+                parsed.path.removeprefix("/api/campaigns/").removesuffix(
+                    "/active-preview"
+                )
+            )
+            try:
+                self._serve_file(
+                    self.state.campaigns.campaign_root(campaign_id)
+                    / "active-preview.jpg"
+                )
+            except FileNotFoundError:
+                self.send_error(HTTPStatus.NOT_FOUND)
+        elif (
+            parsed.path.startswith("/api/campaigns/")
+            and "/segments/" in parsed.path
+        ):
+            relative = parsed.path.removeprefix("/api/campaigns/")
+            campaign_id, segment_id = map(unquote, relative.split("/segments/", 1))
+            try:
+                self._json(
+                    self.state.campaigns.segment_detail(campaign_id, segment_id)
+                )
+            except FileNotFoundError:
+                self.send_error(HTTPStatus.NOT_FOUND)
+        elif parsed.path.startswith("/api/campaigns/"):
+            campaign_id = unquote(parsed.path.removeprefix("/api/campaigns/"))
+            try:
+                self._json(self.state.campaigns.campaign_detail(campaign_id))
+            except FileNotFoundError:
+                self.send_error(HTTPStatus.NOT_FOUND)
         elif (
             parsed.path.startswith("/api/episodes/")
             and parsed.path.endswith("/preview")
@@ -302,6 +347,28 @@ class PlatformHandler(BaseHTTPRequestHandler):
                     f"/reports/benchmarks/{row['benchmark_id']}/index.html"
                     if row.get("report_path")
                     else None
+                )
+            known = {row["benchmark_id"] for row in rows}
+            for campaign in self.state.campaigns.benchmarks():
+                if campaign["campaign_id"] in known:
+                    continue
+                target = campaign["target_successful_episodes"]
+                successes = campaign["successful_episodes"]
+                rows.append(
+                    {
+                        "benchmark_id": campaign["campaign_id"],
+                        "display_name": campaign["campaign_id"],
+                        "record_type": "CAMPAIGN",
+                        "task_name": campaign["task_id"],
+                        "status": "PASS",
+                        "created_at": campaign["started_at"],
+                        "planned_trials": target,
+                        "completed_trials": campaign["completed_attempts"],
+                        "passed_trials": successes,
+                        "success_rate": successes / target if target else None,
+                        "accepted": 1,
+                        "report_url": None,
+                    }
                 )
             self._json({"benchmarks": rows})
         elif parsed.path == "/api/storage":
@@ -405,6 +472,43 @@ class PlatformHandler(BaseHTTPRequestHandler):
             raise ValueError("request body exceeds 1 MiB")
         raw = self.rfile.read(length)
         return json.loads(raw or b"{}")
+
+    def _serve_campaign_events(self, parsed):
+        del parsed
+        events = self.state.campaigns.events()
+        last_id = self.headers.get("Last-Event-ID")
+        if last_id:
+            try:
+                timestamp, campaign_id, sequence = last_id.split("|", 2)
+                last_key = (float(timestamp), campaign_id, int(sequence))
+                events = [
+                    event
+                    for event in events
+                    if (
+                        float(event["timestamp_unix"]),
+                        str(event["campaign_id"]),
+                        int(event["sequence"]),
+                    )
+                    > last_key
+                ]
+            except (TypeError, ValueError):
+                events = events[-100:]
+        else:
+            events = events[-100:]
+        body = "".join(
+            f"id: {event['timestamp_unix']}|{event['campaign_id']}|{event['sequence']}\n"
+            f"data: {json.dumps(event, sort_keys=True)}\n\n"
+            for event in events
+        ).encode()
+        if not body:
+            body = b": keepalive\n\n"
+        self.send_response(HTTPStatus.OK)
+        self._security_headers()
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _json(self, payload, status=HTTPStatus.OK):
         encoded = json.dumps(payload, sort_keys=True).encode()
@@ -554,10 +658,22 @@ def main():
             "May be specified more than once."
         ),
     )
+    parser.add_argument(
+        "--campaign-root",
+        action="append",
+        default=[],
+        type=Path,
+        help="Read-only root containing collection-campaign.v1 directories.",
+    )
     args = parser.parse_args()
     environment_roots = [
         Path(value)
         for value in os.environ.get("FARPOINT_EPISODE_ROOTS", "").split(os.pathsep)
+        if value
+    ]
+    environment_campaign_roots = [
+        Path(value)
+        for value in os.environ.get("FARPOINT_CAMPAIGN_ROOTS", "").split(os.pathsep)
         if value
     ]
     state = PlatformState(
@@ -565,6 +681,7 @@ def main():
         max(args.scan_interval, 5),
         max(args.incomplete_timeout, 60),
         episode_roots=[*environment_roots, *args.episode_root],
+        campaign_roots=[*environment_campaign_roots, *args.campaign_root],
     )
     state.refresh(reports=True)
     watcher = threading.Thread(target=state.watch, daemon=True)

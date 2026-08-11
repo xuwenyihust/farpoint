@@ -8,6 +8,7 @@ import time
 from contextlib import closing
 from http.client import HTTPConnection
 from pathlib import Path
+from urllib.request import urlopen
 
 import pytest
 
@@ -16,6 +17,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RUN_BROWSER_QA = os.environ.get("FARPOINT_RUN_BROWSER_QA") == "1"
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
+JPEG = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAA"
+    "AAAAA6ABAAMAAAAB//8AAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD/7QA4UGhvdG9z"
+    "aG9wIDMuMAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCyBOmACZjs+EJ+/8AACwgA"
+    "AQABAQERAP/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMF"
+    "BQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYn"
+    "KCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SV"
+    "lpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz"
+    "9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMFBgUFBQUGCAYGBgYGCAoICAgICAgKCgoKCgoK"
+    "CgwMDAwMDA4ODg4ODw8PDw8PDw8PD//dAAQAAf/aAAgBAQAAPwD8A6//2Q=="
 )
 
 
@@ -234,6 +246,46 @@ def dashboard(tmp_path):
     old = time.time() - 3600
     os.utime(so101_incomplete, (old, old))
 
+    campaign_id = "so101_v010_dashboard_live"
+    campaign = tmp_path / "campaigns" / campaign_id
+    write_json(
+        campaign / "campaign.json",
+        {
+            "campaign_id": campaign_id,
+            "campaign_version": "0.1.0",
+            "task_id": "so101_cube_pick_place",
+            "target": {"successful_episodes": 200},
+        },
+    )
+    write_json(
+        campaign / "status.json",
+        {
+            "campaign_id": campaign_id,
+            "segment_id": "segment-000",
+            "execution_status": "RUNNING",
+            "quality_status": "NOT_EVALUATED",
+            "heartbeat_unix": time.time(),
+            "updated_unix": time.time(),
+            "completed_attempts": 3,
+            "successful_episodes": 2,
+        },
+    )
+    (campaign / "active-preview.jpg").write_bytes(JPEG)
+    (campaign / "events.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.collection-event.v1",
+                "campaign_id": campaign_id,
+                "segment_id": "segment-000",
+                "sequence": 0,
+                "timestamp_unix": time.time(),
+                "event_type": "heartbeat",
+                "payload": {"alive": True},
+            }
+        )
+        + "\n"
+    )
+
     port = free_port()
     url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
@@ -252,6 +304,8 @@ def dashboard(tmp_path):
             "60",
             "--episode-root",
             str(external_root),
+            "--campaign-root",
+            str(tmp_path / "campaigns"),
         ],
         cwd=PROJECT_ROOT,
         stdout=subprocess.PIPE,
@@ -271,6 +325,7 @@ def dashboard(tmp_path):
             "so101_failure": so101_failure.name,
             "so101_incomplete": so101_incomplete.name,
             "collection_id": collection_id,
+            "campaign_id": campaign_id,
         }
     finally:
         process.terminate()
@@ -294,14 +349,26 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         )
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(dashboard["url"], wait_until="networkidle")
+        page.get_by_role("button", name="Live Runs").click()
+        page.locator("#liveRunRows").get_by_text(
+            dashboard["campaign_id"], exact=True
+        ).wait_for()
+        playwright.expect(page.locator("#liveRunRows img")).to_have_js_property(
+            "naturalWidth", 1
+        )
+        page.get_by_role("button", name="Collections").click()
+        collection_row = page.locator(
+            "#collectionRows tr", has_text=dashboard["campaign_id"]
+        )
+        assert collection_row.get_by_text("2 / 200", exact=True).count() == 1
         page.get_by_role("button", name="Episodes").click()
         page.get_by_placeholder("Search episode or task").fill("dashboard_qa")
         page.get_by_role("link", name=dashboard["episode_id"]).wait_for()
 
         page.get_by_role("button", name=f"Play preview for {dashboard['episode_id']}").click()
         page.get_by_text("2 preview frames").wait_for()
-        page.wait_for_function(
-            "document.querySelector('#playerImage')?.naturalWidth === 1"
+        playwright.expect(page.locator("#playerImage")).to_have_js_property(
+            "naturalWidth", 1
         )
         page.get_by_role("button", name="Close playback").click()
 
@@ -373,3 +440,20 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         )
         browser.close()
     assert errors == []
+
+
+def test_campaign_dashboard_apis_and_sse(dashboard):
+    with urlopen(f"{dashboard['url']}/api/live-runs") as response:
+        live = json.load(response)["live_runs"]
+    assert [row["campaign_id"] for row in live] == [dashboard["campaign_id"]]
+    assert live[0]["preview_url"].endswith("/active-preview")
+
+    with urlopen(f"{dashboard['url']}/api/collections") as response:
+        collections = json.load(response)["collections"]
+    assert collections[0]["successful_episodes"] == 2
+
+    with urlopen(f"{dashboard['url']}/api/events") as response:
+        assert response.headers["Content-Type"] == "text/event-stream"
+        body = response.read().decode()
+    assert "data:" in body
+    assert dashboard["campaign_id"] in body

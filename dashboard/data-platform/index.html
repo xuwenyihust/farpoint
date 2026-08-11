@@ -153,6 +153,8 @@
       </div>
       <nav>
         <button class="active" data-view="overview">Overview</button>
+        <button data-view="live-runs">Live Runs</button>
+        <button data-view="collections">Collections</button>
         <button data-view="episodes">Episodes</button>
         <button data-view="benchmarks">Benchmarks</button>
         <button data-view="resources">Resources</button>
@@ -186,6 +188,32 @@
             <a class="button" href="?view=benchmarks">Open Benchmarks</a>
             <a class="button" href="?view=resources">Open Resources</a>
           </div></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-live-runs">
+        <div class="panel">
+          <div class="panel-head"><h2>Live Runs</h2><span class="subtle" id="liveRunCount"></span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Preview</th><th>Campaign</th><th>Status</th><th>Segment</th><th>Progress</th><th>Attempts</th><th>Heartbeat</th></tr></thead>
+              <tbody id="liveRunRows"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="liveRunEmpty" hidden>No live, paused, or stale campaigns.</div>
+        </div>
+      </section>
+
+      <section class="view" id="view-collections">
+        <div class="panel">
+          <div class="panel-head"><h2>Collections</h2><span class="subtle" id="collectionCount"></span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Campaign</th><th>Version</th><th>Execution</th><th>Quality</th><th>Task</th><th>Successes</th><th>Attempts</th><th>Updated</th></tr></thead>
+              <tbody id="collectionRows"></tbody>
+            </table>
+          </div>
+          <div class="empty" id="collectionEmpty" hidden>No collection campaigns registered.</div>
         </div>
       </section>
 
@@ -338,11 +366,15 @@
     const state = {
       episodes: [],
       benchmarks: [],
+      liveRuns: [],
+      collections: [],
       storage: null,
       player: { frames: [], frame: 0, timer: null, playing: false }
     };
     const titles = {
       overview: ["Overview", "Farpoint artifacts and experiment health"],
+      "live-runs": ["Live Runs", "Heartbeat and active collection previews"],
+      collections: ["Collections", "Campaign progress across immutable segments"],
       episodes: ["Episodes", "Simulation runs and episode outcomes"],
       benchmarks: ["Benchmarks", "Formal evaluations and dataset collections"],
       resources: ["Resources", "Capacity, growth, and retention runway"],
@@ -374,15 +406,20 @@
     }
     async function loadAll() {
       try {
-        const [episodes, benchmarks, storage, quarantine, audit, health] = await Promise.all([
-          api("/api/episodes?limit=2000"), api("/api/benchmarks"), api("/api/storage"),
-          api("/api/quarantine"), api("/api/audit"), api("/api/health")
+        const [episodes, benchmarks, liveRuns, collections, storage, quarantine, audit, health] = await Promise.all([
+          api("/api/episodes?limit=2000"), api("/api/benchmarks"),
+          api("/api/live-runs"), api("/api/collections"), api("/api/storage"), api("/api/quarantine"),
+          api("/api/audit"), api("/api/health")
         ]);
         state.episodes = episodes.episodes;
         state.benchmarks = benchmarks.benchmarks;
+        state.liveRuns = liveRuns.live_runs;
+        state.collections = collections.collections;
         state.storage = storage;
         renderEpisodes();
         renderBenchmarks();
+        renderLiveRuns();
+        renderCollections();
         renderOverview();
         renderStorage();
         renderQuarantine(quarantine.items);
@@ -530,6 +567,31 @@
           <td>${esc(row.task_name || "-")}</td><td>${row.completed_trials} / ${row.planned_trials}</td>
           <td>${row.passed_trials}</td><td>${row.success_rate == null ? "-" : (row.success_rate * 100).toFixed(1) + "%"}</td><td>${date(row.created_at)}</td></tr>`;
       }).join("");
+    }
+    const campaignStatusClass = status => status === "FINISHED" ? "PASS" : status === "ABORTED" ? "FAIL" : status === "STALE" || status === "PAUSED" ? "INCOMPLETE" : "RUNNING";
+    const unixDate = value => value == null ? "-" : new Date(Number(value) * 1000).toLocaleString();
+    function renderLiveRuns() {
+      $("liveRunCount").textContent = `${state.liveRuns.length} active or paused`;
+      $("liveRunEmpty").hidden = state.liveRuns.length > 0;
+      $("liveRunRows").innerHTML = state.liveRuns.map(row => {
+        const preview = row.preview_url
+          ? `<img class="preview-button" src="${esc(row.preview_url)}?t=${Number(row.updated_unix || 0)}" alt="Active preview for ${esc(row.campaign_id)}">`
+          : '<div class="preview-button"></div>';
+        return `<tr><td>${preview}</td><td><strong>${esc(row.campaign_id)}</strong></td>
+          <td><span class="status ${campaignStatusClass(row.execution_status)}">${esc(row.execution_status)}</span></td>
+          <td>${esc(row.segment_id || "-")}</td><td>${row.successful_episodes} / ${row.target_successful_episodes}</td>
+          <td>${row.completed_attempts}</td><td>${unixDate(row.heartbeat_unix)}</td></tr>`;
+      }).join("");
+    }
+    function renderCollections() {
+      $("collectionCount").textContent = `${state.collections.length} campaigns`;
+      $("collectionEmpty").hidden = state.collections.length > 0;
+      $("collectionRows").innerHTML = state.collections.map(row => `<tr>
+        <td><strong>${esc(row.campaign_id)}</strong></td><td>${esc(row.campaign_version || "-")}</td>
+        <td><span class="status ${campaignStatusClass(row.execution_status)}">${esc(row.execution_status)}</span></td>
+        <td><span class="status ${row.quality_status === "PASS" ? "PASS" : row.quality_status === "FAIL" ? "FAIL" : "INCOMPLETE"}">${esc(row.quality_status)}</span></td>
+        <td>${esc(row.task_id || "-")}</td><td>${row.successful_episodes} / ${row.target_successful_episodes}</td>
+        <td>${row.completed_attempts}</td><td>${unixDate(row.updated_unix)}</td></tr>`).join("");
     }
     function renderStorage() {
       const latest = state.storage.latest || {};
@@ -713,6 +775,12 @@
     window.addEventListener("resize", () => state.storage && drawChart(state.storage.history || []));
     restoreUrlState();
     loadAll().then(restoreUrlState);
+    let eventRefreshTimer = null;
+    const campaignEvents = new EventSource("/api/events");
+    campaignEvents.onmessage = () => {
+      clearTimeout(eventRefreshTimer);
+      eventRefreshTimer = setTimeout(loadAll, 150);
+    };
     setInterval(loadAll, 30000);
   </script>
 </body>

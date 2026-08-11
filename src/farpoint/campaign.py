@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 import math
 import os
 from pathlib import Path
 import time
+import threading
 from typing import Any, Iterable
 
 from farpoint.contracts import validate_contract
@@ -234,6 +235,8 @@ class CampaignEventLog:
 
     path: Path
     campaign_id: str
+    _next_sequence: int | None = field(default=None, init=False, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     def _events(self) -> list[dict[str, Any]]:
         if not self.path.exists():
@@ -248,30 +251,42 @@ class CampaignEventLog:
         segment_id: str | None = None,
         timestamp_unix: float | None = None,
     ) -> dict[str, Any]:
-        events = self._events()
-        errors = validate_event_sequence(events)
-        if errors:
-            raise ValueError("cannot append to invalid event log: " + "; ".join(errors))
-        event = {
-            "schema_version": EVENT_SCHEMA,
-            "campaign_id": self.campaign_id,
-            "segment_id": segment_id,
-            "sequence": len(events),
-            "timestamp_unix": float(time.time() if timestamp_unix is None else timestamp_unix),
-            "event_type": event_type,
-            "payload": deepcopy(payload),
-        }
-        errors = validate_contract(event)
-        if errors:
-            raise ValueError("invalid campaign event: " + "; ".join(errors))
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor = os.open(self.path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
-        try:
-            os.write(descriptor, (json.dumps(event, sort_keys=True) + "\n").encode())
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        return event
+        with self._lock:
+            if self._next_sequence is None:
+                events = self._events()
+                errors = validate_event_sequence(events)
+                if errors:
+                    raise ValueError(
+                        "cannot append to invalid event log: " + "; ".join(errors)
+                    )
+                self._next_sequence = len(events)
+            event = {
+                "schema_version": EVENT_SCHEMA,
+                "campaign_id": self.campaign_id,
+                "segment_id": segment_id,
+                "sequence": self._next_sequence,
+                "timestamp_unix": float(
+                    time.time() if timestamp_unix is None else timestamp_unix
+                ),
+                "event_type": event_type,
+                "payload": deepcopy(payload),
+            }
+            errors = validate_contract(event)
+            if errors:
+                raise ValueError("invalid campaign event: " + "; ".join(errors))
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor = os.open(
+                self.path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644
+            )
+            try:
+                os.write(
+                    descriptor, (json.dumps(event, sort_keys=True) + "\n").encode()
+                )
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            self._next_sequence += 1
+            return event
 
 
 def atomic_status_write(path: Path, status: dict[str, Any]) -> None:
