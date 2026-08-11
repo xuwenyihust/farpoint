@@ -183,6 +183,34 @@ def create_pilot_manifest(
     required_successes = int(pilot.get("required_successes", 0))
     maximum_attempts = int(pilot.get("maximum_attempts", 0))
     kind = pilot.get("kind")
+    if kind == "v010_integration_pilot":
+        frozen_ids = pilot.get("trial_ids") or []
+        if len(trials) != 12 or maximum_attempts != 12 or required_successes != 10:
+            raise ValueError("v0.1.0 integration pilot must freeze a 10-of-12 gate")
+        if [trial["trial_id"] for trial in trials] != frozen_ids:
+            raise ValueError("v0.1.0 pilot ordering does not match its frozen ids")
+        if Counter(trial["split"] for trial in trials) != Counter(
+            {"train": 10, "validation": 2}
+        ):
+            raise ValueError("v0.1.0 pilot split coverage is inconsistent")
+        object_regions = Counter(
+            (trial.get("object_variant_id"), trial.get("region_band"))
+            for trial in trials
+        )
+        if len(object_regions) != 6 or set(object_regions.values()) != {2}:
+            raise ValueError("v0.1.0 pilot object-region coverage is inconsistent")
+        if len({trial.get("yaw_stratum_id") for trial in trials}) != 5:
+            raise ValueError("v0.1.0 pilot yaw-stratum coverage is inconsistent")
+        return _new_manifest(
+            plan,
+            collection_id=collection_id,
+            git_commit=git_commit,
+            required_successes=required_successes,
+            maximum_attempts=maximum_attempts,
+            release_status="PILOT",
+            completion_policy="all_planned_trials",
+            stop_when_success_target_unreachable=False,
+        )
     if kind in {
         "targeted_mass_diagnostic_pilot",
         "targeted_yaw_diagnostic_pilot",

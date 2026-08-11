@@ -16,6 +16,10 @@ from farpoint.so101_gate_workflow import (
     write_so101_gate_workflow,
 )
 from farpoint.so101_watchdog import load_watchdog_policy
+from farpoint.v010_pilot import (
+    initialize_v010_pilot_campaign,
+    load_v010_pilot_config,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -378,6 +382,41 @@ def test_targeted_yaw_profile_freezes_twelve_balanced_trials(tmp_path):
         "--pilot-plan",
         "--plan",
     ]
+
+
+def test_v010_workflow_binds_campaign_segment_and_dual_camera(tmp_path):
+    variation = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    v010 = load_v010_pilot_config(
+        ROOT / "configs/variations/so101_v010_integration_pilot.json"
+    )
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
+    profile = json.loads(
+        (ROOT / "configs/workflows/so101_v010_integration_pilot.json").read_text()
+    )
+    workflow, plans = build_so101_gate_workflow(
+        profile,
+        variation,
+        policy,
+        workflow_id="v010-pilot",
+        git_commit=GIT_COMMIT,
+        v010_pilot_config=v010,
+    )
+    path = write_so101_gate_workflow(
+        tmp_path / "v010-pilot", workflow, plans, policy
+    )
+    stage = workflow["stages"][0]
+    plan = plans[stage["stage_id"]]
+    initialize_v010_pilot_campaign(path.parent, plan, git_commit=GIT_COMMIT)
+
+    status = evaluate_so101_gate_workflow(path)
+    command = status["next_action"]["command"]
+    assert stage["campaign_segment_id"] == "segment-000"
+    assert "--require-dual-camera" in command
+    assert command[command.index("--campaign-root") + 1] == str(path.parent)
+    assert command[command.index("--campaign-id") + 1] == plan["plan_id"]
+    assert command[command.index("--segment-id") + 1] == "segment-000"
 
 
 def test_yaw30_profile_requires_both_previous_gap_cells(tmp_path):

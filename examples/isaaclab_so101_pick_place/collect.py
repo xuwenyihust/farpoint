@@ -19,7 +19,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from farpoint.campaign_live import LiveCampaignPublisher  # noqa: E402
+from farpoint.episode_v4 import build_so101_episode_v4  # noqa: E402
+from farpoint.episode_video import seal_rgb_video  # noqa: E402
 from farpoint.so101_runtime import resolve_headless_mode  # noqa: E402
+from farpoint.v010_pilot import PILOT_KIND  # noqa: E402
 from isaaclab.app import AppLauncher  # noqa: E402
 
 # USD limits observed from the pinned SO-101 asset (radians), kept explicit so
@@ -1592,6 +1595,7 @@ def run_attempt(
     collection_id: str,
     camera_profile=None,
     live_publisher=None,
+    v010_context=None,
 ):
     from farpoint.so101_mass_feasibility import audit_resolved_mass
 
@@ -1611,6 +1615,11 @@ def run_attempt(
     run_state = build_attempt_run_state(
         trial, collection_id=collection_id, git_commit=git_commit
     )
+    if v010_context is not None:
+        run_state["recording"]["cameras"] = [
+            "observation.images.front",
+            "observation.images.wrist",
+        ]
     _write_json(root / "run-state.json", run_state)
     np.random.seed(environment_seed)
     torch.manual_seed(environment_seed)
@@ -1673,6 +1682,7 @@ def run_attempt(
     for _ in range(8):
         env.step(initial_joints)
     measured_object_position = _numpy(active_object.data.root_pos_w[0])
+    measured_object_orientation = _numpy(active_object.data.root_quat_w[0])
     measured_object_velocity = _numpy(active_object.data.root_lin_vel_w[0])
     reset_support_verified = so101_reset_support_is_stable(
         expected_object_position,
@@ -3033,6 +3043,20 @@ def run_attempt(
         else None
     )
     if resolved_camera_records is not None:
+        if v010_context is not None:
+            video_artifacts = {
+                camera_id: seal_rgb_video(
+                    root,
+                    camera_id=camera_id,
+                    frame_count=len(rows),
+                    fps=int(schedule.recording_hz),
+                )
+                for camera_id in ("front", "wrist")
+            }
+            for camera_record in resolved_camera_records:
+                camera_record["video_artifact"] = video_artifacts[
+                    camera_record["camera_id"]
+                ]
         _write_json(
             root / "camera-evidence.json",
             {
@@ -3042,7 +3066,7 @@ def run_attempt(
                 "recording_stride": schedule.recording_stride,
             },
         )
-    metadata = {
+    legacy_metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
         "provenance": {"collection_id": collection_id, "git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
@@ -3053,6 +3077,55 @@ def run_attempt(
         "recording": {"fps": schedule.recording_hz, "control_hz": schedule.control_hz, "recording_stride": schedule.recording_stride, "cameras": (["observation.images.front", "observation.images.wrist"] if args_cli.enable_wrist_camera else ["observation.images.front"]), "frame_count": len(rows), "state_features": list(LEROBOT_JOINT_NAMES), "action_features": list(LEROBOT_JOINT_NAMES), "state_unit": "radian", "action_unit": "radian", "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render"},
         "outcome": {"success": success, "dataset_valid": bool(rows), "failure_category": None if success else "oracle", "failure_reason": None if success else machine.failure_reason},
     }
+    if v010_context is None:
+        metadata = legacy_metadata
+    else:
+        if resolved_camera_records is None:
+            raise ValueError("episode v4 requires resolved front and wrist cameras")
+        resolved_object_state = copy.deepcopy(object_spec)
+        resolved_object_state["position_m"] = measured_object_position.tolist()
+        resolved_object_state["orientation_xyzw"] = (
+            measured_object_orientation.tolist()
+        )
+        resolved_object_state["mass_kg"] = float(
+            mass_audit["physx_actual_mass_kg"]
+        )
+        joint_mapping = mapping_metadata()
+        joint_mapping["joint_order"] = list(LEROBOT_JOINT_NAMES)
+        metadata = build_so101_episode_v4(
+            episode_id=root.name,
+            campaign=v010_context["campaign"],
+            segment=v010_context["segment"],
+            plan=v010_context["plan"],
+            trial=trial,
+            attempt_seed=episode_seed,
+            git_commit=git_commit,
+            simulator_image_digest=v010_context["simulator_image_digest"],
+            resolved_object=resolved_object_state,
+            target=scene_target,
+            table=v010_context["plan"]["table"],
+            camera_records=resolved_camera_records,
+            embodiment={
+                "robot": "so101",
+                "gripper": "so101_jaw",
+                "arm_dof": 5,
+                "gripper_dof": 1,
+                "controller": "contact_aware_local_frame_dls_v0",
+                "control_mode": "joint_position",
+                "grasp_mode": "contact_only",
+                "joint_mapping": joint_mapping,
+            },
+            frame_count=len(rows),
+            control_hz=schedule.control_hz,
+            success=success,
+            dataset_valid=bool(rows),
+            failure_category=None if success else "oracle",
+            failure_reason=None if success else machine.failure_reason,
+            physics_audit={
+                "mass": copy.deepcopy(mass_audit),
+                "reset_support": copy.deepcopy(reset_support_audit),
+            },
+        )
     errors = validate_contract(metadata)
     if errors:
         raise ValueError("invalid SO-101 episode metadata: " + "; ".join(errors))
@@ -3081,6 +3154,32 @@ def main():
         else None
     )
     plan = _read_json(args_cli.plan) if args_cli.plan.exists() else generate_variation_plan(config)
+    v010_context = None
+    if (plan.get("pilot") or {}).get("kind") == PILOT_KIND:
+        if not args_cli.require_dual_camera:
+            raise ValueError("v0.1.0 collection requires --require-dual-camera")
+        if args_cli.campaign_root is None:
+            raise ValueError("v0.1.0 collection requires campaign identity arguments")
+        campaign = _read_json(args_cli.campaign_root / "campaign.json")
+        segment = _read_json(
+            args_cli.campaign_root
+            / "segments"
+            / args_cli.segment_id
+            / "segment.json"
+        )
+        if campaign.get("campaign_id") != args_cli.campaign_id:
+            raise ValueError("v0.1.0 campaign id does not match campaign.json")
+        simulator_image_digest = os.environ.get(
+            "FARPOINT_SIMULATOR_IMAGE_DIGEST", ""
+        )
+        if not simulator_image_digest.startswith("sha256:"):
+            raise ValueError("v0.1.0 collection requires simulator image digest")
+        v010_context = {
+            "campaign": campaign,
+            "segment": segment,
+            "plan": plan,
+            "simulator_image_digest": simulator_image_digest,
+        }
     watchdog_policy = (
         load_watchdog_policy(args_cli.watchdog_policy)
         if args_cli.watchdog_policy is not None
@@ -3234,6 +3333,7 @@ def main():
                     manifest["collection_id"],
                     camera_profile,
                     live_publisher,
+                    v010_context,
                 )
             except Exception as error:
                 details = traceback.format_exc()
@@ -3256,6 +3356,11 @@ def main():
                         collection_id=manifest["collection_id"],
                         git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
                     )
+                    if v010_context is not None:
+                        failed_run_state["recording"]["cameras"] = [
+                            "observation.images.front",
+                            "observation.images.wrist",
+                        ]
                 else:
                     failed_run_state = None
                 if failed_run_state is not None:

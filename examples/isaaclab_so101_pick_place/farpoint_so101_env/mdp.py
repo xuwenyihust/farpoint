@@ -55,6 +55,7 @@ def bind_so101_gripper_material(env, env_ids=None):
         dynamic_friction=SO101_GRIPPER_DYNAMIC_FRICTION,
         restitution=SO101_GRIPPER_RESTITUTION,
         friction_combine_mode="max",
+        restitution_combine_mode="average",
     )
     material_cfg.func(material_path, material_cfg)
     robot_path = env.scene["robot"].cfg.prim_path

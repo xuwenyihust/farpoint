@@ -31,6 +31,11 @@ def _camera(camera_id):
         "calibration": {"model": "pinhole", "intrinsics": [600.0, 600.0, 320.0, 240.0]},
         "mount_transform": {"frame_id": "robot", "position_m": [0.0, 0.0, 0.0], "orientation_xyzw": [0.0, 0.0, 0.0, 1.0]},
         "frame_timestamp_source": "control_tick",
+        "video_artifact": {
+            "path": f"videos/{camera_id}.mp4", "container": "mp4", "codec": "h264",
+            "frame_count": 30, "width": 640, "height": 480, "fps": 30,
+            "size_bytes": 100, "sha256": SHA, "decode_verified": True,
+        },
     }
 
 

@@ -1,0 +1,11 @@
+{
+  "schema_version": "farpoint.so101-gate-workflow-config.v1",
+  "completion_status": "PILOT_COMPLETE",
+  "stages": [
+    {
+      "stage_id": "object_region_yaw_12",
+      "kind": "v010_integration_pilot",
+      "required_cameras": ["front", "wrist"]
+    }
+  ]
+}
