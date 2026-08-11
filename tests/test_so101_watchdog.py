@@ -32,6 +32,12 @@ def policy():
     )
 
 
+def v010_policy():
+    return load_watchdog_policy(
+        ROOT / "configs/workflows/so101_v010_watchdog_runtime.json"
+    )
+
+
 def fixed_plan(repetitions=5):
     config = load_variation_config(
         ROOT / "configs/variations/so101_cube_pick_place_v1.json"
@@ -178,6 +184,85 @@ def test_watchdog_allows_eleven_then_stops_on_twelve_consecutive_failures():
     assert report["reasons"] == [
         "consecutive_structural_failure:phase_timeout:12"
     ]
+
+
+def test_v010_watchdog_counts_distinct_variations_not_retry_attempts():
+    plan = fixed_plan(repetitions=12)
+    manifest = create_gate_manifest(
+        plan, collection_id="v010_distinct", git_commit="b" * 40
+    )
+    manifest["required_successes"] = 1
+    manifest["maximum_attempts"] = 36
+    runtime_policy = v010_policy()
+    runtime_policy.pop("minimum_free_disk_bytes")
+    runtime_policy.pop("no_success_timeout_seconds")
+
+    for _ in range(11):
+        record(
+            manifest,
+            plan,
+            success=False,
+            reason="grasp_phase_timeout:slow_close",
+        )
+    set_recent(manifest)
+    report = evaluate_so101_collection(plan, manifest, runtime_policy, now=NOW)
+    assert report["decision"] == "CONTINUE"
+    assert report["recent_window"]["consecutive_failure_count"] == 11
+    assert report["recent_window"]["consecutive_distinct_variations"] == 11
+
+    record(
+        manifest,
+        plan,
+        success=False,
+        reason="grasp_phase_timeout:slow_close",
+    )
+    set_recent(manifest)
+    report = evaluate_so101_collection(plan, manifest, runtime_policy, now=NOW)
+    assert report["decision"] == "STOP"
+    assert report["reasons"] == [
+        "consecutive_structural_failure:phase_timeout:12"
+    ]
+
+
+def test_v010_watchdog_enforces_last_fifty_success_rate():
+    plan = fixed_plan(repetitions=50)
+    manifest = create_gate_manifest(
+        plan, collection_id="v010_success_rate", git_commit="b" * 40
+    )
+    manifest["required_successes"] = 49
+    manifest["maximum_attempts"] = 150
+    for index in range(50):
+        record(
+            manifest,
+            plan,
+            success=index < 9,
+            reason=None if index < 9 else "grasp_phase_timeout:slow_close",
+        )
+    set_recent(manifest)
+    runtime_policy = v010_policy()
+    runtime_policy.pop("minimum_free_disk_bytes")
+    runtime_policy.pop("no_success_timeout_seconds")
+
+    report = evaluate_so101_collection(plan, manifest, runtime_policy, now=NOW)
+
+    assert report["decision"] == "STOP"
+    assert "recent_success_rate:0.180" in report["reasons"]
+
+
+def test_v010_watchdog_pauses_after_two_hours_without_success():
+    plan = fixed_plan(repetitions=2)
+    manifest = create_gate_manifest(
+        plan, collection_id="v010_no_success", git_commit="b" * 40
+    )
+    manifest["created_at"] = (NOW - timedelta(seconds=7201)).isoformat()
+    set_recent(manifest)
+    runtime_policy = v010_policy()
+    runtime_policy.pop("minimum_free_disk_bytes")
+
+    report = evaluate_so101_collection(plan, manifest, runtime_policy, now=NOW)
+
+    assert report["decision"] == "STOP"
+    assert report["reasons"] == ["no_new_success:7201s"]
 
 
 def test_default_watchdog_reports_but_does_not_stop_on_eight_of_last_ten():

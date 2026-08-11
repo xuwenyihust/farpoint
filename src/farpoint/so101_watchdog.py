@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,6 +71,22 @@ def validate_watchdog_policy(policy: dict[str, Any]) -> None:
         raise ValueError("structural_failure_classes must contain non-empty strings")
     if len(classes) != len(set(classes)):
         raise ValueError("structural_failure_classes must be unique")
+    distinct = policy.get("distinct_variations_for_consecutive_failure", False)
+    if not isinstance(distinct, bool):
+        raise ValueError("distinct_variations_for_consecutive_failure must be boolean")
+    minimum_success_rate = policy.get("minimum_recent_success_rate")
+    if minimum_success_rate is not None and (
+        not isinstance(minimum_success_rate, (int, float))
+        or isinstance(minimum_success_rate, bool)
+        or not 0.0 <= float(minimum_success_rate) <= 1.0
+    ):
+        raise ValueError("minimum_recent_success_rate must be null or in [0, 1]")
+    for field in ("no_success_timeout_seconds", "minimum_free_disk_bytes"):
+        value = policy.get(field)
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool) or value <= 0
+        ):
+            raise ValueError(f"{field} must be null or a positive integer")
 
 
 def load_watchdog_policy(path: str | Path) -> dict[str, Any]:
@@ -154,6 +171,7 @@ def evaluate_so101_collection(
 
     consecutive_class = None
     consecutive_count = 0
+    consecutive_variations: set[str] = set()
     for row in reversed(attempts):
         if row.get("success"):
             break
@@ -165,6 +183,7 @@ def evaluate_so101_collection(
         if failure_class != consecutive_class:
             break
         consecutive_count += 1
+        consecutive_variations.add(str(row.get("variation_id") or ""))
 
     root = Path(episodes_root) if episodes_root is not None else None
     live, live_errors = _live_run_states(
@@ -208,12 +227,17 @@ def evaluate_so101_collection(
             and maximum_possible_successes < required_successes
         ):
             reasons.append("success_target_unreachable")
+        consecutive_measure = (
+            len(consecutive_variations)
+            if policy.get("distinct_variations_for_consecutive_failure", False)
+            else consecutive_count
+        )
         if (
             consecutive_class in structural
-            and consecutive_count >= int(policy["consecutive_failure_limit"])
+            and consecutive_measure >= int(policy["consecutive_failure_limit"])
         ):
             reasons.append(
-                f"consecutive_structural_failure:{consecutive_class}:{consecutive_count}"
+                f"consecutive_structural_failure:{consecutive_class}:{consecutive_measure}"
             )
         minimum_recent = int(policy["minimum_recent_attempts"])
         recent_failure_fraction = policy.get("recent_failure_fraction")
@@ -231,6 +255,45 @@ def evaluate_so101_collection(
                     reasons.append(
                         f"recent_structural_failure:{failure_class}:{count}/{len(recent_attempts)}"
                     )
+        minimum_success_rate = policy.get("minimum_recent_success_rate")
+        if (
+            minimum_success_rate is not None
+            and len(recent_attempts) >= minimum_recent
+        ):
+            success_rate = sum(bool(row.get("success")) for row in recent_attempts) / len(
+                recent_attempts
+            )
+            if success_rate < float(minimum_success_rate):
+                reasons.append(f"recent_success_rate:{success_rate:.3f}")
+        no_success_timeout = policy.get("no_success_timeout_seconds")
+        if no_success_timeout is not None:
+            success_times = []
+            for row in attempts:
+                if not row.get("success"):
+                    continue
+                try:
+                    success_times.append(_parse_time(str(row["finished_at"])))
+                except (KeyError, TypeError, ValueError):
+                    continue
+            try:
+                reference = max(success_times) if success_times else _parse_time(
+                    str(manifest["created_at"])
+                )
+                no_success_age = max(
+                    0.0, (generated_at - reference).total_seconds()
+                )
+                if no_success_age > int(no_success_timeout):
+                    reasons.append(f"no_new_success:{no_success_age:.0f}s")
+            except (KeyError, TypeError, ValueError):
+                errors.append("invalid_success_liveness_timestamp")
+        minimum_free_disk = policy.get("minimum_free_disk_bytes")
+        if minimum_free_disk is not None and root is not None:
+            try:
+                free_bytes = shutil.disk_usage(root).free
+                if free_bytes < int(minimum_free_disk):
+                    reasons.append(f"disk_below_minimum:{free_bytes}")
+            except OSError as error:
+                errors.append(f"disk_usage_error:{type(error).__name__}")
         if live and live[0]["age_seconds"] > int(policy["stale_run_state_seconds"]):
             reasons.append(
                 f"stale_live_attempt:{live[0]['episode_id']}:{live[0]['age_seconds']:.0f}s"
@@ -242,6 +305,9 @@ def evaluate_so101_collection(
         ):
             reasons.append(f"stale_collection:{manifest_age_seconds:.0f}s")
         decision = "STOP" if reasons else "CONTINUE"
+
+    if errors:
+        decision = "INVALID"
 
     report = {
         "schema_version": WATCHDOG_SCHEMA_VERSION,
@@ -269,6 +335,7 @@ def evaluate_so101_collection(
             "failure_class_counts": dict(sorted(recent_counts.items())),
             "consecutive_failure_class": consecutive_class,
             "consecutive_failure_count": consecutive_count,
+            "consecutive_distinct_variations": len(consecutive_variations),
         },
         "liveness": {
             "manifest_age_seconds": manifest_age_seconds,
