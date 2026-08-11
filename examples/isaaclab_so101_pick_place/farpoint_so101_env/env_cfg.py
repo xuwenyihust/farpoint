@@ -180,10 +180,6 @@ class EventsCfg:
         func=mdp.disable_workshop_camera_mount_collision,
         mode="prestartup",
     )
-    hide_camera_mount_visual = EventTerm(
-        func=mdp.hide_workshop_camera_mount_visual,
-        mode="prestartup",
-    )
     reset_scene_to_default = EventTerm(
         func=lab_mdp.reset_scene_to_default,
         mode="reset",
