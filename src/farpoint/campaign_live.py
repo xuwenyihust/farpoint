@@ -300,7 +300,12 @@ class CampaignDashboardIndex:
                     "updated_at": _iso_timestamp(status.get("updated_unix")),
                     "completed_attempts": int(status.get("completed_attempts", 0)),
                     "successful_episodes": int(status.get("successful_episodes", 0)),
-                    "target_successful_episodes": int(target.get("successful_episodes", 0)),
+                    "target_successful_episodes": int(
+                        status.get(
+                            "target_successful_episodes",
+                            target.get("successful_episodes", 0),
+                        )
+                    ),
                     "active_attempt_id": status.get("active_attempt_id"),
                     "segment_id": status.get("segment_id"),
                     "stale": stale,

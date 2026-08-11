@@ -126,6 +126,31 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
             for entity in entities
             if isinstance(entity, dict) and entity.get("entity_id")
         }
+        requested_entities = (variation.get("requested") or {}).get("entities")
+        resolved_entities = (variation.get("resolved") or {}).get("entities")
+        if not isinstance(requested_entities, dict) or not isinstance(
+            resolved_entities, dict
+        ):
+            errors.append("episode v4 variation must record requested/resolved entities")
+        else:
+            expected_ids = set(entity_index)
+            if set(requested_entities) != expected_ids:
+                errors.append("variation.requested.entities do not match scene entity ids")
+            if set(resolved_entities) != expected_ids:
+                errors.append("variation.resolved.entities do not match scene entity ids")
+            elif any(
+                resolved_entities[entity_id] != entity_index[entity_id]
+                for entity_id in expected_ids
+            ):
+                errors.append("variation.resolved.entities do not match scene.entities")
+            for role, values in (
+                ("requested", requested_entities),
+                ("resolved", resolved_entities),
+            ):
+                try:
+                    validate_scene_entities(list(values.values()))
+                except ValueError as error:
+                    errors.append(f"variation.{role}.entities: {error}")
         for task_field, role in (
             ("manipulated_entity_id", "manipulated_object"),
             ("target_entity_id", "placement_target"),

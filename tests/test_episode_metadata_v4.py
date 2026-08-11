@@ -80,8 +80,8 @@ def episode_v4():
         "variation": {
             "variation_id": "variation-11", "varied_axes": ["object_variant_id", "position_xy_m", "yaw_rad"],
             "frozen_axes": ["target.pose", "lighting.profile"],
-            "requested": {"object_variant_id": "red-40mm", "position_xy_m": [0.2, -0.05], "yaw_rad": 0.1},
-            "resolved": {"object_variant_id": "red-40mm", "position_xy_m": [0.2, -0.05], "yaw_rad": 0.1},
+            "requested": {"object_variant_id": "red-40mm", "position_xy_m": [0.2, -0.05], "yaw_rad": 0.1, "entities": {entity["entity_id"]: deepcopy(entity) for entity in entities}},
+            "resolved": {"object_variant_id": "red-40mm", "position_xy_m": [0.2, -0.05], "yaw_rad": 0.1, "entities": {entity["entity_id"]: deepcopy(entity) for entity in entities}},
             "units": {"position_xy_m": "m", "yaw_rad": "rad"}, "config_version": "1", "config_sha256": SHA,
             "sampler": _versioned({"sampler_version": "farpoint.scrambled-sobol.v1", "sobol_index": 4}),
             "region_band": "middle", "yaw_stratum_id": "yaw00-18", "split": "train",
@@ -124,6 +124,15 @@ def test_episode_v4_rejects_resolved_variant_physics_drift():
     )
     assert (
         "scene.materials.gripper.resolved does not match the object variant" in errors
+    )
+
+
+def test_episode_v4_requires_requested_and_resolved_entity_snapshots():
+    episode = episode_v4()
+    episode["variation"]["requested"].pop("entities")
+    assert (
+        "episode v4 variation must record requested/resolved entities"
+        in validate_episode_semantics(episode)
     )
 
 

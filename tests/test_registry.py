@@ -146,7 +146,71 @@ def make_running_v3_episode(root, collection_id, episode_id, status="RUNNING"):
     return episode
 
 
+def make_v4_episode(root, campaign_id, episode_id):
+    episode = root / "campaigns" / campaign_id / "stages" / "pilot" / "episodes" / episode_id
+    write_json(
+        episode / "metadata.json",
+        {
+            "schema_version": "farpoint.episode.v4",
+            "identity": {
+                "episode_id": episode_id,
+                "campaign_id": campaign_id,
+                "task_id": "so101_cube_pick_place",
+                "split": "train",
+                "variation_seed": 1234,
+            },
+            "task": {"task_id": "so101_cube_pick_place"},
+            "variation": {"variation_id": "blue-core-yaw27", "split": "train"},
+            "recording": {
+                "frame_count": 2,
+                "cameras": [
+                    {"camera_id": "front", "feature_key": "observation.images.front"},
+                    {"camera_id": "wrist", "feature_key": "observation.images.wrist"},
+                ],
+            },
+            "outcome": {
+                "success": True,
+                "dataset_valid": True,
+                "failure_category": None,
+                "failure_reason": None,
+            },
+        },
+    )
+    write_json(
+        episode / "metrics.json",
+        {"success": True, "dataset_valid": True, "observation_count": 2},
+    )
+    rgb = episode / "rgb"
+    rgb.mkdir()
+    (rgb / "front_000000.png").write_bytes(b"png")
+    return episode
+
+
 class EpisodeRegistryTests(unittest.TestCase):
+    def test_scans_external_v4_episode_with_nested_identity_and_dual_cameras(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            external = root / "farpoint-so101"
+            episode = make_v4_episode(
+                external,
+                "so101-v010-pilot",
+                "episode_so101_v010_blue_core_001",
+            )
+            registry = EpisodeRegistry(root / "outputs", episode_roots=[external])
+            registry.scan()
+            row = registry.get_episode(episode.name)
+
+            self.assertEqual(row["health"], "OK")
+            self.assertEqual(row["schema_version"], "farpoint.episode.v4")
+            self.assertEqual(row["collection_id"], "so101-v010-pilot")
+            self.assertEqual(row["variation_id"], "blue-core-yaw27")
+            self.assertEqual(row["split"], "train")
+            self.assertEqual(row["seed"], 1234)
+            self.assertEqual(
+                json.loads(row["cameras_json"]),
+                ["observation.images.front", "observation.images.wrist"],
+            )
+
     def test_running_and_runner_failed_episode_sidecars_are_visible(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

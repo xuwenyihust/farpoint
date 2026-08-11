@@ -197,6 +197,14 @@ def test_v010_episode_writer_emits_strict_v4_with_measured_pose():
     assert metadata["variation"]["resolved"]["position_xy_m"][0] == pytest.approx(
         resolved_object["position_m"][0]
     )
+    assert set(metadata["variation"]["requested"]["entities"]) == {
+        "pick_object",
+        "placement_target",
+        "table",
+    }
+    assert metadata["variation"]["resolved"]["entities"] == {
+        entity["entity_id"]: entity for entity in metadata["scene"]["entities"]
+    }
     assert validate_contract(metadata) == []
     assert validate_episode_semantics(metadata) == []
     assert json.loads(json.dumps(metadata)) == metadata

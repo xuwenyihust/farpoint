@@ -419,6 +419,7 @@ class EpisodeRegistry:
         schema_version = episode_record.get("schema_version") if episode_record else None
         structured_record = schema_version in {
             "farpoint.episode.v3",
+            "farpoint.episode.v4",
             "farpoint.episode-run.v1",
         }
         identity = episode_record.get("identity", {}) if structured_record else {}
@@ -488,7 +489,7 @@ class EpisodeRegistry:
             "health": health,
             "seed": self._integer(self._first(
                 metadata.get("episode_seed"), metrics.get("episode_seed"),
-                identity.get("episode_seed"),
+                identity.get("episode_seed"), identity.get("variation_seed"),
             )),
             "benchmark_id": benchmark_id,
             "benchmark_repeat": self._integer(
@@ -531,10 +532,21 @@ class EpisodeRegistry:
             "schema_version": schema_version,
             "variation_id": variation.get("variation_id"),
             "split": self._first(identity.get("split"), variation.get("split")),
-            "collection_id": self._collection_id(path, location.source_root),
+            "collection_id": self._first(
+                identity.get("campaign_id"),
+                self._collection_id(path, location.source_root),
+            ),
             "source_root": str(location.source_root),
             "managed": int(location.managed),
-            "cameras_json": json.dumps(recording.get("cameras") or []),
+            "cameras_json": json.dumps(
+                [
+                    camera
+                    if isinstance(camera, str)
+                    else camera.get("feature_key") or camera.get("camera_id")
+                    for camera in (recording.get("cameras") or [])
+                    if isinstance(camera, (str, dict))
+                ]
+            ),
             "diagnostic_json": json.dumps(
                 {
                     "problems": problems,
