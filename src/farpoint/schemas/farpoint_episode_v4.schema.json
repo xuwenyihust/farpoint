@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Farpoint Episode Metadata v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "identity", "provenance", "task", "embodiment", "scene", "variation", "recording", "outcome"],
+  "properties": {
+    "schema_version": {"const": "farpoint.episode.v4"},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["episode_id", "campaign_id", "segment_id", "variation_seed", "attempt_seed", "task_id", "split"],
+      "properties": {
+        "episode_id": {"type": "string", "minLength": 1},
+        "campaign_id": {"type": "string", "minLength": 1},
+        "segment_id": {"type": "string", "minLength": 1},
+        "variation_seed": {"type": "integer", "minimum": 0},
+        "attempt_seed": {"type": "integer", "minimum": 0},
+        "task_id": {"type": "string", "minLength": 1},
+        "split": {"enum": ["train", "validation"]},
+        "dataset_episode_index": {"type": "integer", "minimum": 0}
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": true,
+      "required": ["git_commit", "campaign_sha256", "segment_sha256", "plan_sha256", "simulator_image_digest", "oracle_profile_id"],
+      "properties": {
+        "git_commit": {"type": "string", "minLength": 7},
+        "campaign_sha256": {"$ref": "#/$defs/sha256"},
+        "segment_sha256": {"$ref": "#/$defs/sha256"},
+        "plan_sha256": {"$ref": "#/$defs/sha256"},
+        "simulator_image_digest": {"type": "string", "minLength": 1},
+        "oracle_profile_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "task": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "instruction", "success_criteria_id", "manipulated_entity_id", "target_entity_id", "acceptance_region_id"],
+      "properties": {
+        "task_id": {"type": "string", "minLength": 1},
+        "instruction": {"type": "string", "minLength": 1},
+        "success_criteria_id": {"type": "string", "minLength": 1},
+        "manipulated_entity_id": {"type": "string", "minLength": 1},
+        "target_entity_id": {"type": "string", "minLength": 1},
+        "acceptance_region_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "embodiment": {"type": "object", "minProperties": 1},
+    "scene": {
+      "type": "object", "additionalProperties": false,
+      "required": ["coordinate_frame", "entities", "object_archetype", "object_variant", "feasible_region", "materials", "lighting_profile_id"],
+      "properties": {
+        "coordinate_frame": {"type": "string", "minLength": 1},
+        "entities": {"type": "array", "minItems": 3, "items": {"type": "object"}},
+        "object_archetype": {"$ref": "#/$defs/versionedObjectArchetype"},
+        "object_variant": {"$ref": "#/$defs/versionedObjectVariant"},
+        "feasible_region": {"$ref": "#/$defs/versionedConfig"},
+        "materials": {
+          "type": "object", "additionalProperties": false,
+          "required": ["object", "table", "gripper"],
+          "properties": {
+            "object": {"$ref": "#/$defs/versionedConfig"},
+            "table": {"$ref": "#/$defs/versionedConfig"},
+            "gripper": {"$ref": "#/$defs/versionedConfig"}
+          }
+        },
+        "lighting_profile_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "variation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["variation_id", "varied_axes", "frozen_axes", "requested", "resolved", "units", "config_version", "config_sha256", "sampler", "region_band", "yaw_stratum_id", "split"],
+      "properties": {
+        "variation_id": {"type": "string", "minLength": 1},
+        "varied_axes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "frozen_axes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "requested": {"type": "object", "minProperties": 1},
+        "resolved": {"type": "object", "minProperties": 1},
+        "units": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}},
+        "config_version": {"type": "string", "minLength": 1},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "sampler": {"$ref": "#/$defs/versionedConfig"},
+        "region_band": {"enum": ["outer", "middle", "core"]},
+        "yaw_stratum_id": {"type": "string", "minLength": 1},
+        "split": {"enum": ["train", "validation"]}
+      }
+    },
+    "recording": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fps", "control_hz", "frame_count", "state_features", "action_features", "cameras", "synchronization"],
+      "properties": {
+        "fps": {"const": 30},
+        "control_hz": {"type": "number", "exclusiveMinimum": 0},
+        "frame_count": {"type": "integer", "minimum": 1},
+        "state_features": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "string"}},
+        "action_features": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "string"}},
+        "cameras": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "items": {"$ref": "#/$defs/camera"}
+        },
+        "synchronization": {
+          "type": "object", "additionalProperties": false,
+          "required": ["clock", "same_control_tick", "timestamp_unit", "maximum_skew_seconds"],
+          "properties": {
+            "clock": {"type": "string", "minLength": 1},
+            "same_control_tick": {"const": true},
+            "timestamp_unit": {"const": "seconds"},
+            "maximum_skew_seconds": {"type": "number", "minimum": 0}
+          }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object", "additionalProperties": true,
+      "required": ["success", "dataset_valid", "failure_category", "failure_reason"],
+      "properties": {
+        "success": {"type": "boolean"},
+        "dataset_valid": {"type": "boolean"},
+        "failure_category": {"type": ["string", "null"]},
+        "failure_reason": {"type": ["string", "null"]}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "versionedConfig": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requested", "resolved", "units", "config_version", "config_sha256"],
+      "properties": {
+        "requested": {"type": "object", "minProperties": 1},
+        "resolved": {"type": "object", "minProperties": 1},
+        "units": {"type": "object", "additionalProperties": {"type": "string"}},
+        "config_version": {"type": "string", "minLength": 1},
+        "config_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "materialState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["static_friction", "dynamic_friction", "restitution", "friction_combine_mode", "restitution_combine_mode"],
+      "properties": {
+        "static_friction": {"type": "number", "minimum": 0},
+        "dynamic_friction": {"type": "number", "minimum": 0},
+        "restitution": {"type": "number", "minimum": 0, "maximum": 1},
+        "friction_combine_mode": {"enum": ["average", "min", "multiply", "max"]},
+        "restitution_combine_mode": {"enum": ["average", "min", "multiply", "max"]}
+      }
+    },
+    "objectArchetypeState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["archetype_id", "semantic_type", "geometry_representation", "anchor"],
+      "properties": {
+        "archetype_id": {"type": "string", "minLength": 1},
+        "semantic_type": {"type": "string", "minLength": 1},
+        "geometry_representation": {"enum": ["procedural", "asset", "mesh"]},
+        "anchor": {"enum": ["center", "bottom_center", "asset_origin"]}
+      }
+    },
+    "objectVariantState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["variant_id", "archetype_id", "asset_id", "dimensions_m", "rgba", "mass_kg", "object_material", "table_material", "gripper_material"],
+      "properties": {
+        "variant_id": {"type": "string", "minLength": 1},
+        "archetype_id": {"type": "string", "minLength": 1},
+        "asset_id": {"type": "string", "minLength": 1},
+        "dimensions_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}},
+        "rgba": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
+        "mass_kg": {"type": "number", "exclusiveMinimum": 0},
+        "object_material": {"$ref": "#/$defs/materialState"},
+        "table_material": {"$ref": "#/$defs/materialState"},
+        "gripper_material": {"$ref": "#/$defs/materialState"}
+      }
+    },
+    "versionedObjectArchetype": {
+      "allOf": [
+        {"$ref": "#/$defs/versionedConfig"},
+        {"type": "object", "properties": {"requested": {"$ref": "#/$defs/objectArchetypeState"}, "resolved": {"$ref": "#/$defs/objectArchetypeState"}}}
+      ]
+    },
+    "versionedObjectVariant": {
+      "allOf": [
+        {"$ref": "#/$defs/versionedConfig"},
+        {"type": "object", "properties": {"requested": {"$ref": "#/$defs/objectVariantState"}, "resolved": {"$ref": "#/$defs/objectVariantState"}}}
+      ]
+    },
+    "camera": {
+      "type": "object", "additionalProperties": false,
+      "required": ["camera_id", "feature_key", "width", "height", "config_version", "config_sha256", "calibration", "mount_transform", "frame_timestamp_source"],
+      "properties": {
+        "camera_id": {"enum": ["front", "wrist"]},
+        "feature_key": {"enum": ["observation.images.front", "observation.images.wrist"]},
+        "width": {"const": 640}, "height": {"const": 480},
+        "config_version": {"type": "string", "minLength": 1},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "calibration": {"type": "object", "minProperties": 1},
+        "mount_transform": {"type": "object", "minProperties": 1},
+        "frame_timestamp_source": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

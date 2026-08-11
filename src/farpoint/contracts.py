@@ -13,6 +13,10 @@ from farpoint.scene_entities import validate_scene_entities
 
 
 SCHEMA_FILES = {
+    "farpoint.collection-campaign.v1": "collection_campaign_v1.schema.json",
+    "farpoint.collection-segment.v1": "collection_segment_v1.schema.json",
+    "farpoint.collection-event.v1": "collection_event_v1.schema.json",
+    "farpoint.episode.v4": "farpoint_episode_v4.schema.json",
     "farpoint.dataset.v3": "farpoint_dataset_v3.schema.json",
     "farpoint.episode.v3": "farpoint_episode_v3.schema.json",
     "farpoint.variation.v3": "farpoint_variation_v3.schema.json",
@@ -65,13 +69,17 @@ def task_definition(metadata: dict[str, Any]) -> dict[str, str]:
     """Resolve an episode task without assuming a cube-only dataset."""
     task = metadata.get("task") or {}
     variation = metadata.get("variation") or {}
+    scene = metadata.get("scene") or {}
+    archetype = (scene.get("object_archetype") or {}).get("resolved") or {}
     shape = (
         task.get("object_shape")
-        or (metadata.get("scene") or {}).get("object", {}).get("shape")
+        or archetype.get("semantic_type")
+        or archetype.get("archetype_id")
+        or scene.get("object", {}).get("shape")
         or next(
             (
                 entity.get("entity_type")
-                for entity in (metadata.get("scene") or {}).get("entities", ())
+                for entity in scene.get("entities", ())
                 if entity.get("role") == "manipulated_object"
             ),
             None,
@@ -96,6 +104,93 @@ def task_definition(metadata: dict[str, Any]) -> dict[str, str]:
 def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
     """Check relationships that JSON Schema cannot express across nested fields."""
     errors = []
+    if record.get("schema_version") == "farpoint.episode.v4":
+        identity = record.get("identity") or {}
+        task = record.get("task") or {}
+        scene = record.get("scene") or {}
+        variation = record.get("variation") or {}
+        recording = record.get("recording") or {}
+        if identity.get("task_id") != task.get("task_id"):
+            errors.append("identity.task_id does not match task.task_id")
+        if identity.get("split") != variation.get("split"):
+            errors.append("variation.split does not match identity.split")
+        if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
+            errors.append("variation axes cannot be both varied and frozen")
+        entities = scene.get("entities") or []
+        try:
+            validate_scene_entities(entities)
+        except ValueError as error:
+            errors.append(str(error))
+        entity_index = {
+            entity.get("entity_id"): entity
+            for entity in entities
+            if isinstance(entity, dict) and entity.get("entity_id")
+        }
+        for task_field, role in (
+            ("manipulated_entity_id", "manipulated_object"),
+            ("target_entity_id", "placement_target"),
+        ):
+            entity_id = task.get(task_field)
+            if entity_id not in entity_index:
+                errors.append(f"task.{task_field} is missing from scene.entities")
+            elif entity_index[entity_id].get("role") != role:
+                errors.append(f"task.{task_field} does not name a {role}")
+        target = entity_index.get(task.get("target_entity_id")) or {}
+        if task.get("acceptance_region_id") not in {
+            region.get("region_id")
+            for region in target.get("regions", ())
+            if isinstance(region, dict)
+        }:
+            errors.append("task.acceptance_region_id is missing from the target entity")
+        manipulated = entity_index.get(task.get("manipulated_entity_id")) or {}
+        archetype = ((scene.get("object_archetype") or {}).get("resolved") or {})
+        variant = ((scene.get("object_variant") or {}).get("resolved") or {})
+        if archetype.get("semantic_type") != manipulated.get("entity_type"):
+            errors.append(
+                "scene.object_archetype.resolved.semantic_type does not match "
+                "the manipulated entity"
+            )
+        if variant.get("archetype_id") != archetype.get("archetype_id"):
+            errors.append(
+                "scene.object_variant.resolved.archetype_id does not match the archetype"
+            )
+        expected_variant_values = (
+            ("dimensions_m", (manipulated.get("geometry") or {}).get("dimensions_m")),
+            ("rgba", (manipulated.get("appearance") or {}).get("rgba")),
+            ("mass_kg", (manipulated.get("physics") or {}).get("mass_kg")),
+            (
+                "object_material",
+                (manipulated.get("physics") or {}).get("material"),
+            ),
+        )
+        for field, actual in expected_variant_values:
+            if variant.get(field) != actual:
+                errors.append(
+                    f"scene.object_variant.resolved.{field} does not match "
+                    "the manipulated entity"
+                )
+        material_configs = scene.get("materials") or {}
+        for field in ("object", "table", "gripper"):
+            resolved_material = (material_configs.get(field) or {}).get("resolved")
+            if resolved_material != variant.get(f"{field}_material"):
+                errors.append(
+                    f"scene.materials.{field}.resolved does not match the object variant"
+                )
+        cameras = recording.get("cameras") or []
+        camera_ids = {camera.get("camera_id") for camera in cameras if isinstance(camera, dict)}
+        feature_keys = {
+            camera.get("feature_key") for camera in cameras if isinstance(camera, dict)
+        }
+        if camera_ids != {"front", "wrist"}:
+            errors.append("episode v4 requires exactly front and wrist cameras")
+        if feature_keys != {
+            "observation.images.front",
+            "observation.images.wrist",
+        }:
+            errors.append("episode v4 camera feature keys are incomplete")
+        if not (recording.get("synchronization") or {}).get("same_control_tick"):
+            errors.append("episode v4 cameras must share the same control tick")
+        return errors
     if record.get("schema_version") == "farpoint.episode.v3":
         identity = record.get("identity") or {}
         task = record.get("task") or {}
