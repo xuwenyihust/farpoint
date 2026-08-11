@@ -127,7 +127,6 @@ from farpoint_so101_env.mdp import (  # noqa: E402
     SO101_GRIPPER_DYNAMIC_FRICTION,
     SO101_GRIPPER_RESTITUTION,
     SO101_GRIPPER_STATIC_FRICTION,
-    hide_workshop_camera_mount_visual,
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
 from farpoint.camera_profiles import (  # noqa: E402
@@ -3108,11 +3107,6 @@ def main():
                     + "; ".join(camera_errors)
                 )
         env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
-        if args_cli.enable_wrist_camera:
-            # USD reference topology and the RTX renderer must be stable before
-            # visibility is authored. Doing this in a prestartup EventTerm
-            # makes Isaac silently clear the scene during construction.
-            hide_workshop_camera_mount_visual(env)
         if args_cli.diagnose_jacobian:
             run_jacobian_diagnostic(env)
             finish_diagnostic_manifest(manifest, "jacobian", succeeded=True)

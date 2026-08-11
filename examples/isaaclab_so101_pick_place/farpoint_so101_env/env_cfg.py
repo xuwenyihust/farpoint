@@ -120,13 +120,13 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
         width=640,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(focal_length=13.5, focus_distance=0.10),
-        # OpenGL looks along camera-local -Z. Place the virtual optical center
-        # outside the fixed-finger side and aim below its collision AABB at the
-        # calibrated capture aperture. In the grasp posture this side remains
-        # above the table while the moving jaw closes outside the sightline.
+        # OpenGL looks along camera-local -Z. The workshop camera bracket spans
+        # local x=[-0.0264, 0.0186] m; mounting at x=0.06 m keeps both the
+        # optical center and its ray to the calibrated aperture outside that
+        # visual. This avoids runtime edits to the referenced workshop USD.
         offset=TiledCameraCfg.OffsetCfg(
-            pos=(-0.02, 0.08, -0.04),
-            rot=(0.1419574, -0.6368951, -0.7396189, 0.1648535),
+            pos=(0.06, 0.05, -0.04),
+            rot=(0.1850338, 0.5868067, 0.7518119, 0.2370638),
             convention="opengl",
         ),
     )

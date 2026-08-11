@@ -23,11 +23,11 @@ retreat. It must reject gripper occlusion, an empty task view, invalid focus,
 or a wrist-camera collision. Headless QA additionally decodes every front and
 wrist frame and checks one-to-one timestamps.
 
-The official workshop asset's camera bracket collider and visual are disabled
-at pre-startup. Farpoint does not use that physical camera: it spawns a
-massless sensor from the frozen profile. The gate verifies that only the
-`gripper/visuals/camera_mount` subtree is hidden; all finger and gripper
-visuals remain present in wrist RGB.
+The official workshop asset's camera bracket collider is disabled at
+pre-startup, but its visual remains unchanged. Farpoint spawns a massless
+sensor from the frozen profile with its optical center and aperture sightline
+outside the bracket's measured USD bounds. Viewer QA verifies that the
+workshop visual, fingers, and gripper do not occlude the task view.
 
 ## Continuous feasible region
 

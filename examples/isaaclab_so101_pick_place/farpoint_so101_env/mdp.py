@@ -46,26 +46,6 @@ def disable_workshop_camera_mount_collision(env, env_ids=None):
             raise RuntimeError(f"failed to deactivate camera mount collider: {prim.GetPath()}")
 
 
-def hide_workshop_camera_mount_visual(env, env_ids=None):
-    """Hide the unused workshop camera model that blocks Farpoint's sensor.
-
-    The pinned robot ships a complete visual camera and bracket, while
-    Farpoint spawns a separate massless camera at a versioned transform. Only
-    the unused visual subtree is hidden; finger and gripper visuals remain.
-    """
-    del env_ids
-    path = env.scene["robot"].cfg.prim_path + "/gripper/visuals/camera_mount"
-    matched = list(sim_utils.find_matching_prims(path))
-    if len(matched) != 1:
-        raise RuntimeError(f"expected one workshop camera visual, got {matched}")
-    imageable = UsdGeom.Imageable(matched[0])
-    imageable.MakeInvisible()
-    if imageable.ComputeVisibility() != UsdGeom.Tokens.invisible:
-        raise RuntimeError(
-            f"failed to hide workshop camera visual: {matched[0].GetPath()}"
-        )
-
-
 def bind_so101_gripper_material(env, env_ids=None):
     """Bind a high-friction material directly to instantiated finger colliders."""
     del env_ids
