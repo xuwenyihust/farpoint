@@ -60,6 +60,7 @@ def test_live_publisher_writes_atomic_status_preview_and_ordered_events(tmp_path
         clock=clock,
     )
     publisher.start(payload={"target_successful_episodes": 2})
+    publisher.update_status(startup_phase="environment_construction")
     publisher.attempt_started("attempt-000", "variation-000")
     assert publisher.publish_preview(b"\xff\xd8jpeg") is True
     assert publisher.publish_preview(b"\xff\xd8new") is False
@@ -79,6 +80,7 @@ def test_live_publisher_writes_atomic_status_preview_and_ordered_events(tmp_path
     assert status["execution_status"] == "FINISHED"
     assert status["quality_status"] == "PASS"
     assert status["successful_episodes"] == 1
+    assert status["startup_phase"] == "environment_construction"
     assert (tmp_path / "active-preview.jpg").read_bytes() == b"\xff\xd8new"
     events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
     assert [event["sequence"] for event in events] == list(range(len(events)))

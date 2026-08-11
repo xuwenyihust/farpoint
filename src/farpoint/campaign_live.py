@@ -124,6 +124,12 @@ class LiveCampaignPublisher:
                 timestamp_unix=self._status["heartbeat_unix"],
             )
 
+    def update_status(self, **updates: Any) -> None:
+        with self._lock:
+            if not self._status or self._status["execution_status"] != "RUNNING":
+                raise RuntimeError("live campaign publisher is not running")
+            self._write_status(**updates)
+
     def event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             event = self.event_log.append(

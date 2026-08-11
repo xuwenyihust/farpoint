@@ -15,13 +15,12 @@ from pathlib import Path
 
 import numpy as np
 
-from isaaclab.app import AppLauncher
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from farpoint.campaign_live import LiveCampaignPublisher  # noqa: E402
 from farpoint.so101_runtime import resolve_headless_mode  # noqa: E402
+from isaaclab.app import AppLauncher  # noqa: E402
 
 # USD limits observed from the pinned SO-101 asset (radians), kept explicit so
 # controller targets cannot be normalized or extrapolated by a backend.
@@ -130,6 +129,21 @@ def parse_args():
 
 
 args_cli = parse_args()
+live_publisher = None
+if args_cli.campaign_root is not None:
+    live_publisher = LiveCampaignPublisher(
+        args_cli.campaign_root,
+        args_cli.campaign_id,
+        args_cli.segment_id,
+    )
+    # This intentionally precedes AppLauncher: RTX/Kit startup can take
+    # minutes or fail, and the campaign must still become immediately visible.
+    live_publisher.start(
+        payload={
+            "git_commit": os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
+            "startup_phase": "isaac_app_launcher",
+        }
+    )
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
@@ -150,7 +164,6 @@ from farpoint.camera_profiles import (  # noqa: E402
     load_camera_profile,
     resolved_mounts_from_profile,
 )
-from farpoint.campaign_live import LiveCampaignPublisher  # noqa: E402
 from farpoint.control import (  # noqa: E402
     advance_so101_slow_close_target,
     bounded_position_target,
@@ -3103,19 +3116,11 @@ def main():
     # Persist RUNNING before Isaac environment construction. A SIGINT/SIGTERM
     # during the expensive RTX startup must still leave a terminal manifest.
     write_manifest(args_cli.manifest, manifest)
-    live_publisher = None
-    if args_cli.campaign_root is not None:
-        live_publisher = LiveCampaignPublisher(
-            args_cli.campaign_root,
-            args_cli.campaign_id,
-            args_cli.segment_id,
-        )
-        live_publisher.start(
-            payload={
-                "collection_id": manifest["collection_id"],
-                "target_successful_episodes": int(manifest["required_successes"]),
-                "git_commit": os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
-            }
+    if live_publisher is not None:
+        live_publisher.update_status(
+            collection_id=manifest["collection_id"],
+            target_successful_episodes=int(manifest["required_successes"]),
+            startup_phase="environment_construction",
         )
     previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
