@@ -58,10 +58,11 @@ def hide_workshop_camera_mount_visual(env, env_ids=None):
     matched = list(sim_utils.find_matching_prims(path))
     if len(matched) != 1:
         raise RuntimeError(f"expected one workshop camera visual, got {matched}")
-    matched[0].SetActive(False)
-    if matched[0].IsActive():
+    imageable = UsdGeom.Imageable(matched[0])
+    imageable.MakeInvisible()
+    if imageable.ComputeVisibility() != UsdGeom.Tokens.invisible:
         raise RuntimeError(
-            f"failed to deactivate workshop camera visual: {matched[0].GetPath()}"
+            f"failed to hide workshop camera visual: {matched[0].GetPath()}"
         )
 
 
