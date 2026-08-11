@@ -114,6 +114,10 @@ def build_so101_episode_v4(
     target_entity = resolved_variation_entities["entities"]["placement_target"]
     table_material = deepcopy(plan["materials"]["table"])
     table_entity = support_surface_entity(table, material=table_material)
+    requested_entities = deepcopy(trial["requested"]["entities"])
+    requested_entities[table_entity["entity_id"]] = deepcopy(table_entity)
+    resolved_entities = deepcopy(resolved_variation_entities["entities"])
+    resolved_entities[table_entity["entity_id"]] = deepcopy(table_entity)
     variant_resolved = _variant_resolved_state(trial, resolved_state)
     variant = deepcopy(trial["object_variant"])
     variant["resolved"] = variant_resolved
@@ -132,6 +136,9 @@ def build_so101_episode_v4(
     variation_resolved["yaw_degrees"] = _canonical_cube_yaw_degrees(
         resolved_state["orientation_xyzw"]
     )
+    variation_requested = deepcopy(trial["variation_requested"])
+    variation_requested["entities"] = requested_entities
+    variation_resolved["entities"] = resolved_entities
     metadata = {
         "schema_version": "farpoint.episode.v4",
         "identity": {
@@ -175,7 +182,7 @@ def build_so101_episode_v4(
             "variation_id": trial["variation_id"],
             "varied_axes": deepcopy(plan["varied_axes"]),
             "frozen_axes": deepcopy(plan["frozen_axes"]),
-            "requested": deepcopy(trial["variation_requested"]),
+            "requested": variation_requested,
             "resolved": variation_resolved,
             "units": deepcopy(trial["variation_units"]),
             "config_version": plan["config_version"],

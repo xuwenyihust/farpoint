@@ -109,6 +109,7 @@ def test_campaign_dashboard_marks_stale_and_only_promotes_quality_pass(tmp_path)
                 "execution_status": "RUNNING",
                 "quality_status": "NOT_EVALUATED",
                 "heartbeat_unix": 10.0,
+                "target_successful_episodes": 1,
                 "successful_episodes": 1,
                 "completed_attempts": 2,
             }
@@ -180,7 +181,9 @@ def test_campaign_dashboard_marks_stale_and_only_promotes_quality_pass(tmp_path)
     )
 
     index = CampaignDashboardIndex([tmp_path], stale_after_seconds=60)
-    assert index.live_runs(now_unix=100)[0]["execution_status"] == "STALE"
+    live_row = index.live_runs(now_unix=100)[0]
+    assert live_row["execution_status"] == "STALE"
+    assert live_row["target_successful_episodes"] == 1
     assert {row["campaign_id"] for row in index.collections(now_unix=100)} == {
         "live",
         "passed",
