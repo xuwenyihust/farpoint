@@ -38,15 +38,16 @@ def _write_rgb_png(path):
     )
 
 
-def _write_success_episode(root, variation_id, marker):
+def _write_success_episode(root, variation_id, marker, *, wrist=False):
     root.mkdir(parents=True)
     (root / "rgb").mkdir()
     _write_rgb_png(root / "rgb/front.png")
+    if wrist:
+        _write_rgb_png(root / "rgb/wrist.png")
     phases = ["home", "verify_contact", "lift"] + ["settle"] * 15 + ["retreat"]
     rows = []
     for frame, phase in enumerate(phases):
-        rows.append(
-            {
+        row = {
                 "frame": frame,
                 "timestamp_seconds": frame / 30,
                 "phase": phase,
@@ -80,7 +81,9 @@ def _write_success_episode(root, variation_id, marker):
                     "grasp_xy_correction_m": [0.001, 0.0],
                 },
             }
-        )
+        if wrist:
+            row["wrist_rgb_path"] = "rgb/wrist.png"
+        rows.append(row)
     (root / "observations.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
     )
@@ -134,6 +137,44 @@ def test_pilot_report_passes_ten_independent_physical_front_only_episodes(tmp_pa
     assert report["evidence_errors"] == []
     assert report["acceptance_errors"] == []
     assert "Pilot status: **PASS**" in render_so101_pilot_report_markdown(report)
+
+
+def test_pilot_report_accepts_explicit_dual_camera_contract(tmp_path):
+    plan = build_so101_pilot_plan(_config(), pilot_id="dual_camera_report")
+    manifest = create_pilot_manifest(
+        plan, collection_id=plan["plan_id"], git_commit="d" * 40
+    )
+    for index in range(10):
+        attempt = next_attempt(manifest, plan)
+        episode_id = f"dual_episode_{index}"
+        _write_success_episode(
+            tmp_path / episode_id,
+            attempt["variation_id"],
+            index / 1000,
+            wrist=True,
+        )
+        record_attempt(
+            manifest,
+            plan,
+            attempt,
+            episode_id=episode_id,
+            success=True,
+            dataset_valid=True,
+        )
+
+    report = build_so101_pilot_report(
+        plan,
+        manifest,
+        tmp_path,
+        required_cameras=("front", "wrist"),
+    )
+
+    assert report["pilot_status"] == "PASS"
+    assert report["required_cameras"] == ["front", "wrist"]
+    assert report["evidence_errors"] == []
+    assert "front, wrist camera artifacts passed" in render_so101_pilot_report_markdown(
+        report
+    )
 
 
 def test_pilot_gate_failure_is_not_invalid_evidence():

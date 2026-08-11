@@ -73,7 +73,9 @@ def test_camera_profile_detects_isaac_scene_config_drift():
     scene = Value()
     for camera in profile["cameras"]:
         cfg = Value()
+        cfg.prim_path = camera["prim_path"]
         cfg.width, cfg.height = camera["width"], camera["height"]
+        cfg.data_types = tuple(camera["data_types"])
         cfg.spawn, cfg.offset = Value(), Value()
         cfg.spawn.focal_length = camera["focal_length_mm"]
         cfg.spawn.focus_distance = camera["focus_distance_m"]

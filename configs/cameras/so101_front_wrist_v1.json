@@ -7,8 +7,10 @@
     {
       "camera_id": "front",
       "feature_key": "observation.images.front",
+      "prim_path": "{ENV_REGEX_NS}/CameraFront",
       "width": 640,
       "height": 480,
+      "data_types": ["rgb"],
       "optical_model": "pinhole",
       "focal_length_mm": 18.0,
       "focus_distance_m": 0.35,
@@ -23,15 +25,17 @@
     {
       "camera_id": "wrist",
       "feature_key": "observation.images.wrist",
+      "prim_path": "{ENV_REGEX_NS}/Robot/gripper/FarpointWristCamera",
       "width": 640,
       "height": 480,
+      "data_types": ["rgb"],
       "optical_model": "pinhole",
       "focal_length_mm": 13.5,
       "focus_distance_m": 0.08,
       "mount": {
         "parent_frame": "Robot/gripper",
-        "position_m": [-0.02, -0.06, 0.08],
-        "orientation_xyzw": [0.3556016, -0.2029594, -0.4522391, 0.7923603],
+        "position_m": [-0.02, -0.08, -0.02],
+        "orientation_xyzw": [0.5347946, -0.1438864, -0.216329, 0.804048],
         "convention": "opengl"
       }
     }

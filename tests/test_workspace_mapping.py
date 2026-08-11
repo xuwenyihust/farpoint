@@ -4,6 +4,7 @@ from farpoint.workspace_mapping import (
     REQUIRED_CONSTRAINTS,
     WorkspaceProbe,
     derive_feasible_region,
+    feasible_region_record,
 )
 
 
@@ -38,6 +39,7 @@ def test_workspace_mapping_requires_every_constraint_and_derives_region():
     assert region.band((0.20, -0.05)) in {"middle", "core"}
     assert len(region.generator_sha256) == 64
     assert len(region.constraints_sha256) == 64
+    assert feasible_region_record(region)["schema_version"] == "farpoint.feasible-region.v1"
 
 
 def test_workspace_mapping_rejects_failed_probe_hidden_by_convex_hull():

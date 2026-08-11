@@ -55,8 +55,13 @@ def validate_camera_profile(profile: dict[str, Any]) -> list[str]:
         camera_id = camera.get("camera_id")
         if camera.get("feature_key") != V010_CAMERA_FEATURES.get(camera_id):
             errors.append(f"camera {camera_id!r} has an invalid feature_key")
+        prim_path = camera.get("prim_path")
+        if not isinstance(prim_path, str) or not prim_path.startswith("{ENV_REGEX_NS}/"):
+            errors.append(f"camera {camera_id!r} prim_path must be environment-relative")
         if camera.get("width") != 640 or camera.get("height") != 480:
             errors.append(f"camera {camera_id!r} must use 640x480 resolution")
+        if camera.get("data_types") != ["rgb"]:
+            errors.append(f"camera {camera_id!r} must record RGB only")
         if camera.get("optical_model") != "pinhole":
             errors.append(f"camera {camera_id!r} must use the pinhole optical model")
         for field in ("focal_length_mm", "focus_distance_m"):
@@ -163,8 +168,10 @@ def camera_cfg_drift_errors(profile: dict[str, Any], scene_cfg: Any) -> list[str
             errors.append(f"Isaac scene is missing {camera_id}_camera")
             continue
         checks = (
+            ("prim_path", getattr(cfg, "prim_path", None), requested["prim_path"]),
             ("width", getattr(cfg, "width", None), requested["width"]),
             ("height", getattr(cfg, "height", None), requested["height"]),
+            ("data_types", list(getattr(cfg, "data_types", ())), requested["data_types"]),
             (
                 "focal_length_mm",
                 getattr(getattr(cfg, "spawn", None), "focal_length", None),

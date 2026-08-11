@@ -164,3 +164,19 @@ def derive_feasible_region(
             + ", ".join(sorted(hidden_failures))
         )
     return temporary
+
+
+def feasible_region_record(region: FeasibleRegion) -> dict[str, Any]:
+    """Serialize a frozen region without coupling consumers to the dataclass."""
+    return {
+        "schema_version": "farpoint.feasible-region.v1",
+        "region_id": region.region_id,
+        "version": region.version,
+        "frame_id": region.frame_id,
+        "polygon_xy_m": [list(point) for point in region.polygon_xy_m],
+        "max_clearance_m": region.max_clearance_m,
+        "object_anchor": region.object_anchor,
+        "footprint_xy_m": list(region.footprint_xy_m),
+        "generator_sha256": region.generator_sha256,
+        "constraints_sha256": region.constraints_sha256,
+    }
