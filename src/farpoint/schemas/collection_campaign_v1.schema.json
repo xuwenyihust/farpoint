@@ -10,6 +10,7 @@
     "lineage_id": {"type": "string", "minLength": 1},
     "task_id": {"type": "string", "minLength": 1},
     "campaign_version": {"type": "string", "minLength": 1},
+    "campaign_kind": {"enum": ["formal", "pilot", "diagnostic", "integration"]},
     "target": {
       "type": "object", "additionalProperties": false,
       "required": ["successful_episodes", "splits"],
