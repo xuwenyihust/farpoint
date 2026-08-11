@@ -452,6 +452,12 @@ def test_campaign_dashboard_apis_and_sse(dashboard):
         collections = json.load(response)["collections"]
     assert collections[0]["successful_episodes"] == 2
 
+    with urlopen(f"{dashboard['url']}/api/benchmarks") as response:
+        benchmarks = json.load(response)["benchmarks"]
+    assert dashboard["campaign_id"] not in {
+        row["benchmark_id"] for row in benchmarks
+    }
+
     with urlopen(f"{dashboard['url']}/api/events") as response:
         assert response.headers["Content-Type"] == "text/event-stream"
         body = response.read().decode()

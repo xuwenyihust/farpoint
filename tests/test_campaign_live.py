@@ -12,13 +12,15 @@ class Clock:
         return self.value
 
 
-def _campaign(campaign_id="so101-v010-live"):
+def _campaign(campaign_id="so101-v010-live", *, campaign_kind=None):
+    kind = {"campaign_kind": campaign_kind} if campaign_kind is not None else {}
     return create_campaign(
         {
             "campaign_id": campaign_id,
             "lineage_id": "farpoint-so101-v010",
             "task_id": "so101_cube_pick_place",
             "campaign_version": "0.1.0",
+            **kind,
             "target": {"successful_episodes": 2, "splits": {"train": 1, "validation": 1}},
             "quotas": [
                 {
@@ -114,7 +116,9 @@ def test_campaign_dashboard_marks_stale_and_only_promotes_quality_pass(tmp_path)
     )
     passed = tmp_path / "passed"
     passed.mkdir()
-    (passed / "campaign.json").write_text(json.dumps(_campaign("passed")))
+    (passed / "campaign.json").write_text(
+        json.dumps(_campaign("passed", campaign_kind="formal"))
+    )
     (passed / "status.json").write_text(
         json.dumps(
             {
@@ -142,6 +146,38 @@ def test_campaign_dashboard_marks_stale_and_only_promotes_quality_pass(tmp_path)
             }
         )
     )
+    integration = tmp_path / "integration"
+    integration.mkdir()
+    (integration / "campaign.json").write_text(
+        json.dumps(_campaign("integration", campaign_kind="integration"))
+    )
+    (integration / "status.json").write_text(
+        json.dumps(
+            {
+                "campaign_id": "integration",
+                "segment_id": "segment-000",
+                "execution_status": "FINISHED",
+                "quality_status": "PASS",
+                "heartbeat_unix": 90.0,
+            }
+        )
+    )
+    legacy_passed = tmp_path / "legacy-passed"
+    legacy_passed.mkdir()
+    (legacy_passed / "campaign.json").write_text(
+        json.dumps(_campaign("legacy-passed"))
+    )
+    (legacy_passed / "status.json").write_text(
+        json.dumps(
+            {
+                "campaign_id": "legacy-passed",
+                "segment_id": "segment-000",
+                "execution_status": "FINISHED",
+                "quality_status": "PASS",
+                "heartbeat_unix": 90.0,
+            }
+        )
+    )
 
     index = CampaignDashboardIndex([tmp_path], stale_after_seconds=60)
     assert index.live_runs(now_unix=100)[0]["execution_status"] == "STALE"
@@ -149,6 +185,8 @@ def test_campaign_dashboard_marks_stale_and_only_promotes_quality_pass(tmp_path)
         "live",
         "passed",
         "failed",
+        "integration",
+        "legacy-passed",
     }
     assert [row["campaign_id"] for row in index.benchmarks(now_unix=100)] == [
         "passed"

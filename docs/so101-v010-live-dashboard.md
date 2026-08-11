@@ -35,5 +35,7 @@ separator. The server exposes:
 
 A running campaign becomes `STALE` after 60 seconds without a heartbeat.
 Collections always remain visible, including paused and failed campaigns.
-Only campaigns with `execution_status=FINISHED` and `quality_status=PASS` are
-projected into the Benchmarks tab.
+Only campaigns explicitly marked `campaign_kind=formal` with
+`execution_status=FINISHED` and `quality_status=PASS` are projected into the
+Benchmarks tab. Older campaign contracts without the optional field remain
+readable and are treated as non-formal evidence.

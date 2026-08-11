@@ -289,6 +289,7 @@ class CampaignDashboardIndex:
                 {
                     "campaign_id": campaign.get("campaign_id") or root.name,
                     "campaign_version": campaign.get("campaign_version"),
+                    "campaign_kind": campaign.get("campaign_kind"),
                     "task_id": campaign.get("task_id"),
                     "execution_status": "STALE" if stale else status.get("execution_status", "NOT_STARTED"),
                     "quality_status": status.get("quality_status", "NOT_EVALUATED"),
@@ -325,7 +326,9 @@ class CampaignDashboardIndex:
     def benchmarks(self, now_unix: float | None = None) -> list[dict[str, Any]]:
         return [
             row for row in self._records(now_unix)
-            if row["execution_status"] == "FINISHED" and row["quality_status"] == "PASS"
+            if row["campaign_kind"] == "formal"
+            and row["execution_status"] == "FINISHED"
+            and row["quality_status"] == "PASS"
         ]
 
     def campaign_root(self, campaign_id: str) -> Path:
