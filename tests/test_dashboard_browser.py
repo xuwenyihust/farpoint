@@ -300,7 +300,9 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
 
         page.get_by_role("button", name=f"Play preview for {dashboard['episode_id']}").click()
         page.get_by_text("2 preview frames").wait_for()
-        assert page.locator("#playerImage").evaluate("image => image.naturalWidth") == 1
+        page.wait_for_function(
+            "document.querySelector('#playerImage')?.naturalWidth === 1"
+        )
         page.get_by_role("button", name="Close playback").click()
 
         page.get_by_placeholder("Search episode or task").fill("episode_so101")
