@@ -35,12 +35,15 @@ def _camera(camera_id):
 
 
 def episode_v4():
+    object_material = {"static_friction": 0.8, "dynamic_friction": 0.6, "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "max"}
+    table_material = {"static_friction": 0.7, "dynamic_friction": 0.5, "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "max"}
+    gripper_material = {"static_friction": 1.0, "dynamic_friction": 0.8, "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "max"}
     obj = {
         "shape": "cube", "asset_id": "procedural_cube",
         "dimensions_m": [0.04, 0.04, 0.04], "position_m": [0.2, -0.05, 0.02],
         "orientation_xyzw": [0.0, 0.0, 0.0, 1.0], "rgba": [0.9, 0.1, 0.1, 1.0],
         "mass_kg": 0.04, "static_friction": 0.8, "dynamic_friction": 0.6,
-        "restitution": 0.0,
+        "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "max",
     }
     target_spec = {
         "target_id": "green-pad", "position_m": [0.16, 0.12, 0.005],
@@ -53,7 +56,7 @@ def episode_v4():
         "entity_type": "table", "asset_id": "procedural_table",
         "pose": {"frame_id": "isaac_world", "position_m": [0.0, 0.0, -0.02], "orientation_xyzw": [0.0, 0.0, 0.0, 1.0]},
         "geometry": {"representation": "procedural", "shape": "cuboid", "dimensions_m": [0.6, 0.6, 0.04]},
-        "physics": {"body_type": "static", "collision_enabled": True, "material": {"static_friction": 0.7, "dynamic_friction": 0.5, "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "max"}},
+        "physics": {"body_type": "static", "collision_enabled": True, "material": table_material},
     })
     return {
         "schema_version": "farpoint.episode.v4",
@@ -63,10 +66,10 @@ def episode_v4():
         "embodiment": {"robot": "so101", "joint_order": JOINTS},
         "scene": {
             "coordinate_frame": "isaac_world", "entities": entities,
-            "object_archetype": _versioned({"archetype_id": "cube-v1", "semantic_type": "cube"}),
-            "object_variant": _versioned({"variant_id": "red-40mm", "mass_kg": 0.04}, {"mass_kg": "kg"}),
+            "object_archetype": _versioned({"archetype_id": "cube-v1", "semantic_type": "cube", "geometry_representation": "procedural", "anchor": "bottom_center"}),
+            "object_variant": _versioned({"variant_id": "red-40mm", "archetype_id": "cube-v1", "asset_id": "procedural_cube", "dimensions_m": [0.04, 0.04, 0.04], "rgba": [0.9, 0.1, 0.1, 1.0], "mass_kg": 0.04, "object_material": object_material, "table_material": table_material, "gripper_material": gripper_material}, {"dimensions_m": "m", "mass_kg": "kg"}),
             "feasible_region": _versioned({"region_id": "red-40mm-feasible-v1", "polygon_xy_m": [[0.1, -0.12], [0.27, -0.12], [0.27, 0.02], [0.1, 0.02]]}, {"polygon_xy_m": "m"}),
-            "materials": {name: _versioned({"static_friction": 0.8, "dynamic_friction": 0.6, "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "max"}) for name in ("object", "table", "gripper")},
+            "materials": {"object": _versioned(object_material), "table": _versioned(table_material), "gripper": _versioned(gripper_material)},
             "lighting_profile_id": "default-v1",
         },
         "variation": {
@@ -103,6 +106,20 @@ def test_episode_v4_rejects_camera_and_split_drift():
     assert any("too short" in error for error in errors)
     assert "variation.split does not match identity.split" in errors
     assert "episode v4 requires exactly front and wrist cameras" in errors
+
+
+def test_episode_v4_rejects_resolved_variant_physics_drift():
+    episode = episode_v4()
+    episode["scene"]["object_variant"]["resolved"]["mass_kg"] = 0.03
+    episode["scene"]["materials"]["gripper"]["resolved"]["static_friction"] = 0.9
+    errors = validate_episode_semantics(episode)
+    assert (
+        "scene.object_variant.resolved.mass_kg does not match the manipulated entity"
+        in errors
+    )
+    assert (
+        "scene.materials.gripper.resolved does not match the object variant" in errors
+    )
 
 
 def test_compatible_reader_accepts_v1_v2_v3_v4_without_rewriting():

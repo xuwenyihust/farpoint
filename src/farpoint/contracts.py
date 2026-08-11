@@ -142,6 +142,40 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
             if isinstance(region, dict)
         }:
             errors.append("task.acceptance_region_id is missing from the target entity")
+        manipulated = entity_index.get(task.get("manipulated_entity_id")) or {}
+        archetype = ((scene.get("object_archetype") or {}).get("resolved") or {})
+        variant = ((scene.get("object_variant") or {}).get("resolved") or {})
+        if archetype.get("semantic_type") != manipulated.get("entity_type"):
+            errors.append(
+                "scene.object_archetype.resolved.semantic_type does not match "
+                "the manipulated entity"
+            )
+        if variant.get("archetype_id") != archetype.get("archetype_id"):
+            errors.append(
+                "scene.object_variant.resolved.archetype_id does not match the archetype"
+            )
+        expected_variant_values = (
+            ("dimensions_m", (manipulated.get("geometry") or {}).get("dimensions_m")),
+            ("rgba", (manipulated.get("appearance") or {}).get("rgba")),
+            ("mass_kg", (manipulated.get("physics") or {}).get("mass_kg")),
+            (
+                "object_material",
+                (manipulated.get("physics") or {}).get("material"),
+            ),
+        )
+        for field, actual in expected_variant_values:
+            if variant.get(field) != actual:
+                errors.append(
+                    f"scene.object_variant.resolved.{field} does not match "
+                    "the manipulated entity"
+                )
+        material_configs = scene.get("materials") or {}
+        for field in ("object", "table", "gripper"):
+            resolved_material = (material_configs.get(field) or {}).get("resolved")
+            if resolved_material != variant.get(f"{field}_material"):
+                errors.append(
+                    f"scene.materials.{field}.resolved does not match the object variant"
+                )
         cameras = recording.get("cameras") or []
         camera_ids = {camera.get("camera_id") for camera in cameras if isinstance(camera, dict)}
         feature_keys = {

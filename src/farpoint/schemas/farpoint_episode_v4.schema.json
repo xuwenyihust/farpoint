@@ -51,8 +51,8 @@
       "properties": {
         "coordinate_frame": {"type": "string", "minLength": 1},
         "entities": {"type": "array", "minItems": 3, "items": {"type": "object"}},
-        "object_archetype": {"$ref": "#/$defs/versionedConfig"},
-        "object_variant": {"$ref": "#/$defs/versionedConfig"},
+        "object_archetype": {"$ref": "#/$defs/versionedObjectArchetype"},
+        "object_variant": {"$ref": "#/$defs/versionedObjectVariant"},
         "feasible_region": {"$ref": "#/$defs/versionedConfig"},
         "materials": {
           "type": "object", "additionalProperties": false,
@@ -126,11 +126,60 @@
       "type": "object", "additionalProperties": false,
       "required": ["requested", "resolved", "units", "config_version", "config_sha256"],
       "properties": {
-        "requested": {}, "resolved": {},
+        "requested": {"type": "object", "minProperties": 1},
+        "resolved": {"type": "object", "minProperties": 1},
         "units": {"type": "object", "additionalProperties": {"type": "string"}},
         "config_version": {"type": "string", "minLength": 1},
         "config_sha256": {"$ref": "#/$defs/sha256"}
       }
+    },
+    "materialState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["static_friction", "dynamic_friction", "restitution", "friction_combine_mode", "restitution_combine_mode"],
+      "properties": {
+        "static_friction": {"type": "number", "minimum": 0},
+        "dynamic_friction": {"type": "number", "minimum": 0},
+        "restitution": {"type": "number", "minimum": 0, "maximum": 1},
+        "friction_combine_mode": {"enum": ["average", "min", "multiply", "max"]},
+        "restitution_combine_mode": {"enum": ["average", "min", "multiply", "max"]}
+      }
+    },
+    "objectArchetypeState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["archetype_id", "semantic_type", "geometry_representation", "anchor"],
+      "properties": {
+        "archetype_id": {"type": "string", "minLength": 1},
+        "semantic_type": {"type": "string", "minLength": 1},
+        "geometry_representation": {"enum": ["procedural", "asset", "mesh"]},
+        "anchor": {"enum": ["center", "bottom_center", "asset_origin"]}
+      }
+    },
+    "objectVariantState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["variant_id", "archetype_id", "asset_id", "dimensions_m", "rgba", "mass_kg", "object_material", "table_material", "gripper_material"],
+      "properties": {
+        "variant_id": {"type": "string", "minLength": 1},
+        "archetype_id": {"type": "string", "minLength": 1},
+        "asset_id": {"type": "string", "minLength": 1},
+        "dimensions_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}},
+        "rgba": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
+        "mass_kg": {"type": "number", "exclusiveMinimum": 0},
+        "object_material": {"$ref": "#/$defs/materialState"},
+        "table_material": {"$ref": "#/$defs/materialState"},
+        "gripper_material": {"$ref": "#/$defs/materialState"}
+      }
+    },
+    "versionedObjectArchetype": {
+      "allOf": [
+        {"$ref": "#/$defs/versionedConfig"},
+        {"type": "object", "properties": {"requested": {"$ref": "#/$defs/objectArchetypeState"}, "resolved": {"$ref": "#/$defs/objectArchetypeState"}}}
+      ]
+    },
+    "versionedObjectVariant": {
+      "allOf": [
+        {"$ref": "#/$defs/versionedConfig"},
+        {"type": "object", "properties": {"requested": {"$ref": "#/$defs/objectVariantState"}, "resolved": {"$ref": "#/$defs/objectVariantState"}}}
+      ]
     },
     "camera": {
       "type": "object", "additionalProperties": false,

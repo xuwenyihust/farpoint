@@ -193,6 +193,10 @@ def legacy_object_entity(
                 "static_friction": object_spec.get("static_friction", 0.0),
                 "dynamic_friction": object_spec.get("dynamic_friction", 0.0),
                 "restitution": object_spec.get("restitution", 0.0),
+                "friction_combine_mode": object_spec.get("friction_combine_mode"),
+                "restitution_combine_mode": object_spec.get(
+                    "restitution_combine_mode"
+                ),
             },
         },
         "appearance": {"rgba": copy.deepcopy(object_spec.get("rgba"))},
@@ -201,6 +205,11 @@ def legacy_object_entity(
         entity["geometry"].pop("scale_xyz")
     if entity["geometry"]["collision_geometry_id"] is None:
         entity["geometry"].pop("collision_geometry_id")
+    entity["physics"]["material"] = {
+        key: value
+        for key, value in entity["physics"]["material"].items()
+        if value is not None
+    }
     validate_scene_entity(entity)
     return entity
 
