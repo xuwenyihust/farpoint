@@ -16,6 +16,7 @@ ENTITY_ROLES = {
     "distractor",
 }
 BODY_TYPES = {"dynamic", "kinematic", "static"}
+PHYSX_COMBINE_MODES = {"average", "min", "multiply", "max"}
 
 
 def _finite_vector(value: Any, length: int, name: str) -> list[float]:
@@ -91,6 +92,12 @@ def _validate_physics(physics: Any, name: str) -> None:
         )
     if not 0.0 <= restitution <= 1.0:
         raise ValueError(f"{name}.material restitution must be in [0, 1]")
+    for field in ("friction_combine_mode", "restitution_combine_mode"):
+        mode = material.get(field)
+        if mode is not None and mode not in PHYSX_COMBINE_MODES:
+            raise ValueError(
+                f"{name}.material.{field} must be one of {sorted(PHYSX_COMBINE_MODES)}"
+            )
 
 
 def validate_scene_entity(entity: dict[str, Any]) -> None:

@@ -18,6 +18,26 @@ QUALITY_FIELDS = (
 )
 
 
+def validate_compatible_episode_metadata(
+    metadata: dict[str, Any], metrics: dict[str, Any] | None = None
+) -> list[str]:
+    """Validate current typed episodes while retaining v1/legacy readers.
+
+    V2–V4 are public JSON contracts. V1 and pre-schema simulator records keep
+    their historical normalization path rather than being rewritten as v4.
+    """
+    version = metadata.get("schema_version") or metadata.get("metadata_version")
+    if version in {"farpoint.episode.v2", "farpoint.episode.v3", "farpoint.episode.v4"}:
+        return validate_contract(metadata) + validate_episode_semantics(metadata)
+    try:
+        normalized = normalize_episode_metadata(metadata, metrics)
+    except (TypeError, ValueError) as error:
+        return [str(error)]
+    if not normalized.get("episode_id"):
+        return ["legacy episode metadata must define episode_id"]
+    return []
+
+
 def resolve_measured_object_pose(
     variation: dict[str, Any] | None, position_m: list[float]
 ) -> dict[str, Any] | None:

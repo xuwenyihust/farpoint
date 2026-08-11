@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Farpoint Collection Campaign v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "campaign_id", "lineage_id", "task_id", "campaign_version", "target", "quotas", "variation_contract", "attempt_policy", "watchdog_policy", "rollout_holdout", "campaign_sha256"],
+  "properties": {
+    "schema_version": {"const": "farpoint.collection-campaign.v1"},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "lineage_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "campaign_version": {"type": "string", "minLength": 1},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["successful_episodes", "splits"],
+      "properties": {
+        "successful_episodes": {"type": "integer", "minimum": 1},
+        "splits": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "minProperties": 1}
+      }
+    },
+    "quotas": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["object_variant_id", "yaw_stratum_id", "region_band", "split", "count"],
+        "properties": {
+          "object_variant_id": {"type": "string", "minLength": 1},
+          "yaw_stratum_id": {"type": "string", "minLength": 1},
+          "region_band": {"enum": ["outer", "middle", "core"]},
+          "split": {"enum": ["train", "validation"]},
+          "count": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "variation_contract": {"type": "object", "minProperties": 1},
+    "attempt_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maximum_attempts_per_variation", "global_attempt_limit", "replacement_policy"],
+      "properties": {
+        "maximum_attempts_per_variation": {"const": 3},
+        "global_attempt_limit": {"type": "null"},
+        "replacement_policy": {"const": "same_quota_new_variation_seed"}
+      }
+    },
+    "watchdog_policy": {"type": "object", "minProperties": 1},
+    "rollout_holdout": {"type": "object", "minProperties": 1},
+    "campaign_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Farpoint Collection Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "campaign_id", "segment_id", "sequence", "timestamp_unix", "event_type", "payload"],
+  "properties": {
+    "schema_version": {"const": "farpoint.collection-event.v1"},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "segment_id": {"type": ["string", "null"]},
+    "sequence": {"type": "integer", "minimum": 0},
+    "timestamp_unix": {"type": "number", "minimum": 0},
+    "event_type": {"enum": ["campaign_created", "segment_started", "heartbeat", "preview_updated", "attempt_started", "attempt_completed", "episode_completed", "variation_deferred", "watchdog_paused", "segment_finished", "campaign_finished"]},
+    "payload": {"type": "object"}
+  }
+}
