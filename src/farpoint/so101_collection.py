@@ -138,17 +138,27 @@ def create_manifest(
     trials = plan.get("trials") or []
     profile = plan.get("collection") or {}
     if profile:
-        if profile.get("kind") not in {
+        profile_kind = profile.get("kind")
+        if profile_kind not in {
             "mirrored_mass_success_collection",
             "balanced_yaw_success_collection",
+            "self_healing_campaign_segment",
         }:
             raise ValueError("unsupported SO-101 collection profile")
         required_successes = int(profile.get("required_successes", 0))
         frozen_maximum = int(profile.get("maximum_attempts", 0))
         if required_successes != len(trials) or required_successes <= 0:
-            raise ValueError("mirrored mass collection must require every planned variation")
+            raise ValueError("collection profile must require every planned variation")
         if frozen_maximum < required_successes:
-            raise ValueError("mirrored mass collection attempt budget is unreachable")
+            raise ValueError("collection profile attempt budget is unreachable")
+        if profile_kind == "self_healing_campaign_segment":
+            attempt_limit = _maximum_attempts_per_variation(plan)
+            if attempt_limit != 3:
+                raise ValueError("self-healing segments require three attempts per variation")
+            if frozen_maximum != len(trials) * attempt_limit:
+                raise ValueError(
+                    "self-healing segment attempt budget must equal variations times three"
+                )
         if maximum_attempts is not None and maximum_attempts != frozen_maximum:
             raise ValueError("maximum_attempts does not match the frozen collection profile")
         release_status = "CANDIDATE"
@@ -413,6 +423,48 @@ def validate_manifest(manifest: dict[str, Any], plan: dict[str, Any]) -> None:
             raise ValueError(f"invalid selected attempt for variation {variation_id}")
         if not matches[0].get("success") or not matches[0].get("dataset_valid"):
             raise ValueError(f"selected attempt is not eligible: {attempt_id}")
+    maximum_per_variation = _maximum_attempts_per_variation(plan)
+    if maximum_per_variation is not None:
+        counts = Counter(row.get("variation_id") for row in attempts)
+        exceeded = {
+            variation_id: count
+            for variation_id, count in counts.items()
+            if count > maximum_per_variation
+        }
+        if exceeded:
+            raise ValueError(
+                f"collection exceeds per-variation attempt limit: {sorted(exceeded.items())}"
+            )
+
+
+def _maximum_attempts_per_variation(plan: dict[str, Any]) -> int | None:
+    campaign_policy = (
+        (plan.get("campaign_contract") or {}).get("attempt_policy") or {}
+    )
+    collection_policy = (plan.get("collection") or {}).get("attempt_policy") or {}
+    value = campaign_policy.get(
+        "maximum_attempts_per_variation",
+        collection_policy.get("maximum_attempts_per_variation"),
+    )
+    if value is None:
+        return None
+    maximum = int(value)
+    if maximum <= 0:
+        raise ValueError("maximum attempts per variation must be positive")
+    return maximum
+
+
+def _has_attempt_candidate(
+    manifest: dict[str, Any], plan: dict[str, Any], counts: Counter | None = None
+) -> bool:
+    counts = counts or Counter(row["variation_id"] for row in manifest["attempts"])
+    selected = manifest["selected_variations"]
+    maximum = _maximum_attempts_per_variation(plan)
+    return any(
+        trial["variation_id"] not in selected
+        and (maximum is None or counts[trial["variation_id"]] < maximum)
+        for trial in plan["trials"]
+    )
 
 
 def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any] | None:
@@ -427,7 +479,18 @@ def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
         return None
     counts = Counter(row["variation_id"] for row in manifest["attempts"])
     selected = manifest["selected_variations"]
-    candidates = [trial for trial in plan["trials"] if trial["variation_id"] not in selected]
+    maximum_per_variation = _maximum_attempts_per_variation(plan)
+    candidates = [
+        trial
+        for trial in plan["trials"]
+        if trial["variation_id"] not in selected
+        and (
+            maximum_per_variation is None
+            or counts[trial["variation_id"]] < maximum_per_variation
+        )
+    ]
+    if not candidates:
+        return None
     # Preserve the frozen plan order within each retry round. Sorting by the
     # human-readable trial id silently defeated deliberately stratified or
     # diagnostic plan ordering (for example a large-cube-first smoke test).
@@ -497,7 +560,11 @@ def record_attempt(
     if row["selected_for_dataset"]:
         manifest["selected_variations"][attempt["variation_id"]] = attempt["attempt_id"]
     eligible_successes = len(manifest["selected_variations"])
-    exhausted = len(manifest["attempts"]) >= int(manifest["maximum_attempts"])
+    counts = Counter(row["variation_id"] for row in manifest["attempts"])
+    exhausted = (
+        len(manifest["attempts"]) >= int(manifest["maximum_attempts"])
+        or not _has_attempt_candidate(manifest, plan, counts)
+    )
     completion_policy = manifest.get("completion_policy", "success_target")
     complete = (
         exhausted
