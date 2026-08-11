@@ -12,8 +12,12 @@ simulation, dataset, and release gates.
 - Keep generated episodes, reports, datasets, credentials, and machine paths
   out of Git.
 - Wait for required checks and resolve review conversations.
-- Only the repository owner merges a PR. Automation must not enable auto-merge
-  or merge on the owner's behalf.
+- The repository owner normally merges PRs. An agent may merge an exact PR or
+  enable auto-merge only when the owner explicitly requests that action in the
+  current task. Direct merges require a non-draft, mergeable PR with all
+  required checks and reviews passing. Auto-merge may wait for those gates but
+  must use the repository's normal branch protection. Agents never use admin or
+  branch-protection bypasses, and authorization does not carry across PRs.
 - Prefer squash merge so one reviewed PR maps to one `main` commit.
 
 ## Local checks
