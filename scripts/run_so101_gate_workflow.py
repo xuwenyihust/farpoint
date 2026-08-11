@@ -18,6 +18,11 @@ from farpoint.so101_gate_workflow import (  # noqa: E402
     write_so101_gate_workflow,
 )
 from farpoint.so101_watchdog import load_watchdog_policy  # noqa: E402
+from farpoint.v010_pilot import (  # noqa: E402
+    PILOT_KIND,
+    initialize_v010_pilot_campaign,
+    load_v010_pilot_config,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -42,6 +47,12 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=PROJECT_ROOT / "configs/workflows/so101_watchdog_p0.json",
     )
+    initialize.add_argument(
+        "--v010-pilot-config",
+        type=Path,
+        default=PROJECT_ROOT
+        / "configs/variations/so101_v010_integration_pilot.json",
+    )
     status = subparsers.add_parser("status")
     status.add_argument("workflow", type=Path)
     status.add_argument("--output", type=Path)
@@ -55,16 +66,38 @@ def main() -> int:
             args.workflow_config.read_text(encoding="utf-8")
         )
         watchdog_policy = load_watchdog_policy(args.watchdog_policy)
+        v010_pilot_config = (
+            load_v010_pilot_config(args.v010_pilot_config)
+            if any(
+                stage.get("kind") == PILOT_KIND
+                for stage in workflow_config.get("stages", [])
+            )
+            else None
+        )
         workflow, plans = build_so101_gate_workflow(
             workflow_config,
             load_variation_config(args.variation_config),
             watchdog_policy,
             workflow_id=args.workflow_id,
             git_commit=args.git_commit,
+            v010_pilot_config=v010_pilot_config,
         )
         workflow_path = write_so101_gate_workflow(
             args.root, workflow, plans, watchdog_policy
         )
+        v010_plans = [
+            plan
+            for plan in plans.values()
+            if (plan.get("pilot") or {}).get("kind") == PILOT_KIND
+        ]
+        if v010_plans:
+            if len(v010_plans) != 1:
+                raise ValueError("a workflow may initialize only one v0.1.0 pilot campaign")
+            initialize_v010_pilot_campaign(
+                args.root,
+                v010_plans[0],
+                git_commit=args.git_commit,
+            )
         report = evaluate_so101_gate_workflow(workflow_path)
     else:
         workflow_path = args.workflow

@@ -295,6 +295,41 @@ def placement_target_entity(
     return entity
 
 
+def support_surface_entity(
+    surface_spec: dict[str, Any],
+    *,
+    material: dict[str, Any],
+    frame_id: str = "isaac_world",
+) -> dict[str, Any]:
+    """Create a typed static support surface such as the task table."""
+    entity = {
+        "schema_version": ENTITY_SCHEMA_VERSION,
+        "entity_id": str(surface_spec.get("entity_id") or "support_surface"),
+        "role": "support_surface",
+        "entity_type": str(surface_spec.get("entity_type") or "table"),
+        "asset_id": str(surface_spec.get("asset_id") or "unspecified_surface"),
+        "pose": {
+            "frame_id": frame_id,
+            "position_m": copy.deepcopy(surface_spec.get("position_m")),
+            "orientation_xyzw": copy.deepcopy(
+                surface_spec.get("orientation_xyzw", [0.0, 0.0, 0.0, 1.0])
+            ),
+        },
+        "geometry": {
+            "representation": str(surface_spec.get("representation", "procedural")),
+            "shape": str(surface_spec.get("shape", "cuboid")),
+            "dimensions_m": copy.deepcopy(surface_spec.get("dimensions_m")),
+        },
+        "physics": {
+            "body_type": "static",
+            "collision_enabled": True,
+            "material": copy.deepcopy(material),
+        },
+    }
+    validate_scene_entity(entity)
+    return entity
+
+
 def bind_scene_entities(
     object_state: dict[str, Any],
     target_state: dict[str, Any],

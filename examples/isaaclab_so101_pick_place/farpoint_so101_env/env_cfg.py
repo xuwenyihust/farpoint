@@ -32,7 +32,11 @@ def _cube(name: str, edge: float, color: tuple[float, float, float]):
             mass_props=sim_utils.MassPropertiesCfg(mass=0.04),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.2, dynamic_friction=1.0, restitution=0.0
+                static_friction=1.2,
+                dynamic_friction=1.0,
+                restitution=0.0,
+                friction_combine_mode="average",
+                restitution_combine_mode="average",
             ),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
         ),
@@ -53,6 +57,13 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
             # edge. The variation workspace starts well inside x=0.08.
             size=(0.37, 0.48, 0.04),
             collision_props=sim_utils.CollisionPropertiesCfg(),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.2,
+                dynamic_friction=1.0,
+                restitution=0.0,
+                friction_combine_mode="average",
+                restitution_combine_mode="average",
+            ),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.45, 0.45, 0.42)),
         ),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.265, 0.0, 0.012)),

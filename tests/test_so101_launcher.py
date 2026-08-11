@@ -28,6 +28,7 @@ def _launch(tmp_path: Path, *args: str) -> list[str]:
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "FARPOINT_DATA_ROOT": str(tmp_path / "data"),
         "FARPOINT_SO101_ASSET": str(asset),
+        "FARPOINT_SIMULATOR_IMAGE_DIGEST": f"sha256:{'a' * 64}",
     }
     result = subprocess.run(
         [str(LAUNCHER), *args],

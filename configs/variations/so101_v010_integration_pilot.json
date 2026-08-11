@@ -1,0 +1,134 @@
+{
+  "schema_version": "farpoint.so101-v010-integration-pilot-config.v1",
+  "config_version": "0.1.0-pilot.1",
+  "task_id": "so101_cube_pick_place",
+  "sampler": {
+    "sampler_version": "farpoint.scrambled-sobol.v1",
+    "seed": 20260811,
+    "maximum_candidates_per_sample": 4096
+  },
+  "object_archetype": {
+    "archetype_id": "cube-v1",
+    "version": "1",
+    "semantic_type": "cube",
+    "geometry_representation": "procedural",
+    "anchor": "center",
+    "default_orientation_xyzw": [0.0, 0.0, 0.0, 1.0]
+  },
+  "materials": {
+    "object": {
+      "static_friction": 1.2,
+      "dynamic_friction": 1.0,
+      "restitution": 0.0,
+      "friction_combine_mode": "average",
+      "restitution_combine_mode": "average"
+    },
+    "table": {
+      "static_friction": 1.2,
+      "dynamic_friction": 1.0,
+      "restitution": 0.0,
+      "friction_combine_mode": "average",
+      "restitution_combine_mode": "average"
+    },
+    "gripper": {
+      "static_friction": 2.0,
+      "dynamic_friction": 1.5,
+      "restitution": 0.0,
+      "friction_combine_mode": "max",
+      "restitution_combine_mode": "average"
+    }
+  },
+  "object_variants": [
+    {
+      "variant_id": "red-40mm-40g",
+      "version": "1",
+      "archetype_id": "cube-v1",
+      "asset_id": "procedural_cube_v1",
+      "dimensions_m": [0.04, 0.04, 0.04],
+      "rgba": [0.85, 0.08, 0.06, 1.0],
+      "mass_kg": 0.04
+    },
+    {
+      "variant_id": "blue-30mm-30g",
+      "version": "1",
+      "archetype_id": "cube-v1",
+      "asset_id": "procedural_cube_v1",
+      "dimensions_m": [0.03, 0.03, 0.03],
+      "rgba": [0.04, 0.20, 0.85, 1.0],
+      "mass_kg": 0.03
+    }
+  ],
+  "feasible_regions": [
+    {
+      "region_id": "red-40mm-40g-pilot-envelope-v1",
+      "version": "1",
+      "object_variant_id": "red-40mm-40g",
+      "frame_id": "isaac_world",
+      "polygon_xy_m": [[0.145, -0.115], [0.255, -0.115], [0.255, -0.025], [0.145, -0.025]],
+      "max_clearance_m": 0.045,
+      "object_anchor": "center",
+      "footprint_xy_m": [0.04, 0.04],
+      "formal_eligible": false,
+      "evidence_basis": "conservative historical workspace envelope plus v0.1.0 dual-camera edge-path gate"
+    },
+    {
+      "region_id": "blue-30mm-30g-pilot-envelope-v1",
+      "version": "1",
+      "object_variant_id": "blue-30mm-30g",
+      "frame_id": "isaac_world",
+      "polygon_xy_m": [[0.145, -0.115], [0.255, -0.115], [0.255, -0.025], [0.145, -0.025]],
+      "max_clearance_m": 0.045,
+      "object_anchor": "center",
+      "footprint_xy_m": [0.03, 0.03],
+      "formal_eligible": false,
+      "evidence_basis": "conservative historical workspace envelope plus v0.1.0 dual-camera edge-path gate"
+    }
+  ],
+  "yaw_strata": [
+    {"yaw_stratum_id": "yaw00_18", "minimum_degrees": 0.0, "maximum_degrees": 18.0, "pilot_degrees": 9.0},
+    {"yaw_stratum_id": "yaw18_36", "minimum_degrees": 18.0, "maximum_degrees": 36.0, "pilot_degrees": 27.0},
+    {"yaw_stratum_id": "yaw36_54", "minimum_degrees": 36.0, "maximum_degrees": 54.0, "pilot_degrees": 45.0},
+    {"yaw_stratum_id": "yaw54_72", "minimum_degrees": 54.0, "maximum_degrees": 72.0, "pilot_degrees": 63.0},
+    {"yaw_stratum_id": "yaw72_90", "minimum_degrees": 72.0, "maximum_degrees": 90.0, "pilot_degrees": 81.0}
+  ],
+  "pilot_profiles": [
+    {"object_variant_id": "red-40mm-40g", "region_band": "core", "yaw_stratum_id": "yaw00_18", "split": "train", "sample_ordinal": 0},
+    {"object_variant_id": "red-40mm-40g", "region_band": "core", "yaw_stratum_id": "yaw18_36", "split": "train", "sample_ordinal": 1},
+    {"object_variant_id": "red-40mm-40g", "region_band": "middle", "yaw_stratum_id": "yaw36_54", "split": "train", "sample_ordinal": 0},
+    {"object_variant_id": "red-40mm-40g", "region_band": "middle", "yaw_stratum_id": "yaw54_72", "split": "validation", "sample_ordinal": 1},
+    {"object_variant_id": "red-40mm-40g", "region_band": "outer", "yaw_stratum_id": "yaw72_90", "split": "train", "sample_ordinal": 0},
+    {"object_variant_id": "red-40mm-40g", "region_band": "outer", "yaw_stratum_id": "yaw00_18", "split": "train", "sample_ordinal": 1},
+    {"object_variant_id": "blue-30mm-30g", "region_band": "core", "yaw_stratum_id": "yaw18_36", "split": "train", "sample_ordinal": 0},
+    {"object_variant_id": "blue-30mm-30g", "region_band": "core", "yaw_stratum_id": "yaw36_54", "split": "train", "sample_ordinal": 1},
+    {"object_variant_id": "blue-30mm-30g", "region_band": "middle", "yaw_stratum_id": "yaw54_72", "split": "train", "sample_ordinal": 0},
+    {"object_variant_id": "blue-30mm-30g", "region_band": "middle", "yaw_stratum_id": "yaw72_90", "split": "validation", "sample_ordinal": 1},
+    {"object_variant_id": "blue-30mm-30g", "region_band": "outer", "yaw_stratum_id": "yaw00_18", "split": "train", "sample_ordinal": 0},
+    {"object_variant_id": "blue-30mm-30g", "region_band": "outer", "yaw_stratum_id": "yaw18_36", "split": "train", "sample_ordinal": 1}
+  ],
+  "target": {
+    "target_id": "green_rectangular_pad_v1",
+    "entity_type": "pad",
+    "representation": "procedural",
+    "shape": "cuboid",
+    "relation": "on",
+    "position_m": [0.20, 0.10, 0.037],
+    "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+    "dimensions_m": [0.16, 0.14, 0.01],
+    "footprint_margin_m": 0.005,
+    "rgba": [0.08, 0.70, 0.20, 1.0]
+  },
+  "table": {
+    "entity_id": "table",
+    "asset_id": "procedural_table_v1",
+    "position_m": [0.265, 0.0, 0.012],
+    "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+    "dimensions_m": [0.37, 0.48, 0.04]
+  },
+  "acceptance": {
+    "required_successes": 10,
+    "maximum_attempts": 12,
+    "minimum_successes_per_object_region": 1
+  },
+  "oracle_profile_id": "so101_contact_aware_dls_preload90_v1",
+  "lighting_profile_id": "fixed_default_v1"
+}

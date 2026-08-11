@@ -23,6 +23,7 @@ from farpoint.so101_mass_feasibility import (
     build_cube_mass_workspace_pilot_plan,
 )
 from farpoint.so101_watchdog import validate_watchdog_policy
+from farpoint.v010_pilot import build_v010_integration_pilot_plan
 
 
 WORKFLOW_SCHEMA_VERSION = "farpoint.so101-gate-workflow.v1"
@@ -61,6 +62,7 @@ def validate_gate_workflow_config(config: dict[str, Any]) -> None:
         "targeted_yaw_diagnostic_pilot",
         "targeted_yaw_pilot",
         "stratified_success_pilot",
+        "v010_integration_pilot",
     }
     for stage in stages:
         if stage.get("kind") not in supported:
@@ -79,6 +81,7 @@ def build_so101_gate_workflow(
     *,
     workflow_id: str,
     git_commit: str,
+    v010_pilot_config: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     """Freeze all gate plans and their order before any simulator work starts."""
     validate_gate_workflow_config(workflow_config)
@@ -93,7 +96,16 @@ def build_so101_gate_workflow(
         stage_id = stage_config["stage_id"]
         plan_id = f"{workflow_id}_{stage_id}"
         kind = stage_config["kind"]
-        if kind == "fixed_cube_repeatability":
+        if kind == "v010_integration_pilot":
+            if v010_pilot_config is None:
+                raise ValueError("v0.1.0 workflow requires its pilot config")
+            plan = build_v010_integration_pilot_plan(
+                v010_pilot_config,
+                pilot_id=plan_id,
+            )
+            collector_mode = "pilot"
+            report_kind = "pilot"
+        elif kind == "fixed_cube_repeatability":
             plan = build_fixed_cube_gate_plan(
                 variation_config,
                 gate_id=plan_id,
@@ -204,6 +216,11 @@ def build_so101_gate_workflow(
                 "required_cameras": list(
                     stage_config.get("required_cameras", ["front"])
                 ),
+                **(
+                    {"campaign_segment_id": "segment-000"}
+                    if kind == "v010_integration_pilot"
+                    else {}
+                ),
             }
         )
     workflow = {
@@ -267,6 +284,18 @@ def _stage_action(stage: dict[str, Any], workflow: dict[str, Any], root: Path) -
             if stage.get("required_cameras") == ["front", "wrist"]
             else []
         )
+        campaign_args = (
+            [
+                "--campaign-root",
+                str(root),
+                "--campaign-id",
+                stage["plan_id"],
+                "--segment-id",
+                stage["campaign_segment_id"],
+            ]
+            if stage.get("campaign_segment_id")
+            else []
+        )
         return {
             "kind": "COLLECT",
             "working_directory": "farpoint_repository_root",
@@ -286,6 +315,7 @@ def _stage_action(stage: dict[str, Any], workflow: dict[str, Any], root: Path) -
                 "--watchdog-policy",
                 str(root / workflow["watchdog_policy_path"]),
                 *camera_args,
+                *campaign_args,
             ],
         }
     if stage["state"] == "NEEDS_REPORT":

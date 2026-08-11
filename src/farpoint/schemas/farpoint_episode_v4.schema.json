@@ -183,7 +183,7 @@
     },
     "camera": {
       "type": "object", "additionalProperties": false,
-      "required": ["camera_id", "feature_key", "width", "height", "config_version", "config_sha256", "calibration", "mount_transform", "frame_timestamp_source"],
+      "required": ["camera_id", "feature_key", "width", "height", "config_version", "config_sha256", "calibration", "mount_transform", "frame_timestamp_source", "video_artifact"],
       "properties": {
         "camera_id": {"enum": ["front", "wrist"]},
         "feature_key": {"enum": ["observation.images.front", "observation.images.wrist"]},
@@ -192,7 +192,21 @@
         "config_sha256": {"$ref": "#/$defs/sha256"},
         "calibration": {"type": "object", "minProperties": 1},
         "mount_transform": {"type": "object", "minProperties": 1},
-        "frame_timestamp_source": {"type": "string", "minLength": 1}
+        "frame_timestamp_source": {"type": "string", "minLength": 1},
+        "video_artifact": {
+          "type": "object", "additionalProperties": false,
+          "required": ["path", "container", "codec", "frame_count", "width", "height", "fps", "size_bytes", "sha256", "decode_verified"],
+          "properties": {
+            "path": {"type": "string", "minLength": 1},
+            "container": {"const": "mp4"},
+            "codec": {"const": "h264"},
+            "frame_count": {"type": "integer", "minimum": 1},
+            "width": {"const": 640}, "height": {"const": 480}, "fps": {"const": 30},
+            "size_bytes": {"type": "integer", "minimum": 1},
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "decode_verified": {"const": true}
+          }
+        }
       }
     }
   }

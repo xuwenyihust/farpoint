@@ -3,14 +3,77 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 from collections import Counter
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from farpoint.so101_collection import validate_manifest
 from farpoint.so101_episode_analysis import analyze_so101_episodes, classify_so101_failure
 from farpoint.so101_gate_report import so101_episode_evidence_errors
+
+
+def _v010_video_errors(episode_root: Path, metadata: dict[str, Any]) -> list[str]:
+    """Independently hash and fully decode both sealed v0.1.0 camera streams."""
+    episode_id = episode_root.name
+    cameras = (metadata.get("recording") or {}).get("cameras") or []
+    by_id = {camera.get("camera_id"): camera for camera in cameras}
+    errors = []
+    for camera_id in ("front", "wrist"):
+        artifact = (by_id.get(camera_id) or {}).get("video_artifact") or {}
+        relative = Path(str(artifact.get("path") or ""))
+        path = (episode_root / relative).resolve()
+        try:
+            path.relative_to(episode_root.resolve())
+        except ValueError:
+            errors.append(f"{episode_id}:{camera_id}_video_path_escape")
+            continue
+        if not path.is_file():
+            errors.append(f"{episode_id}:{camera_id}_video_missing")
+            continue
+        if hashlib.sha256(path.read_bytes()).hexdigest() != artifact.get("sha256"):
+            errors.append(f"{episode_id}:{camera_id}_video_sha256_mismatch")
+        try:
+            probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-count_frames",
+                    "-show_entries",
+                    "stream=width,height,nb_read_frames",
+                    "-of",
+                    "json",
+                    str(path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            streams = json.loads(probe.stdout).get("streams") or []
+            if len(streams) != 1:
+                raise ValueError("expected one video stream")
+            decoded = int(streams[0].get("nb_read_frames", -1))
+            resolution = (int(streams[0]["width"]), int(streams[0]["height"]))
+            subprocess.run(
+                ["ffmpeg", "-loglevel", "error", "-i", str(path), "-f", "null", "-"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError, json.JSONDecodeError):
+            errors.append(f"{episode_id}:{camera_id}_video_decode_failed")
+            continue
+        expected = int((metadata.get("recording") or {}).get("frame_count", -1))
+        if decoded != expected or decoded != artifact.get("frame_count"):
+            errors.append(f"{episode_id}:{camera_id}_video_frame_count_mismatch")
+        if resolution != (640, 480):
+            errors.append(f"{episode_id}:{camera_id}_video_resolution_mismatch")
+    return errors
 
 
 def _pilot_status(
@@ -69,6 +132,22 @@ def _required_success_cell_errors(
     ]
 
 
+def _required_object_region_errors(
+    plan: dict[str, Any], selected: list[dict[str, Any]]
+) -> list[str]:
+    trials = {trial["variation_id"]: trial for trial in plan.get("trials") or []}
+    successful_pairs = {
+        f"{trial['object_variant_id']}::{trial['region_band']}"
+        for attempt in selected
+        if (trial := trials.get(attempt.get("variation_id"))) is not None
+    }
+    return [
+        f"required_object_region_failed:{pair}"
+        for pair in (plan.get("pilot") or {}).get("required_object_region_pairs") or []
+        if pair not in successful_pairs
+    ]
+
+
 def _quaternion_error_degrees(actual: list[float], expected: list[float]) -> float:
     if len(actual) != 4 or len(expected) != 4:
         return math.inf
@@ -95,7 +174,8 @@ def audit_yaw_mass_episodes(
     profile: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     profile = profile or plan.get("pilot") or {}
-    if "yaw_degrees" not in profile:
+    pilot_kind = profile.get("kind")
+    if "yaw_degrees" not in profile and pilot_kind != "v010_integration_pilot":
         return [], []
     by_trial_id = {trial["trial_id"]: trial for trial in plan["trials"]}
     audits = []
@@ -110,6 +190,9 @@ def audit_yaw_mass_episodes(
         metadata = json.loads((root / "metadata.json").read_text(encoding="utf-8"))
         metrics = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
         expected_orientation = [float(value) for value in trial["resolved"]["orientation_xyzw"]]
+        expected_yaw_degrees = float(
+            trial.get("object_yaw_degrees", profile.get("yaw_degrees"))
+        )
         orientation_tolerance_degrees = float(
             profile.get("actual_orientation_tolerance_degrees", 2.0)
         )
@@ -118,36 +201,74 @@ def audit_yaw_mass_episodes(
             initial_orientation, expected_orientation
         )
         variation = metadata.get("variation") or {}
-        recorded_orientations = []
-        for role in ("requested", "resolved"):
-            payload = variation.get(role) or {}
-            recorded_orientations.append(payload.get("orientation_xyzw") or [])
-            recorded_orientations.append(
-                (((payload.get("entities") or {}).get("pick_object") or {}).get("pose") or {}).get(
-                    "orientation_xyzw"
+        if metadata.get("schema_version") == "farpoint.episode.v4":
+            manipulated = next(
+                (
+                    entity
+                    for entity in (metadata.get("scene") or {}).get("entities", [])
+                    if entity.get("entity_id") == "pick_object"
+                ),
+                {},
+            )
+            recorded_orientations = [
+                (manipulated.get("pose") or {}).get("orientation_xyzw") or []
+            ]
+            recorded_yaws = [
+                float((variation.get(role) or {}).get("yaw_degrees", math.inf))
+                for role in ("requested", "resolved")
+            ]
+            yaw_values_verified = all(
+                abs(value - expected_yaw_degrees) <= orientation_tolerance_degrees
+                for value in recorded_yaws
+            )
+        else:
+            recorded_orientations = []
+            for role in ("requested", "resolved"):
+                payload = variation.get(role) or {}
+                recorded_orientations.append(payload.get("orientation_xyzw") or [])
+                recorded_orientations.append(
+                    (
+                        (
+                            (payload.get("entities") or {}).get("pick_object")
+                            or {}
+                        ).get("pose")
+                        or {}
+                    ).get("orientation_xyzw")
+                    or []
                 )
+            recorded_orientations.append(
+                (
+                    ((metadata.get("scene") or {}).get("object") or {}).get(
+                        "initial_pose"
+                    )
+                    or {}
+                ).get("orientation_xyzw")
                 or []
             )
-        scene_orientation = (
-            ((metadata.get("scene") or {}).get("object") or {}).get("initial_pose") or {}
-        ).get("orientation_xyzw") or []
+            yaw_values_verified = True
         orientation_verified = _quaternions_equivalent(
             initial_orientation,
             expected_orientation,
             tolerance_degrees=orientation_tolerance_degrees,
-        ) and all(
+        ) and yaw_values_verified and all(
             _quaternions_equivalent(
                 value,
                 expected_orientation,
                 tolerance_degrees=orientation_tolerance_degrees,
             )
-            for value in [*recorded_orientations, scene_orientation]
+            for value in recorded_orientations
         )
         if not orientation_verified:
             errors.append(f"{episode_id}:yaw_orientation_audit_failed")
 
         metric_mass = (metrics.get("physics_audit") or {}).get("mass")
-        metadata_mass = ((metadata.get("scene") or {}).get("object") or {}).get("mass_audit")
+        metadata_mass = (
+            ((metadata.get("outcome") or {}).get("physics_audit") or {}).get("mass")
+            if metadata.get("schema_version") == "farpoint.episode.v4"
+            else ((metadata.get("scene") or {}).get("object") or {}).get(
+                "mass_audit"
+            )
+        )
         expected_mass = float(trial["resolved"]["mass_kg"])
         mass_verified = (
             isinstance(metric_mass, dict)
@@ -164,7 +285,8 @@ def audit_yaw_mass_episodes(
             {
                 "episode_id": episode_id,
                 "trial_id": attempt["trial_id"],
-                "expected_yaw_degrees": float(profile["yaw_degrees"]),
+                "expected_yaw_degrees": expected_yaw_degrees,
+                "yaw_stratum_id": trial.get("yaw_stratum_id"),
                 "expected_orientation_xyzw": expected_orientation,
                 "initial_orientation_xyzw": initial_orientation,
                 "initial_orientation_error_degrees": initial_orientation_error_degrees,
@@ -221,6 +343,17 @@ def build_so101_pilot_report(
             errors.append(f"{attempt['episode_id']}:manifest_episode_validity_mismatch")
     yaw_audits, yaw_errors = audit_yaw_mass_episodes(plan, attempts, by_name, root)
     errors.extend(yaw_errors)
+    if (plan.get("pilot") or {}).get("kind") == "v010_integration_pilot":
+        for attempt in episode_attempts:
+            episode_root = root / attempt["episode_id"]
+            metadata_path = episode_root / "metadata.json"
+            if not metadata_path.is_file():
+                continue
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata.get("schema_version") != "farpoint.episode.v4":
+                errors.append(f"{attempt['episode_id']}:episode_v4_required")
+                continue
+            errors.extend(_v010_video_errors(episode_root, metadata))
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
     for attempt in selected:
@@ -253,10 +386,14 @@ def build_so101_pilot_report(
     if variation_seed_count != len(attempts):
         errors.append("variation_seeds_not_unique")
     acceptance_errors = []
-    if (plan.get("pilot") or {}).get("kind") == "targeted_yaw_pilot":
+    pilot_kind = (plan.get("pilot") or {}).get("kind")
+    if pilot_kind in {"targeted_yaw_pilot", "v010_integration_pilot"}:
         if len(selected) < int(manifest["required_successes"]):
             acceptance_errors.append("selected_success_count_below_threshold")
-        acceptance_errors.extend(_required_success_cell_errors(plan, selected))
+        if pilot_kind == "targeted_yaw_pilot":
+            acceptance_errors.extend(_required_success_cell_errors(plan, selected))
+        else:
+            acceptance_errors.extend(_required_object_region_errors(plan, selected))
     elif len(selected) != int(manifest["required_successes"]):
         acceptance_errors.append("selected_success_count_mismatch")
     if len(attempts) > int(manifest["maximum_attempts"]):
