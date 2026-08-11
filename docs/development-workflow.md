@@ -34,7 +34,12 @@ pilot, benchmark, and collection PRs do not pre-bump a dataset version.
 4. Pass lint, unit, Dashboard QA, data-contract, coverage, and version checks.
 5. Run an owner-approved deterministic pilot from the PR commit when GPU evidence is required.
 6. Attach the pilot manifest and report URL to the PR.
-7. The repository owner reviews and squash-merges the PR. Agents and automation never merge.
+7. The repository owner reviews and normally squash-merges the PR. An agent may
+   merge the exact PR, or enable auto-merge while required gates are pending,
+   only after an explicit owner request in the current task. Direct merges
+   require a non-draft, mergeable PR with all required checks and reviews
+   passing. Never bypass branch protection, and never reuse authorization for a
+   different PR.
 
 ## Simulation and benchmark workflow
 
