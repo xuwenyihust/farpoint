@@ -1,0 +1,45 @@
+{
+  "schema_version": "farpoint.oracle-repair-governance.v1",
+  "policy_id": "so101-oracle-repair-v1",
+  "qualifying_label": "so101-oracle-repair",
+  "allowed_runtime_files": [
+    "src/farpoint/control.py",
+    "src/farpoint/grasp_oracle.py",
+    "src/farpoint/oracle.py"
+  ],
+  "allowed_profile_prefixes": [
+    "configs/oracle-profiles/"
+  ],
+  "allowed_test_files": [
+    "tests/test_control.py",
+    "tests/test_grasp_oracle.py",
+    "tests/test_oracle.py"
+  ],
+  "allowed_test_prefixes": [
+    "tests/oracle_repair/"
+  ],
+  "required_runtime_change": true,
+  "required_test_change": true,
+  "diagnostic_seeds_per_failure_class": 3,
+  "maximum_attempts_per_seed": 3,
+  "canary_seed_count": 10,
+  "required_canary_successes": 10,
+  "required_external_checks": [
+    "SO101 Oracle diagnostic",
+    "SO101 Oracle canary"
+  ],
+  "forbidden_prefixes": [
+    ".github/",
+    "configs/collections/",
+    "configs/datasets/",
+    "configs/evaluations/",
+    "configs/plans/",
+    "configs/selections/",
+    "configs/variations/",
+    "configs/workflows/",
+    "scripts/data_platform",
+    "scripts/export",
+    "scripts/release",
+    "src/farpoint/schemas/"
+  ]
+}

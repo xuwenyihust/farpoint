@@ -13,6 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  oracle-repair-path-policy:
+    name: SO101 Oracle repair path policy
+    if: contains(github.event.pull_request.labels.*.name, 'so101-oracle-repair')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Collect changed paths
+        run: git diff --name-status "origin/${{ github.base_ref }}...HEAD" > "$RUNNER_TEMP/oracle-repair-paths.txt"
+      - name: Enforce repair allowlist
+        run: >-
+          python scripts/validate_oracle_repair.py
+          --policy configs/governance/so101_oracle_repair_v1.json
+          --changed-files "$RUNNER_TEMP/oracle-repair-paths.txt"
+
   quality:
     name: Quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
