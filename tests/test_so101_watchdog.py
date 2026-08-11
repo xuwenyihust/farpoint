@@ -102,6 +102,27 @@ def test_watchdog_continues_a_healthy_running_gate():
     assert report["progress"]["maximum_possible_successes"] == 10
 
 
+def test_watchdog_checks_parent_disk_before_episode_root_exists(tmp_path):
+    plan = workspace_plan()
+    manifest = create_gate_manifest(
+        plan, collection_id="new-output-root", git_commit="a" * 40
+    )
+    set_recent(manifest)
+    runtime_policy = v010_policy()
+    runtime_policy["minimum_free_disk_bytes"] = 1
+
+    report = evaluate_so101_collection(
+        plan,
+        manifest,
+        runtime_policy,
+        episodes_root=tmp_path / "not-created-yet",
+        now=NOW,
+    )
+
+    assert report["decision"] == "CONTINUE"
+    assert report["errors"] == []
+
+
 def test_watchdog_stops_strict_gate_when_target_is_unreachable():
     plan = fixed_plan()
     manifest = create_gate_manifest(

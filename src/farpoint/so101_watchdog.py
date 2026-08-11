@@ -289,7 +289,8 @@ def evaluate_so101_collection(
         minimum_free_disk = policy.get("minimum_free_disk_bytes")
         if minimum_free_disk is not None and root is not None:
             try:
-                free_bytes = shutil.disk_usage(root).free
+                disk_root = root if root.exists() else root.parent
+                free_bytes = shutil.disk_usage(disk_root).free
                 if free_bytes < int(minimum_free_disk):
                     reasons.append(f"disk_below_minimum:{free_bytes}")
             except OSError as error:
