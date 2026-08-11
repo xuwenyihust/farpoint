@@ -119,17 +119,14 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
         height=480,
         width=640,
         data_types=["rgb"],
-        spawn=sim_utils.PinholeCameraCfg(focal_length=13.5, focus_distance=0.08),
-        # OpenGL looks along camera-local -Z.  This orientation is calibrated
-        # from a successful physical grasp: in gripper-local coordinates the
-        # cube lies along approximately (0.516, -0.652, 0.556) from the camera.
-        # The previous -45-degree X rotation looked down and away from the
-        # aperture, producing valid but task-empty wrist frames.
+        spawn=sim_utils.PinholeCameraCfg(focal_length=13.5, focus_distance=0.10),
+        # OpenGL looks along camera-local -Z. The workshop camera bracket spans
+        # local x=[-0.0264, 0.0186] m; mounting at x=0.06 m keeps both the
+        # optical center and its ray to the calibrated aperture outside that
+        # visual. This avoids runtime edits to the referenced workshop USD.
         offset=TiledCameraCfg.OffsetCfg(
-            # Keep the optical center outside the workshop bracket and above
-            # the finger plane so robot geometry does not occlude the task.
-            pos=(-0.02, -0.06, 0.08),
-            rot=(0.3556016, -0.2029594, -0.4522391, 0.7923603),
+            pos=(0.06, 0.05, -0.04),
+            rot=(0.1850338, 0.5868067, 0.7518119, 0.2370638),
             convention="opengl",
         ),
     )

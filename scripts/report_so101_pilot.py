@@ -24,10 +24,25 @@ def main() -> int:
     parser.add_argument("--episodes-root", required=True, type=Path)
     parser.add_argument("--json-output", required=True, type=Path)
     parser.add_argument("--markdown-output", type=Path)
+    parser.add_argument(
+        "--required-camera",
+        action="append",
+        choices=("front", "wrist"),
+        dest="required_cameras",
+        help="Required complete RGB camera; repeat for dual-camera pilots (default: front).",
+    )
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-    report = build_so101_pilot_report(plan, manifest, args.episodes_root)
+    required_cameras = tuple(args.required_cameras or ("front",))
+    if len(set(required_cameras)) != len(required_cameras):
+        parser.error("--required-camera values must be unique")
+    report = build_so101_pilot_report(
+        plan,
+        manifest,
+        args.episodes_root,
+        required_cameras=required_cameras,
+    )
     args.json_output.parent.mkdir(parents=True, exist_ok=True)
     args.json_output.write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"

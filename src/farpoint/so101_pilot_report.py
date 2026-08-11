@@ -185,9 +185,13 @@ def audit_yaw_mass_episodes(
 
 
 def build_so101_pilot_report(
-    plan: dict[str, Any], manifest: dict[str, Any], episodes_root: str | Path
+    plan: dict[str, Any],
+    manifest: dict[str, Any],
+    episodes_root: str | Path,
+    *,
+    required_cameras: tuple[str, ...] = ("front",),
 ) -> dict[str, Any]:
-    """Cross-check pilot completion, selection, physics, and front-only data."""
+    """Cross-check pilot completion, selection, physics, and camera data."""
     validate_manifest(manifest, plan)
     attempts = manifest.get("attempts") or []
     root = Path(episodes_root)
@@ -198,7 +202,11 @@ def build_so101_pilot_report(
         if (root / attempt["episode_id"]).is_dir()
     ]
     analysis = analyze_so101_episodes(episode_dirs, verify_images=True)
-    errors = so101_episode_evidence_errors(analysis, len(episode_attempts))
+    errors = so101_episode_evidence_errors(
+        analysis,
+        len(episode_attempts),
+        required_cameras=required_cameras,
+    )
     for attempt in episode_attempts:
         if not (root / attempt["episode_id"]).is_dir():
             errors.append(f"missing_episode:{attempt['episode_id']}")
@@ -275,6 +283,7 @@ def build_so101_pilot_report(
         "plan_sha256": plan["plan_sha256"],
         "collection_id": manifest["collection_id"],
         "git_commit": manifest["git_commit"],
+        "required_cameras": list(required_cameras),
         "pilot_status": status,
         "attempted_count": len(attempts),
         "maximum_attempts": int(manifest["maximum_attempts"]),
@@ -326,7 +335,8 @@ def render_so101_pilot_report_markdown(report: dict[str, Any]) -> str:
     if report["evidence_errors"]:
         lines.extend(f"- {error}" for error in report["evidence_errors"])
     else:
-        lines.append("Selected physics and front-only episode artifacts passed.")
+        cameras = ", ".join(report.get("required_cameras") or ["front"])
+        lines.append(f"Selected physics and {cameras} camera artifacts passed.")
     if report.get("acceptance_errors"):
         lines.extend(
             ["", "## Acceptance gate", ""] + [f"- {error}" for error in report["acceptance_errors"]]

@@ -89,10 +89,23 @@ def parse_args():
     parser.add_argument(
         "--enable-wrist-camera",
         action="store_true",
-        help="Opt in to the experimental wrist camera; v0 records front RGB only.",
+        help="Opt in to the wrist camera while preserving legacy v0 front-only defaults.",
+    )
+    parser.add_argument(
+        "--require-dual-camera",
+        action="store_true",
+        help="Require the frozen v0.1.0 front+wrist profile and fail on config drift.",
+    )
+    parser.add_argument(
+        "--camera-profile",
+        type=Path,
+        default=PROJECT_ROOT / "configs/cameras/so101_front_wrist_v1.json",
+        help="Versioned dual-camera profile used by v0.1.0 collection and diagnostics.",
     )
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
+    if args.require_dual_camera:
+        args.enable_wrist_camera = True
     args.headless = resolve_headless_mode(
         args.mode,
         args.livestream,
@@ -116,6 +129,12 @@ from farpoint_so101_env.mdp import (  # noqa: E402
     SO101_GRIPPER_STATIC_FRICTION,
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
+from farpoint.camera_profiles import (  # noqa: E402
+    build_camera_records,
+    camera_cfg_drift_errors,
+    load_camera_profile,
+    resolved_mounts_from_profile,
+)
 from farpoint.control import (  # noqa: E402
     advance_so101_slow_close_target,
     bounded_position_target,
@@ -1521,7 +1540,29 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
     _write_json(destination / "results.json", report)
 
 
-def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: str):
+def _runtime_camera_records(scene, camera_profile):
+    intrinsics = {}
+    for camera_id in ("front", "wrist"):
+        sensor = scene[f"{camera_id}_camera"]
+        matrix = getattr(sensor.data, "intrinsic_matrices", None)
+        if matrix is None:
+            raise RuntimeError(f"{camera_id} camera did not expose runtime intrinsics")
+        intrinsics[camera_id] = _numpy(matrix[0]).tolist()
+    return build_camera_records(
+        camera_profile,
+        resolved_intrinsics=intrinsics,
+        resolved_mounts=resolved_mounts_from_profile(camera_profile),
+    )
+
+
+def run_attempt(
+    env,
+    trial,
+    output_root: Path,
+    git_commit: str,
+    collection_id: str,
+    camera_profile=None,
+):
     from farpoint.so101_mass_feasibility import audit_resolved_mass
 
     device = env.device
@@ -2950,13 +2991,28 @@ def run_attempt(env, trial, output_root: Path, git_commit: str, collection_id: s
     resolved_variation["entities"]["pick_object"]["physics"]["mass_audit"] = (
         copy.deepcopy(mass_audit)
     )
+    resolved_camera_records = (
+        _runtime_camera_records(scene, camera_profile)
+        if camera_profile is not None
+        else None
+    )
+    if resolved_camera_records is not None:
+        _write_json(
+            root / "camera-evidence.json",
+            {
+                "profile": copy.deepcopy(camera_profile),
+                "resolved_cameras": copy.deepcopy(resolved_camera_records),
+                "same_control_tick": True,
+                "recording_stride": schedule.recording_stride,
+            },
+        )
     metadata = {
         "schema_version": "farpoint.episode.v3",
         "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
         "provenance": {"collection_id": collection_id, "git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
         "task": {"task_id": "so101_cube_pick_place", "instruction": f"Pick up the {object_spec['shape']} and place it on the green target pad.", "object_shape": object_spec["shape"], "success_criteria_id": "contact_pick_place_footprint_v2", "manipulated_entity_id": "pick_object", "target_entity_id": "placement_target", "acceptance_region_id": "placement_region"},
         "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
-        "scene": {"coordinate_frame": "isaac_world", "object": scene_object, "target": scene_target, "entities": list(resolved_variation["entities"].values()), "cameras": ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else [])), "lighting_profile_id": "fixed_default"},
+        "scene": {"coordinate_frame": "isaac_world", "object": scene_object, "target": scene_target, "entities": list(resolved_variation["entities"].values()), "cameras": (resolved_camera_records if resolved_camera_records is not None else ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else []))), "lighting_profile_id": "fixed_default"},
         "variation": {"schema_version": "farpoint.variation.v3", "variation_id": trial["variation_id"], "varied_axes": copy.deepcopy(trial["varied_axes"]), "frozen_axes": copy.deepcopy(trial["frozen_axes"]), "requested": requested_variation, "resolved": resolved_variation, "split": trial["split"]},
         "recording": {"fps": schedule.recording_hz, "control_hz": schedule.control_hz, "recording_stride": schedule.recording_stride, "cameras": (["observation.images.front", "observation.images.wrist"] if args_cli.enable_wrist_camera else ["observation.images.front"]), "frame_count": len(rows), "state_features": list(LEROBOT_JOINT_NAMES), "action_features": list(LEROBOT_JOINT_NAMES), "state_unit": "radian", "action_unit": "radian", "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render"},
         "outcome": {"success": success, "dataset_valid": bool(rows), "failure_category": None if success else "oracle", "failure_reason": None if success else machine.failure_reason},
@@ -2983,6 +3039,11 @@ def main():
     from farpoint.object_variation import generate_variation_plan, load_variation_config
 
     config = load_variation_config(PROJECT_ROOT / "configs/variations/so101_cube_pick_place_v1.json")
+    camera_profile = (
+        load_camera_profile(args_cli.camera_profile)
+        if args_cli.require_dual_camera
+        else None
+    )
     plan = _read_json(args_cli.plan) if args_cli.plan.exists() else generate_variation_plan(config)
     watchdog_policy = (
         load_watchdog_policy(args_cli.watchdog_policy)
@@ -3038,6 +3099,13 @@ def main():
             # spawns nor renders the wrist sensor.
             env_cfg.scene.wrist_camera = None
             env_cfg.observations.policy.wrist_rgb = None
+        if camera_profile is not None:
+            camera_errors = camera_cfg_drift_errors(camera_profile, env_cfg.scene)
+            if camera_errors:
+                raise ValueError(
+                    "Isaac camera config does not match profile: "
+                    + "; ".join(camera_errors)
+                )
         env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
         if args_cli.diagnose_jacobian:
             run_jacobian_diagnostic(env)
@@ -3118,6 +3186,7 @@ def main():
                     args_cli.output_root,
                     os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
                     manifest["collection_id"],
+                    camera_profile,
                 )
             except Exception as error:
                 details = traceback.format_exc()

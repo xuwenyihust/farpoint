@@ -5,6 +5,7 @@ from farpoint.object_variation import load_variation_config
 from farpoint.so101_collection import (
     abort_collection_manifest,
     create_gate_manifest,
+    create_pilot_manifest,
     next_attempt,
     record_attempt,
     write_manifest,
@@ -59,10 +60,9 @@ def initialize(tmp_path):
 
 def finish_stage(workflow_path, workflow, plan, stage, *, success=True):
     root = workflow_path.parent
-    manifest = create_gate_manifest(
-        plan,
-        collection_id=plan["plan_id"],
-        git_commit=workflow["git_commit"],
+    create = create_pilot_manifest if plan.get("pilot") else create_gate_manifest
+    manifest = create(
+        plan, collection_id=plan["plan_id"], git_commit=workflow["git_commit"]
     )
     attempt = next_attempt(manifest, plan)
     record_attempt(
@@ -107,6 +107,50 @@ def test_workflow_exposes_only_first_stage_and_frozen_watchdog(tmp_path):
     assert str(path.parent / "watchdog-policy.json") in action["command"]
     assert workflow["formal_collection_policy"].startswith("outside_workflow")
     assert status["formal_collection_authorized"] is False
+
+
+def test_dual_camera_stage_emits_collection_and_report_camera_gates(tmp_path):
+    config = workflow_config()
+    config["stages"] = [
+        {
+            "stage_id": "dual",
+            "kind": "targeted_yaw_diagnostic_pilot",
+            "yaw_degrees": 30.0,
+            "required_cameras": ["front", "wrist"],
+            "required_success_cells": ["r04_c00", "r04_c01"],
+            "trial_profiles": [
+                {"source_trial_id": "cube_r04_c00_s0_k1", "mass_kg": 0.03},
+                {"source_trial_id": "cube_r04_c01_s0_k0", "mass_kg": 0.04},
+            ],
+        }
+    ]
+    variation = load_variation_config(
+        ROOT / "configs/variations/so101_cube_pick_place_v1.json"
+    )
+    policy = load_watchdog_policy(ROOT / "configs/workflows/so101_watchdog_p0.json")
+    workflow, plans = build_so101_gate_workflow(
+        config, variation, policy, workflow_id="dual", git_commit=GIT_COMMIT
+    )
+    path = write_so101_gate_workflow(tmp_path / "dual", workflow, plans, policy)
+    collect = evaluate_so101_gate_workflow(path)["next_action"]["command"]
+    assert collect[-1] == "--require-dual-camera"
+
+    stage = workflow["stages"][0]
+    manifest = finish_stage(path, workflow, plans["dual"], stage)
+    attempt = next_attempt(manifest, plans["dual"])
+    record_attempt(
+        manifest,
+        plans["dual"],
+        attempt,
+        episode_id=f"episode_{attempt['attempt_id']}",
+        success=True,
+        dataset_valid=True,
+    )
+    write_manifest(path.parent / stage["manifest_path"], manifest)
+    report = evaluate_so101_gate_workflow(path)["next_action"]["command"]
+    assert report[-4:] == [
+        "--required-camera", "front", "--required-camera", "wrist"
+    ]
 
 
 def test_workflow_requires_report_pass_before_unlocking_next_stage(tmp_path):

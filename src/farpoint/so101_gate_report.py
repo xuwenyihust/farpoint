@@ -18,6 +18,7 @@ def so101_episode_evidence_errors(
     expected_episode_count: int,
     *,
     allow_duplicate_observations: bool = False,
+    required_cameras: tuple[str, ...] = ("front",),
 ) -> list[str]:
     errors: list[str] = []
     if analysis["episode_count"] != expected_episode_count:
@@ -30,10 +31,16 @@ def so101_episode_evidence_errors(
         errors.append("duplicate_episode_identity_artifacts")
     for episode in analysis["episodes"]:
         name = Path(episode["episode_dir"]).name
-        if episode["camera_frame_counts"] != {
-            "front": episode["observation_count"]
-        }:
-            errors.append(f"{name}:not_front_only_complete")
+        expected_camera_counts = {
+            camera: episode["observation_count"] for camera in required_cameras
+        }
+        if episode["camera_frame_counts"] != expected_camera_counts:
+            error = (
+                "not_front_only_complete"
+                if required_cameras == ("front",)
+                else "not_required_cameras_complete"
+            )
+            errors.append(f"{name}:{error}")
         if episode["state_dimensions"] != [6]:
             errors.append(f"{name}:invalid_state_dimensions")
         if episode["action_dimensions"] != [6]:
@@ -41,16 +48,20 @@ def so101_episode_evidence_errors(
         if not episode["timestamps_strictly_increasing"]:
             errors.append(f"{name}:invalid_timestamps")
         integrity = episode.get("camera_frame_integrity") or {}
-        front = integrity.get("front") or {}
-        if (
-            front.get("referenced_frames") != episode["observation_count"]
-            or front.get("existing_frames") != episode["observation_count"]
-            or front.get("decodable_frames") != episode["observation_count"]
-            or front.get("resolutions") != [[640, 480]]
-            or front.get("modes") != ["RGB"]
-            or front.get("unsafe_paths")
-        ):
-            errors.append(f"{name}:invalid_front_frame_artifacts")
+        for camera in required_cameras:
+            camera_integrity = integrity.get(camera) or {}
+            if (
+                camera_integrity.get("referenced_frames")
+                != episode["observation_count"]
+                or camera_integrity.get("existing_frames")
+                != episode["observation_count"]
+                or camera_integrity.get("decodable_frames")
+                != episode["observation_count"]
+                or camera_integrity.get("resolutions") != [[640, 480]]
+                or camera_integrity.get("modes") != ["RGB"]
+                or camera_integrity.get("unsafe_paths")
+            ):
+                errors.append(f"{name}:invalid_{camera}_frame_artifacts")
     return errors
 
 
