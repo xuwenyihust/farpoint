@@ -1,0 +1,39 @@
+{
+  "schema_version": "farpoint.camera-profile.v1",
+  "profile_id": "so101-front-wrist-v1",
+  "recording_hz": 30,
+  "timestamp_source": "simulation_control_tick",
+  "cameras": [
+    {
+      "camera_id": "front",
+      "feature_key": "observation.images.front",
+      "width": 640,
+      "height": 480,
+      "optical_model": "pinhole",
+      "focal_length_mm": 18.0,
+      "focus_distance_m": 0.35,
+      "mount": {
+        "parent_frame": "isaac_world",
+        "position_m": [0.42, -0.38, 0.34],
+        "orientation_xyzw": [-0.3815, -0.251, -0.4317, 0.7829],
+        "convention": "opengl",
+        "look_at_m": [0.2, 0.02, 0.05]
+      }
+    },
+    {
+      "camera_id": "wrist",
+      "feature_key": "observation.images.wrist",
+      "width": 640,
+      "height": 480,
+      "optical_model": "pinhole",
+      "focal_length_mm": 13.5,
+      "focus_distance_m": 0.08,
+      "mount": {
+        "parent_frame": "Robot/gripper",
+        "position_m": [-0.02, -0.06, 0.08],
+        "orientation_xyzw": [0.3556016, -0.2029594, -0.4522391, 0.7923603],
+        "convention": "opengl"
+      }
+    }
+  ]
+}
