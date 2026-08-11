@@ -15,6 +15,16 @@ from farpoint.scene_entities import (
 from farpoint.v010_pilot import PILOT_KIND, versioned_config
 
 
+FORMAL_SEGMENT_KIND = "self_healing_campaign_segment"
+
+
+def is_v010_episode_plan(plan: dict[str, Any]) -> bool:
+    """Return whether a plan must emit the v0.1.0 episode v4 contract."""
+    return (plan.get("pilot") or {}).get("kind") == PILOT_KIND or (
+        plan.get("collection") or {}
+    ).get("kind") == FORMAL_SEGMENT_KIND
+
+
 def _variant_resolved_state(
     trial: dict[str, Any],
     resolved_object: dict[str, Any],
@@ -74,7 +84,7 @@ def build_so101_episode_v4(
     physics_audit: dict[str, Any],
 ) -> dict[str, Any]:
     """Bind immutable campaign/segment provenance to one measured episode."""
-    if (plan.get("pilot") or {}).get("kind") != PILOT_KIND:
+    if not is_v010_episode_plan(plan):
         raise ValueError("episode v4 writer requires a v0.1.0 plan")
     campaign_errors = validate_campaign_semantics(campaign)
     segment_errors = validate_segment_semantics(segment)

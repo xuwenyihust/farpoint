@@ -19,10 +19,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from farpoint.campaign_live import LiveCampaignPublisher  # noqa: E402
-from farpoint.episode_v4 import build_so101_episode_v4  # noqa: E402
+from farpoint.episode_v4 import (  # noqa: E402
+    build_so101_episode_v4,
+    is_v010_episode_plan,
+)
 from farpoint.episode_video import seal_rgb_video  # noqa: E402
 from farpoint.so101_runtime import resolve_headless_mode  # noqa: E402
-from farpoint.v010_pilot import PILOT_KIND  # noqa: E402
 from isaaclab.app import AppLauncher  # noqa: E402
 
 # USD limits observed from the pinned SO-101 asset (radians), kept explicit so
@@ -3155,7 +3157,7 @@ def main():
     )
     plan = _read_json(args_cli.plan) if args_cli.plan.exists() else generate_variation_plan(config)
     v010_context = None
-    if (plan.get("pilot") or {}).get("kind") == PILOT_KIND:
+    if is_v010_episode_plan(plan):
         if not args_cli.require_dual_camera:
             raise ValueError("v0.1.0 collection requires --require-dual-camera")
         if args_cli.campaign_root is None:

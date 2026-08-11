@@ -10,6 +10,7 @@ from farpoint.campaign_recovery import (
     build_replacement_requests,
     validate_replacement_plan,
 )
+from farpoint.episode_v4 import is_v010_episode_plan
 from farpoint.so101_collection import create_manifest
 from farpoint.v010_formal import (
     build_v010_formal_plan,
@@ -88,6 +89,15 @@ def test_formal_config_freezes_exact_target_and_attempt_policy():
     )
     assert loaded == config
     assert loaded_base == base
+
+
+def test_formal_plan_kind_requires_episode_v4_runtime():
+    assert is_v010_episode_plan(
+        {"collection": {"kind": "self_healing_campaign_segment"}}
+    )
+    assert not is_v010_episode_plan(
+        {"collection": {"kind": "legacy_formal_collection"}}
+    )
 
 
 def test_pilot_authorization_rejects_any_evidence_mutation(tmp_path):
