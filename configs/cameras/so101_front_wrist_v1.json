@@ -31,11 +31,11 @@
       "data_types": ["rgb"],
       "optical_model": "pinhole",
       "focal_length_mm": 13.5,
-      "focus_distance_m": 0.08,
+      "focus_distance_m": 0.12,
       "mount": {
         "parent_frame": "Robot/gripper",
-        "position_m": [-0.02, -0.08, -0.02],
-        "orientation_xyzw": [0.5347946, -0.1438864, -0.216329, 0.804048],
+        "position_m": [-0.02, -0.12, -0.04],
+        "orientation_xyzw": [0.6519759, -0.1173553, -0.1327054, 0.7372546],
         "convention": "opengl"
       }
     }

@@ -119,14 +119,14 @@ class SO101CubeSceneCfg(InteractiveSceneCfg):
         height=480,
         width=640,
         data_types=["rgb"],
-        spawn=sim_utils.PinholeCameraCfg(focal_length=13.5, focus_distance=0.08),
+        spawn=sim_utils.PinholeCameraCfg(focal_length=13.5, focus_distance=0.12),
         # OpenGL looks along camera-local -Z. Place the virtual optical center
         # outside the moving-jaw side and below the gripper body, then aim at
         # the calibrated capture aperture. This keeps the line of sight from
         # crossing either link's collision AABB throughout the grasp path.
         offset=TiledCameraCfg.OffsetCfg(
-            pos=(-0.02, -0.08, -0.02),
-            rot=(0.5347946, -0.1438864, -0.2163290, 0.8040480),
+            pos=(-0.02, -0.12, -0.04),
+            rot=(0.6519759, -0.1173553, -0.1327054, 0.7372546),
             convention="opengl",
         ),
     )

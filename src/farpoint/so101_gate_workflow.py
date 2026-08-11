@@ -65,6 +65,11 @@ def validate_gate_workflow_config(config: dict[str, Any]) -> None:
     for stage in stages:
         if stage.get("kind") not in supported:
             raise ValueError(f"unsupported gate workflow stage: {stage.get('kind')}")
+        required_cameras = stage.get("required_cameras", ["front"])
+        if required_cameras not in (["front"], ["front", "wrist"]):
+            raise ValueError(
+                "gate workflow required_cameras must be front-only or ordered front+wrist"
+            )
 
 
 def build_so101_gate_workflow(
@@ -196,6 +201,9 @@ def build_so101_gate_workflow(
                 "maximum_attempts": (
                     int((plan.get("gate") or plan.get("pilot"))["maximum_attempts"])
                 ),
+                "required_cameras": list(
+                    stage_config.get("required_cameras", ["front"])
+                ),
             }
         )
     workflow = {
@@ -254,6 +262,11 @@ def _stage_action(stage: dict[str, Any], workflow: dict[str, Any], root: Path) -
     episodes = str(root / stage["episodes_root"])
     if stage["state"] in {"READY", "RUNNING"}:
         mode_flag = "--gate-plan" if stage["collector_mode"] == "gate" else "--pilot-plan"
+        camera_args = (
+            ["--require-dual-camera"]
+            if stage.get("required_cameras") == ["front", "wrist"]
+            else []
+        )
         return {
             "kind": "COLLECT",
             "working_directory": "farpoint_repository_root",
@@ -272,6 +285,7 @@ def _stage_action(stage: dict[str, Any], workflow: dict[str, Any], root: Path) -
                 str(stage["maximum_attempts"]),
                 "--watchdog-policy",
                 str(root / workflow["watchdog_policy_path"]),
+                *camera_args,
             ],
         }
     if stage["state"] == "NEEDS_REPORT":
@@ -282,6 +296,11 @@ def _stage_action(stage: dict[str, Any], workflow: dict[str, Any], root: Path) -
             "mass_workspace_pilot": "scripts/report_so101_mass_workspace_pilot.py",
         }
         script = scripts[stage["report_kind"]]
+        camera_args = [
+            argument
+            for camera in stage.get("required_cameras", ["front"])
+            for argument in ("--required-camera", camera)
+        ] if stage["report_kind"] == "pilot" else []
         return {
             "kind": "REPORT",
             "working_directory": "farpoint_repository_root",
@@ -298,6 +317,7 @@ def _stage_action(stage: dict[str, Any], workflow: dict[str, Any], root: Path) -
                 str(root / stage["report_json_path"]),
                 "--markdown-output",
                 str(root / stage["report_markdown_path"]),
+                *camera_args,
             ],
         }
     return {"kind": "NONE", "command": []}
