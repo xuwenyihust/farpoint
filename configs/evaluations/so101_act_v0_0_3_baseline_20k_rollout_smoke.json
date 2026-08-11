@@ -1,0 +1,98 @@
+{
+  "schema_version": "farpoint.policy-rollout.v1",
+  "suite_id": "so101_act_v0_0_3_baseline_20k_rollout_smoke",
+  "task": {
+    "task_id": "so101_cube_pick_place",
+    "instruction": "Pick up the cube and place it on the green target pad.",
+    "evaluation_class": "interface_smoke"
+  },
+  "checkpoint": {
+    "policy_type": "act",
+    "training_run_id": "act-v0.0.3-baseline-20k-4c062b8",
+    "training_git_commit": "4c062b8a960bfda1c64d98296e6fa96e3f266b88",
+    "training_image_id": "sha256:d99274c14bc7e1064f3ad534deb1feecdcbeb271c9d04b3e46377d464c720293",
+    "step": 20000,
+    "model_sha256": "22ddbf2eccfc8aee02d09d00a2a4f101e0cd499b272ad0de1a235e2f9aada5a1",
+    "dataset": {
+      "repo_id": "wenyixu101/farpoint-so101",
+      "revision": "v0.0.3",
+      "resolved_commit": "64bbefdd493ff76cab3bf9ce75a69e7e29714e67",
+      "train_episodes": "0:128",
+      "validation_episodes": "128:142",
+      "excluded_test_episodes": "142:160"
+    }
+  },
+  "environment": {
+    "gym_id": "Farpoint-SO101-PickPlace-Cube-v0",
+    "isaac_lab_ref": "release/3.0.0-beta2",
+    "isaac_sim_version": "6.0.0",
+    "isaac_base_image_id": "sha256:ddcd4daa68cef3ece67f4fbad4eb8f5257d8236a55aba04d0697b55e7679fd04",
+    "lerobot_version": "0.4.4",
+    "camera_features": ["observation.images.front"]
+  },
+  "control": {
+    "physics_hz": 120,
+    "policy_hz": 30,
+    "max_policy_steps": 600,
+    "max_delta_calibrated": 6.0,
+    "stable_steps": 15
+  },
+  "acceptance": {
+    "required_completed_episodes": 5,
+    "minimum_task_successes": 0,
+    "maximum_nonfinite_actions": 0,
+    "maximum_hard_range_violations": 0
+  },
+  "scenes": [
+    {
+      "scene_id": "center_red_30mm_m040_yaw45",
+      "seed": 91001,
+      "object": {
+        "shape": "cube", "dimensions_m": [0.03, 0.03, 0.03],
+        "position_m": [0.20, -0.07, 0.047],
+        "orientation_xyzw": [0.0, 0.0, 0.3826834324, 0.9238795325],
+        "rgba": [0.85, 0.08, 0.06, 1.0], "mass_kg": 0.04
+      }
+    },
+    {
+      "scene_id": "left_blue_40mm_m040_yaw45",
+      "seed": 91002,
+      "object": {
+        "shape": "cube", "dimensions_m": [0.04, 0.04, 0.04],
+        "position_m": [0.15, -0.07, 0.052],
+        "orientation_xyzw": [0.0, 0.0, 0.3826834324, 0.9238795325],
+        "rgba": [0.04, 0.20, 0.85, 1.0], "mass_kg": 0.04
+      }
+    },
+    {
+      "scene_id": "right_red_30mm_m030_yaw45",
+      "seed": 91003,
+      "object": {
+        "shape": "cube", "dimensions_m": [0.03, 0.03, 0.03],
+        "position_m": [0.25, -0.07, 0.047],
+        "orientation_xyzw": [0.0, 0.0, 0.3826834324, 0.9238795325],
+        "rgba": [0.85, 0.08, 0.06, 1.0], "mass_kg": 0.03
+      }
+    },
+    {
+      "scene_id": "upper_blue_30mm_m040_yaw0",
+      "seed": 91004,
+      "object": {
+        "shape": "cube", "dimensions_m": [0.03, 0.03, 0.03],
+        "position_m": [0.20, -0.03, 0.047],
+        "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+        "rgba": [0.04, 0.20, 0.85, 1.0], "mass_kg": 0.04
+      }
+    },
+    {
+      "scene_id": "lower_red_30mm_m030_yaw30",
+      "seed": 91005,
+      "object": {
+        "shape": "cube", "dimensions_m": [0.03, 0.03, 0.03],
+        "position_m": [0.20, -0.11, 0.047],
+        "orientation_xyzw": [0.0, 0.0, 0.2588190451, 0.9659258263],
+        "rgba": [0.85, 0.08, 0.06, 1.0], "mass_kg": 0.03
+      }
+    }
+  ]
+}

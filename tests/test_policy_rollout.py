@@ -22,6 +22,12 @@ def test_json_default_converts_numpy_scalars_and_rejects_unknown_objects():
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "evaluations" / "so101_act_v0_0_3_rollout_smoke.json"
+BASELINE_20K_CONFIG = (
+    ROOT
+    / "configs"
+    / "evaluations"
+    / "so101_act_v0_0_3_baseline_20k_rollout_smoke.json"
+)
 
 
 def test_rollout_smoke_contract_is_valid_and_excludes_test_data():
@@ -31,6 +37,19 @@ def test_rollout_smoke_contract_is_valid_and_excludes_test_data():
     assert spec["checkpoint"]["dataset"]["excluded_test_episodes"] == "142:160"
     assert spec["acceptance"]["minimum_task_successes"] == 0
     assert load_schema("farpoint.policy-rollout.v1")["title"].endswith("v1")
+
+
+def test_baseline_20k_rollout_reuses_frozen_smoke_scenes():
+    pilot = load_rollout_spec(CONFIG)
+    baseline = load_rollout_spec(BASELINE_20K_CONFIG)
+    assert baseline["scenes"] == pilot["scenes"]
+    assert baseline["control"] == pilot["control"]
+    assert baseline["acceptance"] == pilot["acceptance"]
+    assert baseline["checkpoint"]["step"] == 20_000
+    assert baseline["checkpoint"]["training_run_id"] == (
+        "act-v0.0.3-baseline-20k-4c062b8"
+    )
+    assert baseline["checkpoint"]["dataset"] == pilot["checkpoint"]["dataset"]
 
 
 def test_rollout_contract_rejects_duplicate_scene_identity(tmp_path):
