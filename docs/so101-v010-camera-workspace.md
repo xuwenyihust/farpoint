@@ -23,6 +23,12 @@ retreat. It must reject gripper occlusion, an empty task view, invalid focus,
 or a wrist-camera collision. Headless QA additionally decodes every front and
 wrist frame and checks one-to-one timestamps.
 
+The official workshop asset's camera bracket collider and visual are disabled
+at pre-startup. Farpoint does not use that physical camera: it spawns a
+massless sensor from the frozen profile. The gate verifies that only the
+`gripper/visuals/camera_mount` subtree is hidden; all finger and gripper
+visuals remain present in wrist RGB.
+
 ## Continuous feasible region
 
 The Isaac probe runner emits one result per object anchor and XY location. Each
