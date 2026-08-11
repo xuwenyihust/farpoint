@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable
 
 from farpoint.campaign import (
@@ -488,3 +489,79 @@ def evaluate_self_healing_campaign(
     if decision not in DECISIONS:
         raise AssertionError("invalid self-healing decision")
     return report
+
+
+def build_campaign_export_selection(
+    campaign: dict[str, Any],
+    segment_evidence: Iterable[dict[str, Any]],
+    *,
+    dataset_id: str,
+) -> dict[str, Any]:
+    """Compose one successful episode per exact quota across immutable segments."""
+    campaign_errors = validate_campaign_semantics(campaign)
+    if campaign_errors:
+        raise ValueError("invalid campaign: " + "; ".join(campaign_errors))
+    if not dataset_id:
+        raise ValueError("dataset_id must be non-empty")
+    expected_quotas = _campaign_quota_identities(campaign)
+    selected: dict[tuple[Any, ...], dict[str, Any]] = {}
+    evidence = sorted(
+        (deepcopy(row) for row in segment_evidence),
+        key=lambda row: int((row.get("segment") or {}).get("segment_index", -1)),
+    )
+    previous_manifest = None
+    for index, row in enumerate(evidence):
+        segment = row.get("segment") or {}
+        plan = row.get("plan") or {}
+        manifest = row.get("manifest") or {}
+        segment_errors = validate_segment_semantics(segment)
+        if segment_errors:
+            raise ValueError(f"invalid segment {index}: {'; '.join(segment_errors)}")
+        if int(segment["segment_index"]) != index:
+            raise ValueError("campaign segment indexes must be contiguous")
+        if index > 0 and segment.get("parent_manifest_sha256") != canonical_sha256(
+            previous_manifest
+        ):
+            raise ValueError("continuation parent manifest hash mismatch")
+        validate_manifest(manifest, plan)
+        trials = _trial_index(plan)
+        attempts = {
+            attempt["attempt_id"]: attempt for attempt in manifest.get("attempts") or []
+        }
+        episodes_root = str(row.get("episodes_root") or "")
+        if not episodes_root:
+            raise ValueError(f"segment {index} must define episodes_root")
+        for variation_id, attempt_id in (manifest.get("selected_variations") or {}).items():
+            trial = trials[variation_id]
+            quota = _quota_identity(trial)
+            if quota not in expected_quotas:
+                raise ValueError(f"selected episode is outside campaign quota: {quota}")
+            if quota in selected:
+                raise ValueError(f"multiple selected episodes for campaign quota: {quota}")
+            attempt = attempts[attempt_id]
+            selected[quota] = {
+                "episode_dir": str(Path(episodes_root) / attempt["episode_id"]),
+                "trial_id": trial["trial_id"],
+                "variation_id": variation_id,
+                "split": trial["split"],
+                "segment_id": segment["segment_id"],
+                "segment_index": segment["segment_index"],
+                "git_commit": segment["git_commit"],
+                "attempt_id": attempt_id,
+                "quota": dict(zip(QUOTA_FIELDS, quota)),
+            }
+        previous_manifest = manifest
+    if set(selected) != expected_quotas:
+        missing = expected_quotas - set(selected)
+        raise ValueError(f"campaign selection is incomplete: missing {len(missing)} quotas")
+    episodes = [selected[quota] for quota in sorted(selected)]
+    split_counts = Counter(row["split"] for row in episodes)
+    if dict(split_counts) != campaign["target"]["splits"]:
+        raise ValueError("campaign selection split counts do not match target")
+    return {
+        "schema_version": "farpoint.export-selection.v1",
+        "dataset_id": dataset_id,
+        "collection_id": campaign["campaign_id"],
+        "selection_policy": "one_success_per_exact_campaign_quota_across_segments",
+        "episodes": episodes,
+    }

@@ -194,3 +194,124 @@ def test_campaign_dashboard_marks_stale_and_only_promotes_quality_pass(tmp_path)
     assert [row["campaign_id"] for row in index.benchmarks(now_unix=100)] == [
         "passed"
     ]
+
+
+def test_campaign_dashboard_aggregates_parent_and_continuation_quotas(tmp_path):
+    root = tmp_path / "formal"
+    root.mkdir()
+    campaign = _campaign("formal-aggregate", campaign_kind="formal")
+    (root / "campaign.json").write_text(json.dumps(campaign))
+    (root / "status.json").write_text(
+        json.dumps(
+            {
+                "campaign_id": "formal-aggregate",
+                "segment_id": "segment-000",
+                "execution_status": "FINISHED",
+                "quality_status": "FAIL",
+                "heartbeat_unix": 90.0,
+                "completed_attempts": 1,
+                "successful_episodes": 1,
+            }
+        )
+    )
+
+    def write_segment(segment_id, segment_index, trial, selected):
+        destination = root / "segments" / segment_id
+        destination.mkdir(parents=True)
+        (destination / "segment.json").write_text(
+            json.dumps(
+                {
+                    "segment_id": segment_id,
+                    "segment_index": segment_index,
+                    "git_commit": f"commit-{segment_index}",
+                }
+            )
+        )
+        (destination / "plan.json").write_text(
+            json.dumps(
+                {
+                    "plan_sha256": str(segment_index) * 64,
+                    "trials": [trial],
+                }
+            )
+        )
+        (destination / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "execution_status": "FINISHED",
+                    "quality_status": "PASS" if selected else "FAIL",
+                    "attempts": [{"attempt_id": f"attempt-{segment_index}"}],
+                    "selected_variations": (
+                        {trial["variation_id"]: f"attempt-{segment_index}"}
+                        if selected
+                        else {}
+                    ),
+                }
+            )
+        )
+
+    red = {
+        "variation_id": "red-success",
+        "object_variant_id": "red-40mm-40g",
+        "yaw_stratum_id": "yaw00",
+        "region_band": "core",
+        "split": "train",
+        "quota_ordinal": 0,
+    }
+    blue = {
+        "variation_id": "blue-success",
+        "object_variant_id": "blue-30mm-30g",
+        "yaw_stratum_id": "yaw18",
+        "region_band": "outer",
+        "split": "validation",
+        "quota_ordinal": 0,
+    }
+    write_segment("segment-000", 0, red, True)
+    (root / "evidence-index.json").write_text(
+        json.dumps(
+            {
+                "segments": [
+                    {
+                        "segment": "segments/segment-000/segment.json",
+                        "plan": "segments/segment-000/plan.json",
+                        "manifest": "segments/segment-000/manifest.json",
+                    }
+                ]
+            }
+        )
+    )
+
+    index = CampaignDashboardIndex([tmp_path])
+    row = index.collections(now_unix=100)[0]
+    assert row["execution_status"] == "PAUSED"
+    assert row["quality_status"] == "NOT_EVALUATED"
+    assert row["successful_episodes"] == 1
+    assert index.benchmarks(now_unix=100) == []
+
+    write_segment("segment-001", 1, blue, True)
+    evidence = json.loads((root / "evidence-index.json").read_text())
+    evidence["segments"].append(
+        {
+            "segment": "segments/segment-001/segment.json",
+            "plan": "segments/segment-001/plan.json",
+            "manifest": "segments/segment-001/manifest.json",
+        }
+    )
+    (root / "evidence-index.json").write_text(json.dumps(evidence))
+    status = json.loads((root / "status.json").read_text())
+    status.update(
+        {
+            "segment_id": "segment-001",
+            "execution_status": "FINISHED",
+            "quality_status": "PASS",
+        }
+    )
+    (root / "status.json").write_text(json.dumps(status))
+
+    row = index.collections(now_unix=100)[0]
+    assert row["execution_status"] == "FINISHED"
+    assert row["quality_status"] == "PASS"
+    assert row["successful_episodes"] == 2
+    assert row["completed_attempts"] == 2
+    assert index.benchmarks(now_unix=100)[0]["campaign_id"] == "formal-aggregate"
+    assert len(index.campaign_detail("formal-aggregate")["aggregate"]["segments"]) == 2

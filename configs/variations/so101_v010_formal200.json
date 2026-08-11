@@ -1,0 +1,56 @@
+{
+  "schema_version": "farpoint.so101-v010-formal-config.v1",
+  "config_version": "0.1.0-formal.1",
+  "base_variation_config": {
+    "path": "configs/variations/so101_v010_integration_pilot.json",
+    "config_sha256": "85c6164932f9d83eae091cd537ebc5d43cbfff226b444bddff31295a41cb7071"
+  },
+  "pilot_authorization": {
+    "collection_id": "so101_v010_dual_camera_integration12_r2_20260811_c8f31e9_object_region_yaw_12",
+    "git_commit": "c8f31e9ec796ca727001e65b9e875d2e7339d802",
+    "plan_sha256": "02e7058003cb86765398de67a38817b5e2ee5b6f6f90ee9e9d9ed5326feb267c",
+    "manifest_sha256": "73c9671b0ab62afaa72617b24e1cd7b4905c40bee5c666cea0d0d677d37a0b9a",
+    "report_sha256": "4d919c90413c20ad215c0470d47c2888d501b83e21aa0c2563410d824fc6b4a2",
+    "required_successes": 10,
+    "required_attempted_identities": 12,
+    "required_cameras": ["front", "wrist"]
+  },
+  "sampler": {
+    "sampler_version": "farpoint.scrambled-sobol.v1",
+    "seed": 20260812,
+    "maximum_candidates_per_sample": 4096
+  },
+  "population_per_object_yaw_region": {
+    "core": 5,
+    "middle": 10,
+    "outer": 5
+  },
+  "validation_per_object_region": {
+    "core": 2,
+    "middle": 5,
+    "outer": 3
+  },
+  "validation_per_object_yaw": 2,
+  "target": {
+    "successful_episodes": 200,
+    "splits": {"train": 180, "validation": 20}
+  },
+  "attempt_policy": {
+    "maximum_attempts_per_variation": 3,
+    "global_attempt_limit": null,
+    "replacement_policy": "same_quota_new_variation_seed"
+  },
+  "runtime_watchdog": {
+    "path": "configs/workflows/so101_v010_watchdog_runtime.json",
+    "sha256": "d2ca01943fffd923d605ba90efaeeeccbcd3e671a0510de1bf4c83ba234acb74"
+  },
+  "self_healing_policy": {
+    "path": "configs/workflows/so101_v010_self_healing.json",
+    "sha256": "394f095dde11f1b706466759937fdda4617aa3de5443b74c569c7e9dd4911433"
+  },
+  "rollout_holdout": {
+    "scene_count": 20,
+    "seed": 20260813,
+    "disjoint": true
+  }
+}
