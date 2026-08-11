@@ -13,7 +13,8 @@ tests. Deletions, renames, copies, mixed-purpose files, schemas, exporters,
 Dashboard code, scene/physics/release configs, workflows, and governance are
 ineligible.
 
-The controlled DGX workflow runs from the exact PR head commit and validates a
+The controlled DGX workflow runs from the exact PR head commit and parent
+campaign segment manifest, and validates a
 `farpoint.oracle-repair-evidence.v1` document with
 `scripts/validate_oracle_repair.py`. It must publish two successful commit
 checks named:
@@ -23,7 +24,8 @@ checks named:
 
 Each clustered failure class contributes exactly three frozen diagnostic
 seeds; every seed must succeed and be dataset-valid within at most three
-attempts. The independent frozen canary set must pass 10/10. Evidence also
+attempts. Diagnostic and canary seeds must be non-negative, unique, and
+disjoint. The independent frozen canary set must pass 10/10. Evidence also
 asserts that the scene contract and success criteria did not change.
 
 ## Campaign grant

@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path, PurePosixPath
 import re
+import stat
 from typing import Any
 
 
@@ -76,8 +77,59 @@ def validate_paths(policy: dict[str, Any], changed_files: list[str]) -> list[str
     return errors
 
 
+def validate_changed_files_on_disk(
+    policy: dict[str, Any], changed_files: list[str], *, repo_root: Path
+) -> list[str]:
+    """Reject deletions, symlinks, special files, and non-JSON profiles."""
+    errors = []
+    profile_prefixes = tuple(policy["allowed_profile_prefixes"])
+    for value in changed_files:
+        fields = value.split("\t")
+        if len(fields) == 1:
+            status, raw_path = "M", fields[0]
+        elif len(fields) == 2:
+            status, raw_path = fields
+        else:
+            continue
+        if status not in {"A", "M"}:
+            continue
+        try:
+            path = normalize_path(raw_path)
+        except ValueError:
+            continue
+        absolute = repo_root / path
+        try:
+            mode = absolute.lstat().st_mode
+        except FileNotFoundError:
+            errors.append(f"changed path does not exist in the PR head: {path}")
+            continue
+        if stat.S_ISLNK(mode):
+            errors.append(f"changed path must not be a symlink: {path}")
+            continue
+        if not stat.S_ISREG(mode):
+            errors.append(f"changed path must be a regular file: {path}")
+            continue
+        if any(path.startswith(prefix) for prefix in profile_prefixes):
+            if not path.endswith(".json"):
+                errors.append(f"Oracle profile must be a JSON file: {path}")
+                continue
+            try:
+                value = json.loads(absolute.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                errors.append(f"Oracle profile is not valid UTF-8 JSON: {path}")
+                continue
+            if not isinstance(value, dict):
+                errors.append(f"Oracle profile must contain a JSON object: {path}")
+    return errors
+
+
 def validate_evidence(
-    policy: dict[str, Any], evidence: dict[str, Any], *, expected_commit: str
+    policy: dict[str, Any],
+    evidence: dict[str, Any],
+    *,
+    expected_commit: str,
+    expected_campaign_id: str | None = None,
+    expected_parent_manifest_sha256: str | None = None,
 ) -> list[str]:
     errors = []
     if evidence.get("schema_version") != "farpoint.oracle-repair-evidence.v1":
@@ -88,6 +140,23 @@ def validate_evidence(
         errors.append("evidence git_commit does not match the PR head commit")
     if evidence.get("policy_id") != policy.get("policy_id"):
         errors.append("evidence policy_id does not match governance policy")
+    campaign_id = evidence.get("campaign_id")
+    if not isinstance(campaign_id, str) or not campaign_id:
+        errors.append("evidence campaign_id must be non-empty")
+    elif expected_campaign_id is not None and campaign_id != expected_campaign_id:
+        errors.append("evidence campaign_id does not match the campaign grant")
+    if not isinstance(evidence.get("parent_segment_id"), str) or not evidence[
+        "parent_segment_id"
+    ]:
+        errors.append("evidence parent_segment_id must be non-empty")
+    parent_hash = evidence.get("parent_manifest_sha256")
+    if not isinstance(parent_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", parent_hash):
+        errors.append("evidence parent_manifest_sha256 must be a lowercase SHA256")
+    elif (
+        expected_parent_manifest_sha256 is not None
+        and parent_hash != expected_parent_manifest_sha256
+    ):
+        errors.append("evidence parent manifest does not match the campaign segment")
     if evidence.get("scene_contract_unchanged") is not True:
         errors.append("evidence must prove scene contract unchanged")
     if evidence.get("success_criteria_unchanged") is not True:
@@ -98,6 +167,7 @@ def validate_evidence(
         errors.append("evidence must contain diagnostic failure classes")
         diagnostics = []
     seen_classes = set()
+    diagnostic_seed_ids = set()
     required_seeds = int(policy["diagnostic_seeds_per_failure_class"])
     maximum_attempts = int(policy["maximum_attempts_per_seed"])
     for diagnostic in diagnostics:
@@ -114,6 +184,11 @@ def validate_evidence(
         if len({row.get("seed") for row in seeds}) != len(seeds):
             errors.append(f"diagnostic {failure_class} seed identities must be unique")
         for row in seeds:
+            seed = row.get("seed")
+            if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
+                errors.append(f"diagnostic {failure_class} seed must be a non-negative integer")
+            else:
+                diagnostic_seed_ids.add(seed)
             attempts = row.get("attempts")
             if not isinstance(attempts, int) or not 1 <= attempts <= maximum_attempts:
                 errors.append(f"diagnostic {failure_class} attempts must be within 1..{maximum_attempts}")
@@ -127,7 +202,13 @@ def validate_evidence(
     if len({row.get("seed") for row in canaries}) != len(canaries):
         errors.append("canary seed identities must be unique")
     successes = 0
+    canary_seed_ids = set()
     for row in canaries:
+        seed = row.get("seed")
+        if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0:
+            errors.append("canary seed must be a non-negative integer")
+        else:
+            canary_seed_ids.add(seed)
         attempts = row.get("attempts")
         if not isinstance(attempts, int) or not 1 <= attempts <= maximum_attempts:
             errors.append(f"canary attempts must be within 1..{maximum_attempts}")
@@ -137,6 +218,9 @@ def validate_evidence(
             errors.append(f"canary seed did not pass: {row.get('seed')}")
     if successes != int(policy["required_canary_successes"]):
         errors.append("canary success count does not meet policy")
+    overlap = diagnostic_seed_ids & canary_seed_ids
+    if overlap:
+        errors.append("diagnostic and canary seeds must be disjoint")
     return errors
 
 
@@ -146,17 +230,39 @@ def main() -> int:
     parser.add_argument("--changed-files", type=Path, required=True)
     parser.add_argument("--evidence", type=Path)
     parser.add_argument("--expected-commit")
+    parser.add_argument("--expected-campaign-id")
+    parser.add_argument("--expected-parent-manifest-sha256")
     args = parser.parse_args()
     policy = load_json(args.policy)
     changed_files = [line for line in args.changed_files.read_text().splitlines() if line.strip()]
     errors = validate_paths(policy, changed_files)
-    if args.evidence or args.expected_commit:
-        if not args.evidence or not args.expected_commit:
-            errors.append("--evidence and --expected-commit must be supplied together")
+    errors.extend(
+        validate_changed_files_on_disk(
+            policy, changed_files, repo_root=Path.cwd().resolve()
+        )
+    )
+    evidence_arguments = (
+        args.evidence,
+        args.expected_commit,
+        args.expected_campaign_id,
+        args.expected_parent_manifest_sha256,
+    )
+    if any(evidence_arguments):
+        if not all(evidence_arguments):
+            errors.append(
+                "--evidence, --expected-commit, --expected-campaign-id, and "
+                "--expected-parent-manifest-sha256 must be supplied together"
+            )
         else:
             errors.extend(
                 validate_evidence(
-                    policy, load_json(args.evidence), expected_commit=args.expected_commit
+                    policy,
+                    load_json(args.evidence),
+                    expected_commit=args.expected_commit,
+                    expected_campaign_id=args.expected_campaign_id,
+                    expected_parent_manifest_sha256=(
+                        args.expected_parent_manifest_sha256
+                    ),
                 )
             )
     print(json.dumps({"accepted": not errors, "errors": errors}, indent=2, sort_keys=True))
