@@ -4,8 +4,14 @@ Follow `CONTRIBUTING.md` and `docs/development-workflow.md` for every change.
 
 - Never commit or push directly to `main`.
 - Create a feature branch and a Draft PR.
-- Never merge a PR, enable auto-merge, create a production release tag, or
-  publish to Hugging Face without an explicit owner request after review.
+- An agent may merge a specific PR or enable auto-merge only after the owner
+  explicitly requests that action in the current task. The agent must identify
+  the exact PR, verify that it is ready for review and mergeable, and never use
+  an admin or branch-protection bypass. A direct merge additionally requires
+  all required checks and reviews to pass; auto-merge may wait for those gates.
+- Never infer merge authorization from approval of code, a pilot, a release,
+  or a previous PR. Never create a production release tag or publish to Hugging
+  Face without a separate explicit owner request after review.
 - Treat `configs/datasets/*.toml` as dataset release-version sources of truth.
 - Keep Hugging Face Dataset Cards outside Git; review and edit them directly on
   the Hub only during an owner-approved dataset publication.
