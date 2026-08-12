@@ -463,7 +463,7 @@ def test_capture_confirmation_rejects_dynamic_bilateral_contact():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,
         capture_confirmation_s=0.025,
-        maximum_capture_relative_speed_mps=0.002,
+        maximum_capture_relative_speed_mps=0.0035,
     )
     machine.step(_evidence(right_force_n=0.0))
     machine.step(_evidence(right_force_n=0.0))
