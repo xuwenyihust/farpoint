@@ -2158,10 +2158,10 @@ def run_attempt(
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 target = ee_position.copy()
                 bilateral_capture_steps += 1
-                if bilateral_capture_steps < 3:
+                if bilateral_capture_steps < grasp_machine.capture_confirmation_steps:
                     # A single bilateral sample can be an edge-impact pulse.
                     # Continue closing gently until both contacts persist for
-                    # the same three-step window required by the state machine.
+                    # the same window required by the state machine.
                     jaw = max(closed_jaw, float(current[5].item()) - 0.005)
                     gripper_control = "confirm_bilateral"
                     target = grasp_hold_pose

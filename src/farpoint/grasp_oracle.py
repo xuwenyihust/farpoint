@@ -363,6 +363,11 @@ class ContactAwareGraspStateMachine:
     def _steps(self, seconds: float) -> int:
         return max(1, int(round(seconds * self.control_hz)))
 
+    @property
+    def capture_confirmation_steps(self) -> int:
+        """Return the shared bilateral-capture confirmation window."""
+        return self._steps(self.capture_confirmation_s)
+
     def _enter(self, phase: GraspPhase) -> None:
         self.phase = phase
         self.phase_steps = 0
@@ -409,7 +414,7 @@ class ContactAwareGraspStateMachine:
             self._enter(GraspPhase.SLOW_CLOSE)
         elif self.phase is GraspPhase.SLOW_CLOSE:
             self.capture_steps = self.capture_steps + 1 if capture_bilateral else 0
-            if self.capture_steps >= self._steps(self.capture_confirmation_s):
+            if self.capture_steps >= self.capture_confirmation_steps:
                 self._enter(GraspPhase.BILATERAL_SETTLE)
         elif self.phase is GraspPhase.BILATERAL_SETTLE:
             self.stable_steps = self.stable_steps + 1 if bilateral and rigid else 0

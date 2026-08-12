@@ -428,6 +428,15 @@ def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
     assert decision.rebase_relative_tracking
 
 
+def test_capture_confirmation_steps_exposes_shared_window():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+    )
+
+    assert machine.capture_confirmation_steps == 3
+
+
 def test_capture_admission_blocks_force_only_corner_contact():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,
