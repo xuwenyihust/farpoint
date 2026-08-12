@@ -2,12 +2,14 @@ import math
 
 
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
-    """Return whether the measured aperture may arm bilateral capture.
+    """Admit capture only after the rotary jaw reaches enclosure range.
 
-    This is the single robot-calibration hook between physical fingertip
-    contact and the grasp state machine.  The initial hook is intentionally
-    transparent; versioned Oracle repairs can tighten admission here without
-    changing the collector or the state-machine contract again.
+    The exact-mesh SO-101 traces show that bilateral force above 0.9 rad can
+    be two-corner contact on a rotated 40 mm cube rather than enclosure.  The
+    0.9-rad calibration remains the validated approach target for the 30 mm
+    object and is therefore the widest aperture allowed to arm capture for
+    either supported size.  Contacts above it still drive slow-close and
+    recentering; they simply cannot freeze the jaw prematurely.
     """
     jaw = float(measured_jaw_position_rad)
     width = float(object_width_m)
@@ -15,7 +17,7 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
         raise ValueError("measured_jaw_position_rad must be finite")
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
-    return True
+    return jaw <= 0.90 + 1e-6
 
 
 def so101_bilateral_capture_ready(
@@ -46,12 +48,12 @@ def so101_approach_jaw_target(object_width_m):
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-    # The balanced50 source demonstrations used the 1.2-rad exact-mesh
-    # calibration for 40 mm cubes.  A later 1.7-rad recovery profile changed
-    # the aperture center and produced position-dependent unilateral wedging
-    # in the mirrored 0.03 kg gate.  Preserve the validated 0.9-rad 30 mm path
-    # while returning 40 mm cubes to the source collection geometry.
-    return 0.90 + 0.30 * interpolation
+    # Preserve the validated 0.9-rad 30 mm path.  The v0.1.0 formal campaign
+    # showed deterministic 40 mm single-side wedges, overloads and contact
+    # loss across yaw strata when the large cube reused the 1.2-rad opening.
+    # Use the next exact-mesh aperture calibration anchor (1.4 rad), while
+    # staying well below the rejected 1.7-rad recovery opening.
+    return 0.90 + 0.50 * interpolation
 
 
 def so101_minimum_safe_descent_fraction(object_width_m):

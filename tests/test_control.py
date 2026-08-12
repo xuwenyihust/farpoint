@@ -47,8 +47,10 @@ from farpoint.control import (
 )
 
 
-def test_so101_capture_admission_hook_is_initially_transparent():
-    assert so101_capture_admission_ready(1.40, 0.04)
+def test_so101_capture_admission_requires_calibrated_enclosure():
+    assert not so101_capture_admission_ready(1.40, 0.04)
+    assert not so101_capture_admission_ready(0.91, 0.04)
+    assert so101_capture_admission_ready(0.90, 0.04)
     assert so101_capture_admission_ready(0.55, 0.03)
 
 
@@ -129,11 +131,11 @@ def test_collision_safe_pregrasp_waypoints_reject_unsafe_clearance():
         )
 
 
-def test_so101_approach_jaw_uses_balanced50_geometry_for_large_cube():
+def test_so101_approach_jaw_uses_wide_calibrated_geometry_for_large_cube():
     assert so101_approach_jaw_target(0.03) == pytest.approx(0.90)
-    assert so101_approach_jaw_target(0.035) == pytest.approx(1.05)
-    assert so101_approach_jaw_target(0.04) == pytest.approx(1.20)
-    assert so101_approach_jaw_target(0.10) == pytest.approx(1.20)
+    assert so101_approach_jaw_target(0.035) == pytest.approx(1.15)
+    assert so101_approach_jaw_target(0.04) == pytest.approx(1.40)
+    assert so101_approach_jaw_target(0.10) == pytest.approx(1.40)
     with pytest.raises(ValueError, match="finite and positive"):
         so101_approach_jaw_target(0.0)
 
