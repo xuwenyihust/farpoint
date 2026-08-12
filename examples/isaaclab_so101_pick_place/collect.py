@@ -2758,6 +2758,7 @@ def run_attempt(
                 float(current[5].item()),
                 closed_position=closed_jaw,
                 open_position=open_jaw,
+                relative_speed_mps=relative_speed,
             )
             grasp_jaw_reference = grasp_jaw_hold
             grasp_hold_pose = gripper_pose[:3].copy()
