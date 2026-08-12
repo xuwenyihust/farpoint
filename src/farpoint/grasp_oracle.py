@@ -187,28 +187,43 @@ def rotary_jaw_capture_hold_target(
     *,
     closed_position: float,
     open_position: float,
-    preload_rad: float = 0.004,
+    preload_rad: float = 0.008,
     relative_speed_mps: float | None = None,
+    moving_capture_preload_rad: float = 0.004,
+    moving_capture_threshold_mps: float = 0.001,
 ) -> float:
-    """Hold a captured rotary jaw with a bounded closing preload.
+    """Hold a captured rotary jaw with a motion-aware closing preload.
 
-    Exact-mesh 40 mm traces showed that the former 2 mrad target could lose
-    both contacts within two control ticks, before the force controller had
-    time to react, while 8--12 mrad could eject a still-settling 40 mm cube.
-    Four milliradians stays between those measured failure modes and below the
-    collector's unchanged 12 mrad settling ceiling.
+    Quasi-static exact-mesh captures need the validated 8 mrad preload to keep
+    bilateral contact.  A capture whose object is still moving uses the lower
+    4 mrad preload so the transition command does not eject the cube.  This
+    changes only the hold target after capture admission; force limits and
+    grasp-success evidence remain unchanged.
     """
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
     if preload_rad < 0.0:
         raise ValueError("preload_rad must be non-negative")
+    if moving_capture_preload_rad < 0.0:
+        raise ValueError("moving_capture_preload_rad must be non-negative")
+    if (
+        not np.isfinite(moving_capture_threshold_mps)
+        or moving_capture_threshold_mps < 0.0
+    ):
+        raise ValueError("moving_capture_threshold_mps must be non-negative")
     if relative_speed_mps is not None and (
         not np.isfinite(relative_speed_mps) or relative_speed_mps < 0.0
     ):
         raise ValueError("relative_speed_mps must be finite and non-negative")
+    effective_preload = float(preload_rad)
+    if (
+        relative_speed_mps is not None
+        and relative_speed_mps > moving_capture_threshold_mps
+    ):
+        effective_preload = min(effective_preload, float(moving_capture_preload_rad))
     return float(
         np.clip(
-            float(measured_position) - float(preload_rad),
+            float(measured_position) - effective_preload,
             float(closed_position),
             float(open_position),
         )
