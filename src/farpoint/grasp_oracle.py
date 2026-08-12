@@ -335,7 +335,7 @@ class ContactAwareGraspStateMachine:
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
     capture_confirmation_s: float = 0.05
-    maximum_capture_relative_speed_mps: float = 0.0035
+    maximum_capture_relative_speed_mps: float = 0.002
     maximum_force_n: float = 60.0
     maximum_relative_translation_error_m: float = 0.003
     maximum_relative_speed_mps: float = 0.015
@@ -417,8 +417,6 @@ class ContactAwareGraspStateMachine:
             evidence.left_force_n >= self.capture_contact_force_n
             and evidence.right_force_n >= self.capture_contact_force_n
             and evidence.capture_admissible
-            and evidence.relative_speed_mps
-            <= self.maximum_capture_relative_speed_mps
         )
         rigid = (
             evidence.relative_translation_error_m
@@ -434,7 +432,11 @@ class ContactAwareGraspStateMachine:
             self._enter(GraspPhase.SLOW_CLOSE)
         elif self.phase is GraspPhase.SLOW_CLOSE:
             self.capture_steps = self.capture_steps + 1 if capture_bilateral else 0
-            if self.capture_steps >= self.capture_confirmation_steps:
+            if (
+                self.capture_steps >= self.capture_confirmation_steps
+                and evidence.relative_speed_mps
+                <= self.maximum_capture_relative_speed_mps
+            ):
                 self._enter(GraspPhase.BILATERAL_SETTLE)
         elif self.phase is GraspPhase.BILATERAL_SETTLE:
             self.stable_steps = self.stable_steps + 1 if bilateral and rigid else 0

@@ -463,7 +463,7 @@ def test_capture_confirmation_rejects_dynamic_bilateral_contact():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,
         capture_confirmation_s=0.025,
-        maximum_capture_relative_speed_mps=0.0035,
+        maximum_capture_relative_speed_mps=0.002,
     )
     machine.step(_evidence(right_force_n=0.0))
     machine.step(_evidence(right_force_n=0.0))
@@ -473,7 +473,11 @@ def test_capture_confirmation_rejects_dynamic_bilateral_contact():
         decision = machine.step(_evidence(relative_speed_mps=0.004))
 
     assert decision.phase is GraspPhase.SLOW_CLOSE
-    assert machine.capture_steps == 0
+    assert machine.capture_steps == 4
+
+    decision = machine.step(_evidence(relative_speed_mps=0.001))
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
 
 
 def test_capture_admission_blocks_force_only_corner_contact():
