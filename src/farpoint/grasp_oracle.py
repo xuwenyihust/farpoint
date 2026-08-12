@@ -190,14 +190,13 @@ def rotary_jaw_capture_hold_target(
     preload_rad: float = 0.008,
     relative_speed_mps: float | None = None,
 ) -> float:
-    """Hold a captured rotary jaw with motion-aware bounded preload.
+    """Hold a captured rotary jaw with a bounded closing preload.
 
     Exact-mesh 40 mm traces showed that the former 2 mrad target could lose
     both contacts within two control ticks, before the force controller had
     time to react.  Eight milliradians remains below the collector's 12 mrad
-    settling ceiling for quasi-static captures.  A capture that is still
-    moving quickly stores more contact energy, so taper toward the original
-    2 mrad floor instead of adding the full preload impulse.
+    settling ceiling while giving the joint servo enough initial error to
+    retain a newly confirmed capture.
     """
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
@@ -207,16 +206,9 @@ def rotary_jaw_capture_hold_target(
         not np.isfinite(relative_speed_mps) or relative_speed_mps < 0.0
     ):
         raise ValueError("relative_speed_mps must be finite and non-negative")
-    applied_preload = float(preload_rad)
-    if relative_speed_mps is not None:
-        minimum_preload = min(applied_preload, 0.002)
-        speed_fraction = float(
-            np.clip((float(relative_speed_mps) - 0.0015) / 0.002, 0.0, 1.0)
-        )
-        applied_preload += speed_fraction * (minimum_preload - applied_preload)
     return float(
         np.clip(
-            float(measured_position) - applied_preload,
+            float(measured_position) - float(preload_rad),
             float(closed_position),
             float(open_position),
         )
@@ -342,7 +334,7 @@ class ContactAwareGraspStateMachine:
     control_hz: int = 120
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
-    capture_confirmation_s: float = 0.05
+    capture_confirmation_s: float = 0.15
     maximum_force_n: float = 60.0
     maximum_relative_translation_error_m: float = 0.003
     maximum_relative_speed_mps: float = 0.015

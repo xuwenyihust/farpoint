@@ -90,21 +90,6 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
         )
 
 
-def test_rotary_jaw_capture_hold_tapers_preload_for_dynamic_capture():
-    assert rotary_jaw_capture_hold_target(
-        1.2328,
-        closed_position=-0.175,
-        open_position=1.7453,
-        relative_speed_mps=0.0025,
-    ) == pytest.approx(1.2278)
-    assert rotary_jaw_capture_hold_target(
-        1.2328,
-        closed_position=-0.175,
-        open_position=1.7453,
-        relative_speed_mps=0.004,
-    ) == pytest.approx(1.2308)
-
-
 def test_capture_preload_force_floor_tracks_admission_threshold():
     assert capture_preload_force_floor(2.0) == pytest.approx(1.8)
     assert capture_preload_force_floor(4.0, retention_fraction=0.5) == pytest.approx(
@@ -326,6 +311,7 @@ def test_proof_lift_command_rejects_invalid_ramp(kwargs):
 def test_grasp_requires_each_named_quasi_static_stage():
     machine = ContactAwareGraspStateMachine(
         control_hz=10,
+        capture_confirmation_s=0.0,
         bilateral_settle_s=0.2,
         static_hold_s=0.2,
         proof_lift_hold_s=0.2,
@@ -351,7 +337,10 @@ def test_grasp_requires_each_named_quasi_static_stage():
 
 
 def test_relative_tracking_rebases_only_at_bilateral_capture():
-    machine = ContactAwareGraspStateMachine(control_hz=10)
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        capture_confirmation_s=0.0,
+    )
 
     first = machine.step(_evidence(right_force_n=0.0))
     assert first.phase is GraspPhase.FIRST_CONTACT
@@ -368,6 +357,7 @@ def test_relative_tracking_rebases_only_at_bilateral_capture():
 def test_transient_bilateral_force_cannot_validate_grasp():
     machine = ContactAwareGraspStateMachine(
         control_hz=10,
+        capture_confirmation_s=0.0,
         bilateral_settle_s=0.3,
         maximum_contact_loss_s=0.1,
     )
@@ -386,6 +376,7 @@ def test_low_force_capture_still_requires_physical_proof_lift():
     machine = ContactAwareGraspStateMachine(
         control_hz=10,
         minimum_contact_force_n=0.10,
+        capture_confirmation_s=0.0,
         bilateral_settle_s=0.1,
         static_hold_s=0.1,
         proof_lift_hold_s=0.1,
@@ -460,6 +451,12 @@ def test_capture_confirmation_steps_exposes_shared_window():
     )
 
     assert machine.capture_confirmation_steps == 3
+
+
+def test_default_capture_confirmation_rejects_short_dynamic_impulse():
+    machine = ContactAwareGraspStateMachine(control_hz=120)
+
+    assert machine.capture_confirmation_steps == 18
 
 
 def test_capture_admission_blocks_force_only_corner_contact():
