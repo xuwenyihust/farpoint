@@ -334,7 +334,8 @@ class ContactAwareGraspStateMachine:
     control_hz: int = 120
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
-    capture_confirmation_s: float = 0.075
+    capture_confirmation_s: float = 0.05
+    maximum_capture_relative_speed_mps: float = 0.002
     maximum_force_n: float = 60.0
     maximum_relative_translation_error_m: float = 0.003
     maximum_relative_speed_mps: float = 0.015
@@ -371,6 +372,11 @@ class ContactAwareGraspStateMachine:
             )
         if self.capture_confirmation_s < 0:
             raise ValueError("capture confirmation duration must be non-negative")
+        if (
+            not np.isfinite(self.maximum_capture_relative_speed_mps)
+            or self.maximum_capture_relative_speed_mps < 0
+        ):
+            raise ValueError("capture relative speed limit must be non-negative")
 
     def _steps(self, seconds: float) -> int:
         return max(1, int(round(seconds * self.control_hz)))
@@ -411,6 +417,8 @@ class ContactAwareGraspStateMachine:
             evidence.left_force_n >= self.capture_contact_force_n
             and evidence.right_force_n >= self.capture_contact_force_n
             and evidence.capture_admissible
+            and evidence.relative_speed_mps
+            <= self.maximum_capture_relative_speed_mps
         )
         rigid = (
             evidence.relative_translation_error_m

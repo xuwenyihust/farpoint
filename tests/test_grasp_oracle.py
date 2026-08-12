@@ -453,10 +453,27 @@ def test_capture_confirmation_steps_exposes_shared_window():
     assert machine.capture_confirmation_steps == 3
 
 
-def test_default_capture_confirmation_rejects_short_dynamic_impulse():
+def test_default_capture_confirmation_uses_six_control_ticks():
     machine = ContactAwareGraspStateMachine(control_hz=120)
 
-    assert machine.capture_confirmation_steps == 9
+    assert machine.capture_confirmation_steps == 6
+
+
+def test_capture_confirmation_rejects_dynamic_bilateral_contact():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        maximum_capture_relative_speed_mps=0.002,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(4):
+        decision = machine.step(_evidence(relative_speed_mps=0.004))
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
 
 
 def test_capture_admission_blocks_force_only_corner_contact():
@@ -504,6 +521,7 @@ def test_sustain_threshold_applies_after_strong_capture():
         {"capture_contact_force_n": 0.05},
         {"capture_contact_force_n": 60.0},
         {"capture_confirmation_s": -0.01},
+        {"maximum_capture_relative_speed_mps": float("inf")},
     ),
 )
 def test_capture_admission_configuration_is_validated(overrides):
