@@ -26,6 +26,7 @@ from farpoint.control import (
     settle_release_separation_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
+    so101_capture_admission_ready,
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
@@ -43,6 +44,42 @@ from farpoint.control import (
     unsafe_so101_approach_contact,
     visual_servo_grasp_target,
 )
+
+
+def test_so101_capture_admission_hook_is_initially_transparent():
+    assert so101_capture_admission_ready(1.40, 0.04)
+    assert so101_capture_admission_ready(0.55, 0.03)
+
+
+@pytest.mark.parametrize(
+    ("jaw", "width"),
+    ((float("nan"), 0.04), (0.5, 0.0), (0.5, float("inf"))),
+)
+def test_so101_capture_admission_rejects_invalid_geometry(jaw, width):
+    with pytest.raises(ValueError):
+        so101_capture_admission_ready(jaw, width)
+
+
+def test_so101_slow_close_threads_transparent_capture_admission():
+    default = advance_so101_slow_close_target(
+        1.0,
+        1.0,
+        3.0,
+        3.0,
+        open_position=1.7,
+        closed_position=-0.2,
+    )
+    explicit = advance_so101_slow_close_target(
+        1.0,
+        1.0,
+        3.0,
+        3.0,
+        open_position=1.7,
+        closed_position=-0.2,
+        capture_admissible=True,
+    )
+
+    assert explicit == default
 
 
 def test_collision_safe_pregrasp_waypoints_raise_before_translating():

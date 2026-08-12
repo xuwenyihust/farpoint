@@ -428,6 +428,27 @@ def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
     assert decision.rebase_relative_tracking
 
 
+def test_capture_admission_blocks_force_only_corner_contact():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(4):
+        decision = machine.step(_evidence(capture_admissible=False))
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
+    assert machine.step(_evidence()).phase is GraspPhase.BILATERAL_SETTLE
+
+
 def test_sustain_threshold_applies_after_strong_capture():
     machine = ContactAwareGraspStateMachine(
         control_hz=10,

@@ -294,6 +294,7 @@ class GraspEvidence:
     left_force_n: float
     right_force_n: float
     aperture_aligned: bool = False
+    capture_admissible: bool = True
     relative_translation_error_m: float = float("inf")
     relative_speed_mps: float = float("inf")
     proof_lift_m: float = 0.0
@@ -392,6 +393,7 @@ class ContactAwareGraspStateMachine:
         capture_bilateral = (
             evidence.left_force_n >= self.capture_contact_force_n
             and evidence.right_force_n >= self.capture_contact_force_n
+            and evidence.capture_admissible
         )
         rigid = (
             evidence.relative_translation_error_m

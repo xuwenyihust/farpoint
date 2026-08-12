@@ -177,6 +177,7 @@ from farpoint.control import (  # noqa: E402
     relative_object_grasp_servo_target,
     settle_release_separation_target,
     so101_approach_jaw_target,
+    so101_capture_admission_ready,
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
@@ -1880,6 +1881,10 @@ def run_attempt(
         }:
             balanced_forces = _cube_contact_forces(contact)
         jaw_force_action = None
+        capture_admissible = so101_capture_admission_ready(
+            float(current[5].item()),
+            object_spec["dimensions_m"][0],
+        )
         settling_capture = (
             phase is OraclePhase.CLOSE
             and grasp_machine.phase
@@ -2143,7 +2148,7 @@ def run_attempt(
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 jaw = grasp_jaw_hold
                 gripper_control = "measured_rebase_capture_hold"
-            elif min(finger_forces) >= 2.0:
+            elif capture_admissible and min(finger_forces) >= 2.0:
                 # Both cube sidewalls constrain the arm even before the
                 # three-sample confirmation is complete. Rebase the joint
                 # command on every such sample to discard the pre-contact IK
@@ -2215,6 +2220,7 @@ def run_attempt(
                     *finger_forces,
                     open_position=open_jaw,
                     closed_position=closed_jaw,
+                    capture_admissible=capture_admissible,
                 )
                 jaw = float(jaw_update["position"])
                 gripper_control = f"calibrated_slow_{jaw_update['action']}"
@@ -2701,6 +2707,7 @@ def run_attempt(
                     object_in_gripper,
                     capture_object_in_gripper,
                 ),
+                capture_admissible=capture_admissible,
                 relative_translation_error_m=relative_translation_error,
                 relative_speed_mps=relative_speed,
                 proof_lift_m=(
