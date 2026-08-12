@@ -25,14 +25,16 @@ def so101_bilateral_capture_ready(
     right_force_n,
     capture_admissible,
     *,
-    minimum_force_n=1.5,
+    minimum_force_n=0.5,
 ):
     """Return whether bilateral force may enter capture confirmation.
 
-    The 1.5 N admission floor is a bounded 25% hysteresis below the nominal
-    2 N contact target.  Immutable 30 mm outer-region evidence showed stable
-    low-speed enclosure at 1.54--1.62 N on the weaker finger while the other
-    finger remained above 2 N. Capture still needs six consecutive control ticks,
+    The 0.5 N floor distinguishes sustained, cube-filtered contact from sensor
+    noise without forcing the controller to cross its nominal 2 N target.
+    Immutable 30 mm outer-region evidence showed that a higher floor creates a
+    threshold-following limit cycle: gentle confirmation reduces the weaker
+    finger force just below the floor and resets the window indefinitely.
+    Capture still needs six consecutive control ticks,
     the independent relative-speed gate, bilateral settle, static hold, and
     proof lift; this hook does not change success validation.
     """

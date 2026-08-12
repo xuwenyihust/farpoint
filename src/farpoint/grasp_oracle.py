@@ -432,12 +432,12 @@ class ContactAwareGraspStateMachine:
             evidence.left_force_n
             >= capture_preload_force_floor(
                 self.capture_contact_force_n,
-                retention_fraction=0.75,
+                retention_fraction=0.25,
             )
             and evidence.right_force_n
             >= capture_preload_force_floor(
                 self.capture_contact_force_n,
-                retention_fraction=0.75,
+                retention_fraction=0.25,
             )
             and evidence.capture_admissible
         )
