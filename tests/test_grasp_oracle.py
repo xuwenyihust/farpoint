@@ -69,7 +69,7 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
         1.2328,
         closed_position=-0.175,
         open_position=1.7453,
-        relative_speed_mps=0.004,
+        relative_speed_mps=0.001,
     ) == pytest.approx(1.2248)
     assert rotary_jaw_capture_hold_target(
         -0.174, closed_position=-0.175, open_position=1.7453
@@ -88,6 +88,21 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
             open_position=1.7453,
             relative_speed_mps=float("inf"),
         )
+
+
+def test_rotary_jaw_capture_hold_tapers_preload_for_dynamic_capture():
+    assert rotary_jaw_capture_hold_target(
+        1.2328,
+        closed_position=-0.175,
+        open_position=1.7453,
+        relative_speed_mps=0.0025,
+    ) == pytest.approx(1.2278)
+    assert rotary_jaw_capture_hold_target(
+        1.2328,
+        closed_position=-0.175,
+        open_position=1.7453,
+        relative_speed_mps=0.004,
+    ) == pytest.approx(1.2308)
 
 
 def test_capture_preload_force_floor_tracks_admission_threshold():
