@@ -155,9 +155,14 @@ def create_manifest(
             attempt_limit = _maximum_attempts_per_variation(plan)
             if attempt_limit != 3:
                 raise ValueError("self-healing segments require three attempts per variation")
-            if frozen_maximum != len(trials) * attempt_limit:
+            expected_maximum = sum(
+                attempt_limit - _prior_attempt_count(trial, attempt_limit)
+                for trial in trials
+            )
+            if frozen_maximum != expected_maximum:
                 raise ValueError(
-                    "self-healing segment attempt budget must equal variations times three"
+                    "self-healing segment attempt budget must equal the sum of "
+                    "remaining per-variation attempts"
                 )
         if maximum_attempts is not None and maximum_attempts != frozen_maximum:
             raise ValueError("maximum_attempts does not match the frozen collection profile")
@@ -426,10 +431,22 @@ def validate_manifest(manifest: dict[str, Any], plan: dict[str, Any]) -> None:
     maximum_per_variation = _maximum_attempts_per_variation(plan)
     if maximum_per_variation is not None:
         counts = Counter(row.get("variation_id") for row in attempts)
+        trials = {
+            trial["variation_id"]: trial for trial in plan.get("trials") or []
+        }
+        unknown_attempts = set(counts) - set(trials)
+        if unknown_attempts:
+            raise ValueError(
+                f"collection attempted unknown variations: {sorted(unknown_attempts)}"
+            )
+        prior_counts = {
+            variation_id: _prior_attempt_count(trial, maximum_per_variation)
+            for variation_id, trial in trials.items()
+        }
         exceeded = {
-            variation_id: count
+            variation_id: count + prior_counts[variation_id]
             for variation_id, count in counts.items()
-            if count > maximum_per_variation
+            if count + prior_counts[variation_id] > maximum_per_variation
         }
         if exceeded:
             raise ValueError(
@@ -454,6 +471,18 @@ def _maximum_attempts_per_variation(plan: dict[str, Any]) -> int | None:
     return maximum
 
 
+def _prior_attempt_count(trial: dict[str, Any], maximum: int | None) -> int:
+    """Return attempts consumed by this variation in immutable parent segments."""
+    value = trial.get("prior_attempt_count", 0)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("trial prior_attempt_count must be a non-negative integer")
+    if maximum is not None and value >= maximum:
+        raise ValueError(
+            "trial prior_attempt_count must leave at least one continuation attempt"
+        )
+    return value
+
+
 def _has_attempt_candidate(
     manifest: dict[str, Any], plan: dict[str, Any], counts: Counter | None = None
 ) -> bool:
@@ -462,7 +491,11 @@ def _has_attempt_candidate(
     maximum = _maximum_attempts_per_variation(plan)
     return any(
         trial["variation_id"] not in selected
-        and (maximum is None or counts[trial["variation_id"]] < maximum)
+        and (
+            maximum is None
+            or counts[trial["variation_id"]]
+            < maximum - _prior_attempt_count(trial, maximum)
+        )
         for trial in plan["trials"]
     )
 
@@ -486,7 +519,9 @@ def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
         if trial["variation_id"] not in selected
         and (
             maximum_per_variation is None
-            or counts[trial["variation_id"]] < maximum_per_variation
+            or counts[trial["variation_id"]]
+            < maximum_per_variation
+            - _prior_attempt_count(trial, maximum_per_variation)
         )
     ]
     if not candidates:
@@ -500,7 +535,9 @@ def next_attempt(manifest: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
             trial for trial in candidates if counts[trial["variation_id"]] == minimum_attempt_count
         )
     )
-    attempt_index = counts[trial["variation_id"]]
+    attempt_index = counts[trial["variation_id"]] + _prior_attempt_count(
+        trial, maximum_per_variation
+    )
     attempt_id = f"{trial['trial_id']}__attempt{attempt_index:02d}"
     retry_material = {
         "plan_sha256": plan["plan_sha256"],

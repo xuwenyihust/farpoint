@@ -198,23 +198,164 @@ def build_replacement_requests(
     return requests
 
 
+def build_continuation_requests(
+    campaign: dict[str, Any], segment_evidence: Iterable[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Return every missing quota, preserving unexhausted seeds across segments.
+
+    A stopped segment must never make a partially attempted variation disappear.
+    The same variation seed is carried forward with only its remaining attempt
+    budget.  A new same-quota seed is derived only after the previous seed has
+    consumed all three attempts.
+    """
+    campaign_errors = validate_campaign_semantics(campaign)
+    if campaign_errors:
+        raise ValueError("invalid campaign: " + "; ".join(campaign_errors))
+    maximum = int(campaign["attempt_policy"]["maximum_attempts_per_variation"])
+    if maximum != 3:
+        raise ValueError("continuation generation requires a three-attempt campaign")
+    allowed_quotas = _campaign_quota_identities(campaign)
+    evidence = sorted(
+        (deepcopy(row) for row in segment_evidence),
+        key=lambda row: int((row.get("segment") or {}).get("segment_index", -1)),
+    )
+    if not evidence:
+        raise ValueError("continuation generation requires segment evidence")
+
+    successful_quotas: set[tuple[Any, ...]] = set()
+    latest: dict[tuple[Any, ...], dict[str, Any]] = {}
+    previous_manifest = None
+    for index, row in enumerate(evidence):
+        segment = row.get("segment") or {}
+        plan = row.get("plan") or {}
+        manifest = row.get("manifest") or {}
+        segment_errors = validate_segment_semantics(segment)
+        if segment_errors:
+            raise ValueError(
+                f"invalid segment {index}: " + "; ".join(segment_errors)
+            )
+        if int(segment.get("segment_index", -1)) != index:
+            raise ValueError("campaign segment indexes must be contiguous")
+        if segment.get("campaign_sha256") != campaign.get("campaign_sha256"):
+            raise ValueError("continuation segment campaign hash mismatch")
+        if index > 0 and segment.get("parent_manifest_sha256") != canonical_sha256(
+            previous_manifest
+        ):
+            raise ValueError("continuation parent manifest hash mismatch")
+        validate_manifest(manifest, plan)
+        trials = _trial_index(plan)
+        attempt_counts = Counter(
+            attempt["variation_id"] for attempt in manifest.get("attempts") or []
+        )
+        selected = set((manifest.get("selected_variations") or {}).keys())
+        segment_quotas: set[tuple[Any, ...]] = set()
+        for variation_id, trial in trials.items():
+            quota = _quota_identity(trial)
+            if quota not in allowed_quotas:
+                raise ValueError(
+                    f"continuation trial is outside campaign quotas: {variation_id}"
+                )
+            if quota in segment_quotas:
+                raise ValueError(f"segment repeats a campaign quota: {quota}")
+            segment_quotas.add(quota)
+            if quota in successful_quotas:
+                raise ValueError(f"later segment repeats a successful quota: {quota}")
+            prior = int(trial.get("prior_attempt_count", 0))
+            consumed = prior + int(attempt_counts[variation_id])
+            if not 0 <= prior < maximum or not 0 <= consumed <= maximum:
+                raise ValueError(
+                    f"invalid cumulative attempt count for variation: {variation_id}"
+                )
+            latest[quota] = {
+                "trial": trial,
+                "segment_id": segment["segment_id"],
+                "attempts_consumed": consumed,
+            }
+            if variation_id in selected:
+                successful_quotas.add(quota)
+        previous_manifest = manifest
+
+    requests = []
+    missing_quotas = allowed_quotas - successful_quotas
+    for quota_identity in sorted(missing_quotas):
+        source = latest.get(quota_identity)
+        if source is None:
+            raise ValueError(f"campaign quota has no source trial: {quota_identity}")
+        trial = source["trial"]
+        consumed = int(source["attempts_consumed"])
+        quota = dict(zip(QUOTA_FIELDS, quota_identity))
+        if consumed < maximum:
+            request_kind = "carryover"
+            replacement_index = int(trial.get("replacement_index", 0))
+            seed = int(trial["seed"])
+            prior_attempt_count = consumed
+        else:
+            request_kind = "replacement"
+            replacement_index = int(trial.get("replacement_index", 0)) + 1
+            seed = variation_seed(
+                campaign["campaign_sha256"],
+                object_variant_id=str(quota["object_variant_id"]),
+                yaw_stratum_id=str(quota["yaw_stratum_id"]),
+                region_band=str(quota["region_band"]),
+                split=str(quota["split"]),
+                quota_ordinal=int(quota["quota_ordinal"]),
+                replacement_index=replacement_index,
+            )
+            prior_attempt_count = 0
+        requests.append(
+            {
+                "request_kind": request_kind,
+                "source_segment_id": source["segment_id"],
+                "source_variation_id": trial["variation_id"],
+                "quota": quota,
+                "replacement_index": replacement_index,
+                "variation_seed": seed,
+                "prior_attempt_count": prior_attempt_count,
+                "remaining_attempt_count": maximum - prior_attempt_count,
+            }
+        )
+    return requests
+
+
 def validate_replacement_plan(
     requests: Iterable[dict[str, Any]], continuation_plan: dict[str, Any]
 ) -> None:
     """Require a continuation plan to realize every request exactly once."""
+    request_rows = list(requests)
+    for request in request_rows:
+        prior = request.get("prior_attempt_count", 0)
+        remaining = request.get("remaining_attempt_count", 3 - int(prior))
+        if (
+            not isinstance(prior, int)
+            or isinstance(prior, bool)
+            or not 0 <= prior < 3
+            or remaining != 3 - prior
+        ):
+            raise ValueError("continuation request has an invalid attempt budget")
+        if request.get("request_kind", "replacement") not in {
+            "carryover",
+            "replacement",
+        }:
+            raise ValueError("continuation request has an invalid request kind")
     expected = {
         (
             tuple(request["quota"][field] for field in QUOTA_FIELDS),
             int(request["replacement_index"]),
             int(request["variation_seed"]),
+            int(request.get("prior_attempt_count", 0)),
+            request.get("request_kind", "replacement"),
         )
-        for request in requests
+        for request in request_rows
     }
     observed = {
         (
             _quota_identity(trial),
             int(trial.get("replacement_index", 0)),
             int(trial["seed"]),
+            int(trial.get("prior_attempt_count", 0)),
+            (trial.get("continuation_provenance") or {}).get(
+                "request_kind", "replacement"
+            ),
         )
         for trial in continuation_plan.get("trials") or []
     }
@@ -426,9 +567,7 @@ def evaluate_self_healing_campaign(
     replacements = []
     if latest_plan is not None and latest_manifest is not None:
         try:
-            replacements = build_replacement_requests(
-                campaign, latest_plan, latest_manifest
-            )
+            replacements = build_continuation_requests(campaign, evidence)
         except (KeyError, TypeError, ValueError) as error:
             errors.append(f"replacement_generation:{error}")
 

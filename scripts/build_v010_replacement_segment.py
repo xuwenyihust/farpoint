@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Freeze a v0.1.0 same-quota replacement plan and continuation segment."""
+"""Freeze a v0.1.0 aggregate carryover/replacement continuation segment."""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+from farpoint.campaign import canonical_sha256  # noqa: E402
 from farpoint.campaign_recovery import (  # noqa: E402
-    build_replacement_requests,
+    build_continuation_requests,
     create_continuation_segment,
     validate_replacement_plan,
 )
@@ -39,6 +40,32 @@ def _replace(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
+def _resolve(base: Path, value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("evidence paths must be relative and cannot contain '..'")
+    resolved_base = base.resolve()
+    resolved = (resolved_base / path).resolve()
+    if resolved != resolved_base and resolved_base not in resolved.parents:
+        raise ValueError("evidence path escapes its index root")
+    return resolved
+
+
+def _load_evidence(index_path: Path) -> list[dict]:
+    index = _read(index_path)
+    base = index_path.parent
+    evidence = []
+    for row in index.get("segments") or []:
+        evidence.append(
+            {
+                "segment": _read(_resolve(base, row["segment"])),
+                "plan": _read(_resolve(base, row["plan"])),
+                "manifest": _read(_resolve(base, row["manifest"])),
+            }
+        )
+    return evidence
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
@@ -58,7 +85,17 @@ def main() -> int:
     campaign = _read(args.campaign)
     parent_plan = _read(args.parent_plan)
     parent_manifest = _read(args.parent_manifest)
-    requests = build_replacement_requests(campaign, parent_plan, parent_manifest)
+    index_path = args.output_root / "evidence-index.json"
+    evidence_index = _read(index_path)
+    evidence = _load_evidence(index_path)
+    if not evidence:
+        raise ValueError("evidence index must contain the parent segment")
+    latest = evidence[-1]
+    if canonical_sha256(latest["manifest"]) != canonical_sha256(parent_manifest):
+        raise ValueError("parent manifest is not the latest indexed manifest")
+    if canonical_sha256(latest["plan"]) != canonical_sha256(parent_plan):
+        raise ValueError("parent plan is not the latest indexed plan")
+    requests = build_continuation_requests(campaign, evidence)
     plan = build_v010_replacement_plan(
         config,
         base,
@@ -84,8 +121,6 @@ def main() -> int:
     existing = [path for path in (requests_path, plan_path, segment_path) if path.exists()]
     if existing:
         raise FileExistsError(existing[0])
-    index_path = args.output_root / "evidence-index.json"
-    evidence_index = _read(index_path)
     if evidence_index.get("campaign_id") != campaign["campaign_id"]:
         raise ValueError("evidence index campaign identity mismatch")
     evidence_entry = {

@@ -36,6 +36,14 @@ unrequested scenes, a mutable parent, or a mismatched parent-manifest hash. An
 Oracle repair continuation additionally uses the new merged repair commit and
 its governance-approved profile allowlist.
 
+Continuation planning aggregates every indexed segment rather than inspecting
+only the latest manifest. A missing quota whose current variation seed has used
+fewer than three attempts is carried forward with the same resolved scene and
+only its remaining attempt budget. Only a seed that has consumed all three
+attempts is marked deferred and replaced by a new deterministic same-quota
+seed. This preserves stopped-segment successes and prevents a watchdog pause
+from either orphaning a quota or resetting its per-seed attempt limit.
+
 The frozen plan also contains 20 rollout-only scenes. They are disjoint from
 collection, replacements, Oracle diagnostics, and validation checkpoint
 selection; they never enter the demonstration export.

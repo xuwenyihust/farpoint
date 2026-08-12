@@ -516,7 +516,7 @@ def build_v010_replacement_plan(
     *,
     segment_id: str,
 ) -> dict[str, Any]:
-    """Materialize deterministic same-quota replacement requests as a new plan."""
+    """Materialize immutable carryover and replacement requests as a new plan."""
     validate_v010_formal_config(config, base_config)
     if not replacement_requests:
         raise ValueError("replacement plan requires at least one request")
@@ -532,22 +532,32 @@ def build_v010_replacement_plan(
     trials = []
     for request in replacement_requests:
         quota = request["quota"]
-        trials.append(
-            _trial_record(
-                config=config,
-                base=base,
-                campaign=campaign,
-                object_id=quota["object_variant_id"],
-                yaw_row=yaw_rows[quota["yaw_stratum_id"]],
-                region_band=quota["region_band"],
-                split=quota["split"],
-                quota_ordinal=int(quota["quota_ordinal"]),
-                replacement_index=int(request["replacement_index"]),
-                seed=int(request["variation_seed"]),
-                sample_ordinal=int(quota["quota_ordinal"]),
-                trial_prefix=segment_id,
-            )
+        trial = _trial_record(
+            config=config,
+            base=base,
+            campaign=campaign,
+            object_id=quota["object_variant_id"],
+            yaw_row=yaw_rows[quota["yaw_stratum_id"]],
+            region_band=quota["region_band"],
+            split=quota["split"],
+            quota_ordinal=int(quota["quota_ordinal"]),
+            replacement_index=int(request["replacement_index"]),
+            seed=int(request["variation_seed"]),
+            sample_ordinal=int(quota["quota_ordinal"]),
+            trial_prefix=segment_id,
         )
+        trial["prior_attempt_count"] = int(request.get("prior_attempt_count", 0))
+        trial["continuation_provenance"] = {
+            "request_kind": request.get("request_kind", "replacement"),
+            "source_segment_id": request.get("source_segment_id"),
+            "source_variation_id": request.get(
+                "source_variation_id", request.get("deferred_variation_id")
+            ),
+        }
+        trials.append(trial)
+    maximum_attempts = sum(
+        3 - int(trial.get("prior_attempt_count", 0)) for trial in trials
+    )
     plan = {
         "schema_version": PLAN_SCHEMA,
         "plan_id": f"{campaign['campaign_id']}_{segment_id}",
@@ -581,7 +591,7 @@ def build_v010_replacement_plan(
         "collection": {
             "kind": FORMAL_KIND,
             "required_successes": len(trials),
-            "maximum_attempts": len(trials) * 3,
+            "maximum_attempts": maximum_attempts,
             "attempt_policy": deepcopy(config["attempt_policy"]),
             "runtime_watchdog": deepcopy(config["runtime_watchdog"]),
             "self_healing_policy": deepcopy(config["self_healing_policy"]),

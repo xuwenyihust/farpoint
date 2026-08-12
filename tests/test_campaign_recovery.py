@@ -3,6 +3,7 @@ from copy import deepcopy
 from farpoint.campaign import canonical_sha256, create_campaign, create_segment
 from farpoint.campaign_recovery import (
     build_campaign_export_selection,
+    build_continuation_requests,
     build_replacement_requests,
     create_continuation_segment,
     diagnostic_clusters,
@@ -204,6 +205,131 @@ def test_replacement_requests_preserve_quota_and_change_only_replacement_seed():
         assert "does not exactly realize" in str(error)
     else:
         raise AssertionError("replacement plan accepted a changed quota")
+
+
+def test_continuation_requests_preserve_partial_seed_and_replace_only_exhausted():
+    campaign = _campaign()
+    plan = _plan(campaign)
+    manifest = create_manifest(
+        plan, collection_id="segment-000", git_commit="abcdef1"
+    )
+    for _ in range(5):
+        _fail_next(manifest, plan)
+    manifest["execution_status"] = "ABORTED"
+    manifest["quality_status"] = "NOT_EVALUATED"
+
+    requests = build_continuation_requests(
+        campaign,
+        [{"segment": _segment(campaign, plan), "plan": plan, "manifest": manifest}],
+    )
+
+    by_quota = {row["quota"]["quota_ordinal"]: row for row in requests}
+    exhausted = by_quota[0]
+    partial = by_quota[1]
+    assert exhausted["request_kind"] == "replacement"
+    assert exhausted["replacement_index"] == 1
+    assert exhausted["prior_attempt_count"] == 0
+    assert exhausted["remaining_attempt_count"] == 3
+    assert exhausted["variation_seed"] != plan["trials"][0]["seed"]
+    assert partial["request_kind"] == "carryover"
+    assert partial["replacement_index"] == 0
+    assert partial["prior_attempt_count"] == 2
+    assert partial["remaining_attempt_count"] == 1
+    assert partial["variation_seed"] == plan["trials"][1]["seed"]
+
+
+def test_continuation_trial_uses_only_remaining_cross_segment_attempt():
+    campaign = _campaign(count=1)
+    plan = _plan(campaign, count=1)
+    trial = plan["trials"][0]
+    trial["prior_attempt_count"] = 2
+    plan["collection"]["maximum_attempts"] = 1
+    plan["plan_sha256"] = canonical_sha256(plan, omit=("plan_sha256",))
+    manifest = create_manifest(
+        plan, collection_id="segment-001", git_commit="abcdef2"
+    )
+
+    attempt = _fail_next(manifest, plan)
+
+    assert attempt["attempt_index"] == 2
+    assert attempt["attempt_id"].endswith("__attempt02")
+    assert next_attempt(manifest, plan) is None
+    assert len(manifest["attempts"]) == 1
+
+
+def test_aggregate_continuation_keeps_missing_quota_from_older_segment():
+    campaign = _campaign()
+    parent_plan = _plan(campaign)
+    parent_manifest = create_manifest(
+        parent_plan, collection_id="segment-000", git_commit="abcdef1"
+    )
+    for _ in range(5):
+        _fail_next(parent_manifest, parent_plan)
+    parent_manifest["execution_status"] = "ABORTED"
+    parent_manifest["quality_status"] = "NOT_EVALUATED"
+    parent_segment = _segment(campaign, parent_plan)
+    initial_requests = build_continuation_requests(
+        campaign,
+        [
+            {
+                "segment": parent_segment,
+                "plan": parent_plan,
+                "manifest": parent_manifest,
+            }
+        ],
+    )
+    replacement_request = next(
+        row for row in initial_requests if row["request_kind"] == "replacement"
+    )
+    continuation_plan = _plan(campaign, count=1, replacement_index=1)
+    continuation_plan["trials"][0]["seed"] = replacement_request["variation_seed"]
+    continuation_plan["plan_sha256"] = canonical_sha256(
+        continuation_plan, omit=("plan_sha256",)
+    )
+    continuation_segment = create_continuation_segment(
+        campaign,
+        parent_segment,
+        parent_manifest,
+        segment_id="segment-001",
+        git_commit="abcdef2",
+        plan_sha256=continuation_plan["plan_sha256"],
+        oracle_profile_allowlist=["profile-v2"],
+    )
+    continuation_manifest = create_manifest(
+        continuation_plan, collection_id="segment-001", git_commit="abcdef2"
+    )
+    attempt = next_attempt(continuation_manifest, continuation_plan)
+    record_attempt(
+        continuation_manifest,
+        continuation_plan,
+        attempt,
+        episode_id="episode-replacement-success",
+        success=True,
+        dataset_valid=True,
+    )
+
+    remaining = build_continuation_requests(
+        campaign,
+        [
+            {
+                "segment": parent_segment,
+                "plan": parent_plan,
+                "manifest": parent_manifest,
+            },
+            {
+                "segment": continuation_segment,
+                "plan": continuation_plan,
+                "manifest": continuation_manifest,
+            },
+        ],
+    )
+
+    assert len(remaining) == 1
+    assert remaining[0]["quota"]["quota_ordinal"] == 1
+    assert remaining[0]["request_kind"] == "carryover"
+    assert remaining[0]["source_segment_id"] == "segment-000"
+    assert remaining[0]["prior_attempt_count"] == 2
+    assert remaining[0]["variation_seed"] == parent_plan["trials"][1]["seed"]
 
 
 def test_distinct_structural_variations_pause_and_select_three_diagnostics():
