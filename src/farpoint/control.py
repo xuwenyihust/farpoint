@@ -25,6 +25,7 @@ def so101_bilateral_capture_ready(
     right_force_n,
     capture_admissible,
     *,
+    object_width_m=None,
     minimum_force_n=0.5,
 ):
     """Return whether bilateral force may enter capture confirmation.
@@ -39,6 +40,10 @@ def so101_bilateral_capture_ready(
     proof lift; this hook does not change success validation.
     """
     forces = (float(left_force_n), float(right_force_n))
+    if object_width_m is not None:
+        width = float(object_width_m)
+        if not math.isfinite(width) or width <= 0.0:
+            raise ValueError("object_width_m must be finite and positive")
     threshold = float(minimum_force_n)
     if any(not math.isfinite(force) or force < 0.0 for force in forces):
         raise ValueError("contact forces must be finite and non-negative")

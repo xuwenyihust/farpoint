@@ -67,6 +67,12 @@ def test_so101_capture_admission_rejects_invalid_geometry(jaw, width):
 
 def test_so101_bilateral_capture_ready_uses_bounded_force_hysteresis():
     assert so101_bilateral_capture_ready(0.5, 0.5, True)
+    assert so101_bilateral_capture_ready(
+        0.5,
+        0.5,
+        True,
+        object_width_m=0.04,
+    )
     assert not so101_bilateral_capture_ready(0.5, 0.499, True)
     assert not so101_bilateral_capture_ready(3.0, 3.0, False)
     assert not so101_bilateral_capture_ready(
@@ -94,6 +100,17 @@ def test_so101_bilateral_capture_ready_rejects_invalid_inputs(
             right,
             True,
             minimum_force_n=threshold,
+        )
+
+
+@pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
+def test_so101_bilateral_capture_ready_rejects_invalid_object_width(width):
+    with pytest.raises(ValueError):
+        so101_bilateral_capture_ready(
+            2.0,
+            2.0,
+            True,
+            object_width_m=width,
         )
 
 
