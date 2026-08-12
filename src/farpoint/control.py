@@ -1,6 +1,23 @@
 import math
 
 
+def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
+    """Return whether the measured aperture may arm bilateral capture.
+
+    This is the single robot-calibration hook between physical fingertip
+    contact and the grasp state machine.  The initial hook is intentionally
+    transparent; versioned Oracle repairs can tighten admission here without
+    changing the collector or the state-machine contract again.
+    """
+    jaw = float(measured_jaw_position_rad)
+    width = float(object_width_m)
+    if not math.isfinite(jaw):
+        raise ValueError("measured_jaw_position_rad must be finite")
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    return True
+
+
 def so101_approach_jaw_target(object_width_m):
     """Return the validated open-jaw target for the supported cube sizes."""
     width = float(object_width_m)
@@ -863,6 +880,7 @@ def advance_so101_slow_close_target(
     max_force=20.0,
     close_step=0.001,
     backoff_step=0.002,
+    capture_admissible=True,
 ):
     """Advance the persistent SO-101 jaw command during slow close.
 
@@ -875,6 +893,21 @@ def advance_so101_slow_close_target(
     open_value = float(open_position)
     closed_value = float(closed_position)
     previous_target = _clamp(previous_command_target, closed_value, open_value)
+    if not bool(capture_admissible):
+        peak_force = max(float(left_force), float(right_force))
+        if peak_force > float(max_force):
+            return {
+                "position": _clamp(
+                    previous_target + float(backoff_step), closed_value, open_value
+                ),
+                "action": "backoff",
+            }
+        return {
+            "position": _clamp(
+                previous_target - float(close_step), closed_value, open_value
+            ),
+            "action": "close",
+        }
     update = force_controlled_rotary_jaw_target(
         previous_target,
         measured_position,
