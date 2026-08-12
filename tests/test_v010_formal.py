@@ -294,3 +294,68 @@ def test_formal_replacement_plan_changes_seed_without_changing_quota(tmp_path):
             "quota_ordinal",
         )
     }
+
+
+def test_formal_continuation_plan_preserves_partial_scene_and_attempt_budget(
+    tmp_path,
+):
+    config, base, authorization, _, _ = _authorized(tmp_path)
+    parent = build_v010_formal_plan(
+        config,
+        base,
+        authorization,
+        campaign_id="so101-v010-formal-test",
+    )
+    exhausted, partial = parent["trials"][:2]
+    quota_fields = (
+        "object_variant_id",
+        "yaw_stratum_id",
+        "region_band",
+        "split",
+        "quota_ordinal",
+    )
+    requests = [
+        {
+            "request_kind": "replacement",
+            "source_segment_id": "segment-000",
+            "source_variation_id": exhausted["variation_id"],
+            "quota": {key: exhausted[key] for key in quota_fields},
+            "replacement_index": 1,
+            "variation_seed": exhausted["seed"] + 1,
+            "prior_attempt_count": 0,
+            "remaining_attempt_count": 3,
+        },
+        {
+            "request_kind": "carryover",
+            "source_segment_id": "segment-000",
+            "source_variation_id": partial["variation_id"],
+            "quota": {key: partial[key] for key in quota_fields},
+            "replacement_index": 0,
+            "variation_seed": partial["seed"],
+            "prior_attempt_count": 2,
+            "remaining_attempt_count": 1,
+        },
+    ]
+
+    continuation = build_v010_replacement_plan(
+        config,
+        base,
+        authorization,
+        parent["campaign_contract"],
+        requests,
+        segment_id="segment-001",
+    )
+
+    validate_replacement_plan(requests, continuation)
+    assert continuation["collection"]["required_successes"] == 2
+    assert continuation["collection"]["maximum_attempts"] == 4
+    replacement, carryover = continuation["trials"]
+    assert replacement["prior_attempt_count"] == 0
+    assert carryover["prior_attempt_count"] == 2
+    assert carryover["seed"] == partial["seed"]
+    assert carryover["requested"] == partial["requested"]
+    assert carryover["continuation_provenance"] == {
+        "request_kind": "carryover",
+        "source_segment_id": "segment-000",
+        "source_variation_id": partial["variation_id"],
+    }
