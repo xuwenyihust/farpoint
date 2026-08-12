@@ -434,7 +434,7 @@ def test_capture_threshold_is_distinct_from_contact_persistence_threshold():
     machine.step(_evidence(right_force_n=0.0))
 
     for _ in range(5):
-        decision = machine.step(_evidence(left_force_n=1.5, right_force_n=1.5))
+        decision = machine.step(_evidence(left_force_n=1.49, right_force_n=1.49))
 
     assert decision.phase is GraspPhase.SLOW_CLOSE
     assert machine.capture_steps == 0
@@ -453,7 +453,7 @@ def test_capture_threshold_accepts_bounded_solver_hysteresis():
 
     for _ in range(3):
         decision = machine.step(
-            _evidence(left_force_n=1.7, right_force_n=1.7)
+            _evidence(left_force_n=1.5, right_force_n=1.5)
         )
 
     assert decision.phase is GraspPhase.BILATERAL_SETTLE
