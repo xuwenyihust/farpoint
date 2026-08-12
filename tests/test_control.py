@@ -27,6 +27,7 @@ from farpoint.control import (
     simulation_stop_reason,
     so101_approach_jaw_target,
     so101_capture_admission_ready,
+    so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
@@ -58,6 +59,32 @@ def test_so101_capture_admission_hook_is_initially_transparent():
 def test_so101_capture_admission_rejects_invalid_geometry(jaw, width):
     with pytest.raises(ValueError):
         so101_capture_admission_ready(jaw, width)
+
+
+def test_so101_bilateral_capture_ready_preserves_two_newton_threshold():
+    assert so101_bilateral_capture_ready(2.0, 2.0, True)
+    assert not so101_bilateral_capture_ready(2.0, 1.999, True)
+    assert not so101_bilateral_capture_ready(3.0, 3.0, False)
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "threshold"),
+    (
+        (float("nan"), 2.0, 2.0),
+        (2.0, -0.1, 2.0),
+        (2.0, 2.0, 0.0),
+    ),
+)
+def test_so101_bilateral_capture_ready_rejects_invalid_inputs(
+    left, right, threshold
+):
+    with pytest.raises(ValueError):
+        so101_bilateral_capture_ready(
+            left,
+            right,
+            True,
+            minimum_force_n=threshold,
+        )
 
 
 def test_so101_slow_close_threads_transparent_capture_admission():

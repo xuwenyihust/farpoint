@@ -178,6 +178,7 @@ from farpoint.control import (  # noqa: E402
     settle_release_separation_target,
     so101_approach_jaw_target,
     so101_capture_admission_ready,
+    so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
@@ -2147,7 +2148,10 @@ def run_attempt(
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 jaw = grasp_jaw_hold
                 gripper_control = "measured_rebase_capture_hold"
-            elif capture_admissible and min(finger_forces) >= 2.0:
+            elif so101_bilateral_capture_ready(
+                *finger_forces,
+                capture_admissible,
+            ):
                 # Both cube sidewalls constrain the arm even before the
                 # three-sample confirmation is complete. Rebase the joint
                 # command on every such sample to discard the pre-contact IK
