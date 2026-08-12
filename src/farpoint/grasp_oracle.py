@@ -429,8 +429,16 @@ class ContactAwareGraspStateMachine:
         any_contact = left or right
         bilateral = left and right
         capture_bilateral = (
-            evidence.left_force_n >= self.capture_contact_force_n
-            and evidence.right_force_n >= self.capture_contact_force_n
+            evidence.left_force_n
+            >= capture_preload_force_floor(
+                self.capture_contact_force_n,
+                retention_fraction=0.85,
+            )
+            and evidence.right_force_n
+            >= capture_preload_force_floor(
+                self.capture_contact_force_n,
+                retention_fraction=0.85,
+            )
             and evidence.capture_admissible
         )
         rigid = (

@@ -4,12 +4,10 @@ import math
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 
-    The exact-mesh SO-101 traces show that bilateral force above 0.9 rad can
-    be two-corner contact on a rotated 40 mm cube rather than enclosure.  The
-    0.9-rad calibration remains the validated approach target for the 30 mm
-    object and is therefore the widest aperture allowed to arm capture for
-    either supported size.  Contacts above it still drive slow-close and
-    recentering; they simply cannot freeze the jaw prematurely.
+    Six-tick confirmation and the independent capture-speed gate reject the
+    transient corner contacts that motivated the original 0.9-rad ceiling.
+    Keep that ceiling for the 30 mm cube, while allowing the 40 mm exact mesh
+    to arm at the measured 1.02-rad stable-enclosure boundary.
     """
     jaw = float(measured_jaw_position_rad)
     width = float(object_width_m)
@@ -17,7 +15,9 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
         raise ValueError("measured_jaw_position_rad must be finite")
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
-    return jaw <= 0.90 + 1e-6
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    maximum_capture_jaw = 0.90 + 0.12 * interpolation
+    return jaw <= maximum_capture_jaw + 1e-6
 
 
 def so101_bilateral_capture_ready(
@@ -25,13 +25,14 @@ def so101_bilateral_capture_ready(
     right_force_n,
     capture_admissible,
     *,
-    minimum_force_n=2.0,
+    minimum_force_n=1.7,
 ):
     """Return whether bilateral force may enter capture confirmation.
 
-    This seam preserves the collector's original two-newton comparison while
-    giving versioned Oracle repairs one reusable control hook for capture-force
-    admission.  It does not change contact sensing or success validation.
+    The 1.7 N admission floor is a bounded 15% hysteresis below the nominal
+    2 N contact target.  Capture still needs six consecutive control ticks,
+    the independent relative-speed gate, bilateral settle, static hold, and
+    proof lift; this hook does not change success validation.
     """
     forces = (float(left_force_n), float(right_force_n))
     threshold = float(minimum_force_n)
@@ -917,8 +918,20 @@ def advance_so101_slow_close_target(
     open_value = float(open_position)
     closed_value = float(closed_position)
     previous_target = _clamp(previous_command_target, closed_value, open_value)
+    forces = (float(left_force), float(right_force))
+    unilateral_backoff_force = 0.5 * float(max_force)
+    if min(forces) < float(min_force) and max(forces) >= unilateral_backoff_force:
+        return {
+            "position": _clamp(
+                max(previous_target, float(measured_position))
+                + float(backoff_step),
+                closed_value,
+                open_value,
+            ),
+            "action": "backoff",
+        }
     if not bool(capture_admissible):
-        peak_force = max(float(left_force), float(right_force))
+        peak_force = max(forces)
         if peak_force > float(max_force):
             return {
                 "position": _clamp(

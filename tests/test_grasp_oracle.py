@@ -440,6 +440,25 @@ def test_capture_threshold_is_distinct_from_contact_persistence_threshold():
     assert machine.capture_steps == 0
 
 
+def test_capture_threshold_accepts_bounded_solver_hysteresis():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(3):
+        decision = machine.step(
+            _evidence(left_force_n=1.7, right_force_n=1.7)
+        )
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
 def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,
