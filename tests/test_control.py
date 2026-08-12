@@ -47,8 +47,12 @@ from farpoint.control import (
 )
 
 
-def test_so101_capture_admission_hook_is_initially_transparent():
-    assert so101_capture_admission_ready(1.40, 0.04)
+def test_so101_capture_admission_requires_calibrated_enclosure():
+    assert not so101_capture_admission_ready(1.40, 0.04)
+    assert so101_capture_admission_ready(1.02, 0.04)
+    assert not so101_capture_admission_ready(1.021, 0.04)
+    assert not so101_capture_admission_ready(0.91, 0.03)
+    assert so101_capture_admission_ready(0.90, 0.04)
     assert so101_capture_admission_ready(0.55, 0.03)
 
 
@@ -61,16 +65,34 @@ def test_so101_capture_admission_rejects_invalid_geometry(jaw, width):
         so101_capture_admission_ready(jaw, width)
 
 
-def test_so101_bilateral_capture_ready_preserves_two_newton_threshold():
-    assert so101_bilateral_capture_ready(2.0, 2.0, True)
+def test_so101_bilateral_capture_ready_uses_bounded_force_hysteresis():
+    assert so101_bilateral_capture_ready(0.5, 0.5, True)
     assert so101_bilateral_capture_ready(
-        2.0,
-        2.0,
+        0.5,
+        0.5,
+        True,
+        object_width_m=0.03,
+    )
+    assert not so101_bilateral_capture_ready(0.5, 0.499, True)
+    assert so101_bilateral_capture_ready(
+        1.5,
+        1.5,
         True,
         object_width_m=0.04,
     )
-    assert not so101_bilateral_capture_ready(2.0, 1.999, True)
+    assert not so101_bilateral_capture_ready(
+        1.5,
+        1.499,
+        True,
+        object_width_m=0.04,
+    )
     assert not so101_bilateral_capture_ready(3.0, 3.0, False)
+    assert not so101_bilateral_capture_ready(
+        2.0,
+        1.999,
+        True,
+        minimum_force_n=2.0,
+    )
 
 
 @pytest.mark.parametrize(
@@ -146,11 +168,11 @@ def test_collision_safe_pregrasp_waypoints_reject_unsafe_clearance():
         )
 
 
-def test_so101_approach_jaw_uses_balanced50_geometry_for_large_cube():
+def test_so101_approach_jaw_uses_wide_calibrated_geometry_for_large_cube():
     assert so101_approach_jaw_target(0.03) == pytest.approx(0.90)
-    assert so101_approach_jaw_target(0.035) == pytest.approx(1.05)
-    assert so101_approach_jaw_target(0.04) == pytest.approx(1.20)
-    assert so101_approach_jaw_target(0.10) == pytest.approx(1.20)
+    assert so101_approach_jaw_target(0.035) == pytest.approx(1.15)
+    assert so101_approach_jaw_target(0.04) == pytest.approx(1.40)
+    assert so101_approach_jaw_target(0.10) == pytest.approx(1.40)
     with pytest.raises(ValueError, match="finite and positive"):
         so101_approach_jaw_target(0.0)
 
@@ -883,6 +905,21 @@ def test_so101_slow_close_force_actions_preserve_limits():
     assert bilateral == {"position": pytest.approx(0.499), "action": "hold"}
     assert high_force == {"position": pytest.approx(-0.168), "action": "backoff"}
     assert -0.1746 <= high_force["position"] <= 1.7453
+
+
+def test_so101_slow_close_backs_off_before_unilateral_force_limit():
+    update = advance_so101_slow_close_target(
+        0.40,
+        0.405,
+        10.0,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        min_force=2.0,
+        max_force=20.0,
+    )
+
+    assert update == {"position": pytest.approx(0.407), "action": "backoff"}
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():

@@ -187,21 +187,43 @@ def rotary_jaw_capture_hold_target(
     *,
     closed_position: float,
     open_position: float,
-    preload_rad: float = 0.002,
+    preload_rad: float = 0.008,
     relative_speed_mps: float | None = None,
+    moving_capture_preload_rad: float = 0.004,
+    moving_capture_threshold_mps: float = 0.001,
 ) -> float:
-    """Hold a captured rotary jaw with a tiny bounded closing preload."""
+    """Hold a captured rotary jaw with a motion-aware closing preload.
+
+    Quasi-static exact-mesh captures need the validated 8 mrad preload to keep
+    bilateral contact.  A capture whose object is still moving uses the lower
+    4 mrad preload so the transition command does not eject the cube.  This
+    changes only the hold target after capture admission; force limits and
+    grasp-success evidence remain unchanged.
+    """
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
     if preload_rad < 0.0:
         raise ValueError("preload_rad must be non-negative")
+    if moving_capture_preload_rad < 0.0:
+        raise ValueError("moving_capture_preload_rad must be non-negative")
+    if (
+        not np.isfinite(moving_capture_threshold_mps)
+        or moving_capture_threshold_mps < 0.0
+    ):
+        raise ValueError("moving_capture_threshold_mps must be non-negative")
     if relative_speed_mps is not None and (
         not np.isfinite(relative_speed_mps) or relative_speed_mps < 0.0
     ):
         raise ValueError("relative_speed_mps must be finite and non-negative")
+    effective_preload = float(preload_rad)
+    if (
+        relative_speed_mps is not None
+        and relative_speed_mps > moving_capture_threshold_mps
+    ):
+        effective_preload = min(effective_preload, float(moving_capture_preload_rad))
     return float(
         np.clip(
-            float(measured_position) - float(preload_rad),
+            float(measured_position) - effective_preload,
             float(closed_position),
             float(open_position),
         )
@@ -228,6 +250,17 @@ def capture_preload_force_floor(
     if not np.isfinite(fraction) or not 0.0 < fraction <= 1.0:
         raise ValueError("retention_fraction must be finite and in (0, 1]")
     return capture_force * fraction
+
+
+def capture_admission_retention_fraction(object_width_m: float | None) -> float:
+    """Return the evidence-bounded capture floor fraction for object width."""
+    if object_width_m is None:
+        return 0.25
+    width = float(object_width_m)
+    if not np.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = float(np.clip((width - 0.03) / 0.01, 0.0, 1.0))
+    return 0.25 + 0.50 * interpolation
 
 
 def unilateral_contact_requires_recenter(
@@ -328,7 +361,8 @@ class ContactAwareGraspStateMachine:
     object_width_m: float | None = None
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
-    capture_confirmation_s: float = 0.025
+    capture_confirmation_s: float = 0.05
+    maximum_capture_relative_speed_mps: float = 0.002
     maximum_force_n: float = 60.0
     maximum_relative_translation_error_m: float = 0.003
     maximum_relative_speed_mps: float = 0.015
@@ -369,6 +403,11 @@ class ContactAwareGraspStateMachine:
             )
         if self.capture_confirmation_s < 0:
             raise ValueError("capture confirmation duration must be non-negative")
+        if (
+            not np.isfinite(self.maximum_capture_relative_speed_mps)
+            or self.maximum_capture_relative_speed_mps < 0
+        ):
+            raise ValueError("capture relative speed limit must be non-negative")
 
     def _steps(self, seconds: float) -> int:
         return max(1, int(round(seconds * self.control_hz)))
@@ -406,8 +445,20 @@ class ContactAwareGraspStateMachine:
         any_contact = left or right
         bilateral = left and right
         capture_bilateral = (
-            evidence.left_force_n >= self.capture_contact_force_n
-            and evidence.right_force_n >= self.capture_contact_force_n
+            evidence.left_force_n
+            >= capture_preload_force_floor(
+                self.capture_contact_force_n,
+                retention_fraction=capture_admission_retention_fraction(
+                    self.object_width_m
+                ),
+            )
+            and evidence.right_force_n
+            >= capture_preload_force_floor(
+                self.capture_contact_force_n,
+                retention_fraction=capture_admission_retention_fraction(
+                    self.object_width_m
+                ),
+            )
             and evidence.capture_admissible
         )
         rigid = (
@@ -424,7 +475,11 @@ class ContactAwareGraspStateMachine:
             self._enter(GraspPhase.SLOW_CLOSE)
         elif self.phase is GraspPhase.SLOW_CLOSE:
             self.capture_steps = self.capture_steps + 1 if capture_bilateral else 0
-            if self.capture_steps >= self.capture_confirmation_steps:
+            if (
+                self.capture_steps >= self.capture_confirmation_steps
+                and evidence.relative_speed_mps
+                <= self.maximum_capture_relative_speed_mps
+            ):
                 self._enter(GraspPhase.BILATERAL_SETTLE)
         elif self.phase is GraspPhase.BILATERAL_SETTLE:
             self.stable_steps = self.stable_steps + 1 if bilateral and rigid else 0

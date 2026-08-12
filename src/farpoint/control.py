@@ -2,12 +2,12 @@ import math
 
 
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
-    """Return whether the measured aperture may arm bilateral capture.
+    """Admit capture only after the rotary jaw reaches enclosure range.
 
-    This is the single robot-calibration hook between physical fingertip
-    contact and the grasp state machine.  The initial hook is intentionally
-    transparent; versioned Oracle repairs can tighten admission here without
-    changing the collector or the state-machine contract again.
+    Six-tick confirmation and the independent capture-speed gate reject the
+    transient corner contacts that motivated the original 0.9-rad ceiling.
+    Keep that ceiling for the 30 mm cube, while allowing the 40 mm exact mesh
+    to arm at the measured 1.02-rad stable-enclosure boundary.
     """
     jaw = float(measured_jaw_position_rad)
     width = float(object_width_m)
@@ -15,7 +15,9 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
         raise ValueError("measured_jaw_position_rad must be finite")
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
-    return True
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    maximum_capture_jaw = 0.90 + 0.12 * interpolation
+    return jaw <= maximum_capture_jaw + 1e-6
 
 
 def so101_bilateral_capture_ready(
@@ -24,20 +26,28 @@ def so101_bilateral_capture_ready(
     capture_admissible,
     *,
     object_width_m=None,
-    minimum_force_n=2.0,
+    minimum_force_n=0.5,
 ):
     """Return whether bilateral force may enter capture confirmation.
 
-    This seam preserves the collector's original two-newton comparison while
-    giving versioned Oracle repairs one reusable control hook for capture-force
-    admission.  It does not change contact sensing or success validation.
+    The 30 mm floor distinguishes sustained, cube-filtered contact from sensor
+    noise without forcing the controller to cross its nominal 2 N target.
+    The 40 mm endpoint retains 1.5 N: immutable diagnostic evidence showed that
+    applying the small-object floor globally admits a wide-aperture capture too
+    early and loses contact during static hold.
+    Capture still needs six consecutive control ticks,
+    the independent relative-speed gate, bilateral settle, static hold, and
+    proof lift; this hook does not change success validation.
     """
     forces = (float(left_force_n), float(right_force_n))
     if object_width_m is not None:
         width = float(object_width_m)
         if not math.isfinite(width) or width <= 0.0:
             raise ValueError("object_width_m must be finite and positive")
-    threshold = float(minimum_force_n)
+        interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+        threshold = 0.5 + interpolation
+    else:
+        threshold = float(minimum_force_n)
     if any(not math.isfinite(force) or force < 0.0 for force in forces):
         raise ValueError("contact forces must be finite and non-negative")
     if not math.isfinite(threshold) or threshold <= 0.0:
@@ -51,12 +61,12 @@ def so101_approach_jaw_target(object_width_m):
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-    # The balanced50 source demonstrations used the 1.2-rad exact-mesh
-    # calibration for 40 mm cubes.  A later 1.7-rad recovery profile changed
-    # the aperture center and produced position-dependent unilateral wedging
-    # in the mirrored 0.03 kg gate.  Preserve the validated 0.9-rad 30 mm path
-    # while returning 40 mm cubes to the source collection geometry.
-    return 0.90 + 0.30 * interpolation
+    # Preserve the validated 0.9-rad 30 mm path.  The v0.1.0 formal campaign
+    # showed deterministic 40 mm single-side wedges, overloads and contact
+    # loss across yaw strata when the large cube reused the 1.2-rad opening.
+    # Use the next exact-mesh aperture calibration anchor (1.4 rad), while
+    # staying well below the rejected 1.7-rad recovery opening.
+    return 0.90 + 0.50 * interpolation
 
 
 def so101_minimum_safe_descent_fraction(object_width_m):
@@ -920,8 +930,20 @@ def advance_so101_slow_close_target(
     open_value = float(open_position)
     closed_value = float(closed_position)
     previous_target = _clamp(previous_command_target, closed_value, open_value)
+    forces = (float(left_force), float(right_force))
+    unilateral_backoff_force = 0.5 * float(max_force)
+    if min(forces) < float(min_force) and max(forces) >= unilateral_backoff_force:
+        return {
+            "position": _clamp(
+                max(previous_target, float(measured_position))
+                + float(backoff_step),
+                closed_value,
+                open_value,
+            ),
+            "action": "backoff",
+        }
     if not bool(capture_admissible):
-        peak_force = max(float(left_force), float(right_force))
+        peak_force = max(forces)
         if peak_force > float(max_force):
             return {
                 "position": _clamp(
