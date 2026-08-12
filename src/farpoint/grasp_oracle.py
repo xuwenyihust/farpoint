@@ -187,10 +187,17 @@ def rotary_jaw_capture_hold_target(
     *,
     closed_position: float,
     open_position: float,
-    preload_rad: float = 0.002,
+    preload_rad: float = 0.008,
     relative_speed_mps: float | None = None,
 ) -> float:
-    """Hold a captured rotary jaw with a tiny bounded closing preload."""
+    """Hold a captured rotary jaw with a bounded closing preload.
+
+    Exact-mesh 40 mm traces showed that the former 2 mrad target could lose
+    both contacts within two control ticks, before the force controller had
+    time to react.  Eight milliradians remains below the collector's 12 mrad
+    settling ceiling while giving the joint servo enough initial error to
+    retain a newly confirmed capture.
+    """
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
     if preload_rad < 0.0:
