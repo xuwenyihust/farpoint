@@ -456,7 +456,7 @@ def test_capture_confirmation_steps_exposes_shared_window():
 def test_default_capture_confirmation_rejects_short_dynamic_impulse():
     machine = ContactAwareGraspStateMachine(control_hz=120)
 
-    assert machine.capture_confirmation_steps == 18
+    assert machine.capture_confirmation_steps == 9
 
 
 def test_capture_admission_blocks_force_only_corner_contact():
