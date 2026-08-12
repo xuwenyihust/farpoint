@@ -1791,7 +1791,6 @@ def run_attempt(
         # around 0.1--1.9 N before being rejected by the former 2 N floor.
         minimum_contact_force_n=0.10,
         capture_contact_force_n=2.0,
-        capture_confirmation_s=0.025,
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
         static_hold_s=0.20,
