@@ -18,6 +18,28 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     return True
 
 
+def so101_bilateral_capture_ready(
+    left_force_n,
+    right_force_n,
+    capture_admissible,
+    *,
+    minimum_force_n=2.0,
+):
+    """Return whether bilateral force may enter capture confirmation.
+
+    This seam preserves the collector's original two-newton comparison while
+    giving versioned Oracle repairs one reusable control hook for capture-force
+    admission.  It does not change contact sensing or success validation.
+    """
+    forces = (float(left_force_n), float(right_force_n))
+    threshold = float(minimum_force_n)
+    if any(not math.isfinite(force) or force < 0.0 for force in forces):
+        raise ValueError("contact forces must be finite and non-negative")
+    if not math.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+    return bool(capture_admissible) and min(forces) >= threshold
+
+
 def so101_approach_jaw_target(object_width_m):
     """Return the validated open-jaw target for the supported cube sizes."""
     width = float(object_width_m)
