@@ -322,7 +322,7 @@ class ContactAwareGraspStateMachine:
     control_hz: int = 120
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
-    capture_confirmation_s: float = 0.0
+    capture_confirmation_s: float = 0.025
     maximum_force_n: float = 60.0
     maximum_relative_translation_error_m: float = 0.003
     maximum_relative_speed_mps: float = 0.015
