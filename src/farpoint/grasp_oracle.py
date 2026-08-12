@@ -188,12 +188,17 @@ def rotary_jaw_capture_hold_target(
     closed_position: float,
     open_position: float,
     preload_rad: float = 0.002,
+    relative_speed_mps: float | None = None,
 ) -> float:
     """Hold a captured rotary jaw with a tiny bounded closing preload."""
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
     if preload_rad < 0.0:
         raise ValueError("preload_rad must be non-negative")
+    if relative_speed_mps is not None and (
+        not np.isfinite(relative_speed_mps) or relative_speed_mps < 0.0
+    ):
+        raise ValueError("relative_speed_mps must be finite and non-negative")
     return float(
         np.clip(
             float(measured_position) - float(preload_rad),
