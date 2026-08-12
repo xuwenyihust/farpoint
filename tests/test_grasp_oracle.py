@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from farpoint.grasp_oracle import (
+    capture_admission_retention_fraction,
     ContactAwareGraspStateMachine,
     ControlRecordingSchedule,
     GraspEvidence,
@@ -115,6 +116,19 @@ def test_capture_preload_force_floor_tracks_admission_threshold():
     assert capture_preload_force_floor(4.0, retention_fraction=0.5) == pytest.approx(
         2.0
     )
+
+
+def test_capture_admission_retention_fraction_is_size_aware():
+    assert capture_admission_retention_fraction(None) == pytest.approx(0.25)
+    assert capture_admission_retention_fraction(0.03) == pytest.approx(0.25)
+    assert capture_admission_retention_fraction(0.035) == pytest.approx(0.50)
+    assert capture_admission_retention_fraction(0.04) == pytest.approx(0.75)
+
+
+@pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
+def test_capture_admission_retention_fraction_rejects_invalid_width(width):
+    with pytest.raises(ValueError):
+        capture_admission_retention_fraction(width)
 
 
 @pytest.mark.parametrize(

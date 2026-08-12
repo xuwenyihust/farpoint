@@ -30,11 +30,11 @@ def so101_bilateral_capture_ready(
 ):
     """Return whether bilateral force may enter capture confirmation.
 
-    The 0.5 N floor distinguishes sustained, cube-filtered contact from sensor
+    The 30 mm floor distinguishes sustained, cube-filtered contact from sensor
     noise without forcing the controller to cross its nominal 2 N target.
-    Immutable 30 mm outer-region evidence showed that a higher floor creates a
-    threshold-following limit cycle: gentle confirmation reduces the weaker
-    finger force just below the floor and resets the window indefinitely.
+    The 40 mm endpoint retains 1.5 N: immutable diagnostic evidence showed that
+    applying the small-object floor globally admits a wide-aperture capture too
+    early and loses contact during static hold.
     Capture still needs six consecutive control ticks,
     the independent relative-speed gate, bilateral settle, static hold, and
     proof lift; this hook does not change success validation.
@@ -44,7 +44,10 @@ def so101_bilateral_capture_ready(
         width = float(object_width_m)
         if not math.isfinite(width) or width <= 0.0:
             raise ValueError("object_width_m must be finite and positive")
-    threshold = float(minimum_force_n)
+        interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+        threshold = 0.5 + interpolation
+    else:
+        threshold = float(minimum_force_n)
     if any(not math.isfinite(force) or force < 0.0 for force in forces):
         raise ValueError("contact forces must be finite and non-negative")
     if not math.isfinite(threshold) or threshold <= 0.0:

@@ -71,9 +71,21 @@ def test_so101_bilateral_capture_ready_uses_bounded_force_hysteresis():
         0.5,
         0.5,
         True,
-        object_width_m=0.04,
+        object_width_m=0.03,
     )
     assert not so101_bilateral_capture_ready(0.5, 0.499, True)
+    assert so101_bilateral_capture_ready(
+        1.5,
+        1.5,
+        True,
+        object_width_m=0.04,
+    )
+    assert not so101_bilateral_capture_ready(
+        1.5,
+        1.499,
+        True,
+        object_width_m=0.04,
+    )
     assert not so101_bilateral_capture_ready(3.0, 3.0, False)
     assert not so101_bilateral_capture_ready(
         2.0,

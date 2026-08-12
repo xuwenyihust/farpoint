@@ -252,6 +252,17 @@ def capture_preload_force_floor(
     return capture_force * fraction
 
 
+def capture_admission_retention_fraction(object_width_m: float | None) -> float:
+    """Return the evidence-bounded capture floor fraction for object width."""
+    if object_width_m is None:
+        return 0.25
+    width = float(object_width_m)
+    if not np.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = float(np.clip((width - 0.03) / 0.01, 0.0, 1.0))
+    return 0.25 + 0.50 * interpolation
+
+
 def unilateral_contact_requires_recenter(
     left_force_n: float,
     right_force_n: float,
@@ -437,12 +448,16 @@ class ContactAwareGraspStateMachine:
             evidence.left_force_n
             >= capture_preload_force_floor(
                 self.capture_contact_force_n,
-                retention_fraction=0.25,
+                retention_fraction=capture_admission_retention_fraction(
+                    self.object_width_m
+                ),
             )
             and evidence.right_force_n
             >= capture_preload_force_floor(
                 self.capture_contact_force_n,
-                retention_fraction=0.25,
+                retention_fraction=capture_admission_retention_fraction(
+                    self.object_width_m
+                ),
             )
             and evidence.capture_admissible
         )
