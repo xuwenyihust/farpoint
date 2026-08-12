@@ -2752,14 +2752,13 @@ def run_attempt(
             # even one 120 Hz step can turn bilateral contact into a one-sided
             # squeeze on the rotary jaw.
             # A zero-error position target lets the contact force relax to
-            # zero immediately. Use the same 0.002 rad bounded preload that
-            # sustained capture in the physical run-171 baseline, while still
-            # remaining far below a normal 120 Hz close increment.
+            # zero immediately. The reusable Oracle helper owns the calibrated
+            # bounded preload so repairs can tune it without changing the
+            # simulator collector.
             grasp_jaw_hold = rotary_jaw_capture_hold_target(
                 float(current[5].item()),
                 closed_position=closed_jaw,
                 open_position=open_jaw,
-                preload_rad=0.002,
             )
             grasp_jaw_reference = grasp_jaw_hold
             grasp_hold_pose = gripper_pose[:3].copy()
