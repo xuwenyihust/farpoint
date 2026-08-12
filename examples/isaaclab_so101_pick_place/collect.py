@@ -1786,6 +1786,7 @@ def run_attempt(
     )
     grasp_machine = ContactAwareGraspStateMachine(
         control_hz=schedule.control_hz,
+        object_width_m=object_spec["dimensions_m"][0],
         # Low-force bilateral contact is sufficient to enter the quasi-static
         # hold; rigidity and the later physical proof lift remain mandatory.
         # The formal workspace run showed stable 30 mm captures oscillating

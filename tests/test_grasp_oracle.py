@@ -486,10 +486,18 @@ def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
 def test_capture_confirmation_steps_exposes_shared_window():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,
+        object_width_m=0.04,
         capture_confirmation_s=0.025,
     )
 
     assert machine.capture_confirmation_steps == 3
+    assert machine.object_width_m == pytest.approx(0.04)
+
+
+@pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
+def test_grasp_state_machine_rejects_invalid_object_width(width):
+    with pytest.raises(ValueError):
+        ContactAwareGraspStateMachine(object_width_m=width)
 
 
 def test_default_capture_confirmation_uses_six_control_ticks():

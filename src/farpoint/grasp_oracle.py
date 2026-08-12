@@ -347,6 +347,7 @@ class ContactAwareGraspStateMachine:
     """Validate a quasi-static grasp; transient bilateral impacts cannot pass."""
 
     control_hz: int = 120
+    object_width_m: float | None = None
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
     capture_confirmation_s: float = 0.05
@@ -370,6 +371,10 @@ class ContactAwareGraspStateMachine:
     def __post_init__(self) -> None:
         if self.control_hz <= 0:
             raise ValueError("control_hz must be positive")
+        if self.object_width_m is not None and (
+            not np.isfinite(self.object_width_m) or self.object_width_m <= 0.0
+        ):
+            raise ValueError("object_width_m must be finite and positive")
         if self.minimum_contact_force_n < 0 or self.maximum_force_n <= 0:
             raise ValueError("contact force thresholds must be valid")
         if self.minimum_contact_force_n >= self.maximum_force_n:
