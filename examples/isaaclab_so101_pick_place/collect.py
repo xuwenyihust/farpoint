@@ -2151,6 +2151,7 @@ def run_attempt(
             elif so101_bilateral_capture_ready(
                 *finger_forces,
                 capture_admissible,
+                object_width_m=object_spec["dimensions_m"][0],
             ):
                 # Both cube sidewalls constrain the arm even before the
                 # three-sample confirmation is complete. Rebase the joint
