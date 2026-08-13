@@ -169,6 +169,29 @@ def test_state_restored_replay_continues_from_captured_handoff_command():
         )
 
 
+def test_command_slew_ignores_only_float_round_trip_noise():
+    profile = {"max_command_slew_calibrated_per_step": [1.0] * 6}
+    reference = np.zeros(6)
+    within_noise, diagnostics = constrain_policy_action(
+        [1.00005] * 6,
+        reference,
+        action_safety_profile=profile,
+        previous_applied_action=reference,
+    )
+    assert within_noise.tolist() == pytest.approx([1.00005] * 6)
+    assert diagnostics["delta_limited_count"] == 0
+    assert diagnostics["command_slew_numerical_tolerance_calibrated"] == 1e-4
+
+    limited, diagnostics = constrain_policy_action(
+        [1.0002] * 6,
+        reference,
+        action_safety_profile=profile,
+        previous_applied_action=reference,
+    )
+    assert limited.tolist() == [1.0] * 6
+    assert diagnostics["delta_limited_count"] == 6
+
+
 def test_viam_physical_speed_profile_resolves_for_30_hz_so101():
     control = {
         "policy_hz": 30,

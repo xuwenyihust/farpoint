@@ -179,15 +179,21 @@ def constrain_policy_action(
             raise ValueError("previous applied action must contain six finite values")
         limiter_reference = "previous_applied_action"
     requested_delta = hard_clipped - reference
-    delta = np.clip(requested_delta, -maximum, maximum)
+    numerical_tolerance = 1e-4 if action_safety_profile is not None else 0.0
+    limited_mask = np.abs(requested_delta) > maximum + numerical_tolerance
+    delta = np.where(
+        limited_mask,
+        np.clip(requested_delta, -maximum, maximum),
+        requested_delta,
+    )
     applied = np.clip(reference + delta, LEROBOT_MIN, LEROBOT_MAX)
-    limited_mask = np.abs(requested_delta) > maximum
     diagnostics = {
         "limiter_reference": limiter_reference,
         "hard_range_violation_count": int(np.count_nonzero(hard_mask)),
         "maximum_hard_range_excess_calibrated": float(np.max(np.abs(raw - hard_clipped))),
         "delta_limited_count": int(np.count_nonzero(limited_mask)),
         "command_slew_limited_count": int(np.count_nonzero(limited_mask)),
+        "command_slew_numerical_tolerance_calibrated": numerical_tolerance,
         "maximum_raw_abs": float(np.max(np.abs(raw))),
         "maximum_applied_delta": float(np.max(np.abs(delta))),
         "maximum_tracking_error_calibrated": float(np.max(np.abs(applied - current))),
