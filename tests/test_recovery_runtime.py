@@ -24,7 +24,26 @@ def runtime_spec():
             "physics_hz": 120,
             "policy_hz": 30,
             "replan_interval_steps": 10,
-            "action_safety_profile": {"profile_id": "test"},
+            "action_safety_profile": {
+                "schema_version": "farpoint.action-safety-profile.v1",
+                "profile_id": "test",
+                "joint_order": [
+                    "shoulder_pan.pos",
+                    "shoulder_lift.pos",
+                    "elbow_flex.pos",
+                    "wrist_flex.pos",
+                    "wrist_roll.pos",
+                    "gripper.pos",
+                ],
+                "arm_max_command_speed_deg_s": 50.0,
+                "gripper_max_command_slew_calibrated_per_step": 5.5,
+                "source": {
+                    "kind": "open_source_hardware_default",
+                    "reference": "https://example.invalid/so101",
+                    "resolved_revision": "test",
+                    "statistic": "configured speed",
+                },
+            },
         },
         "trigger": {
             "trigger_id": "pre-lift-v1",
