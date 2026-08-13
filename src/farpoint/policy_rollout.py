@@ -121,6 +121,27 @@ def resolve_action_safety_profile(control: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def initial_command_slew_reference(
+    measured_state: Any, initial_state: dict[str, Any] | None
+) -> np.ndarray:
+    """Resolve the command preceding the first rollout action.
+
+    A normal reset has no prior policy command, so the measured state is the
+    only safe reference. A state-restored replay must instead continue from the
+    exact command captured at handoff; using the lagging measured joints would
+    introduce an artificial first-step limiter intervention.
+    """
+    reference = (
+        measured_state
+        if initial_state is None
+        else initial_state.get("applied_policy_action_calibrated")
+    )
+    value = np.asarray(reference, dtype=np.float64)
+    if value.shape != (6,) or not np.all(np.isfinite(value)):
+        raise ValueError("initial action slew reference must be six finite values")
+    return value.copy()
+
+
 def constrain_policy_action(
     raw_action: Any,
     current_position: Any,

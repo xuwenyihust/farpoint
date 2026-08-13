@@ -56,6 +56,7 @@ from farpoint.oracle import oriented_box_footprint_inside_target  # noqa: E402
 from farpoint.policy_rollout import (  # noqa: E402
     constrain_policy_action,
     evaluate_rollout_acceptance,
+    initial_command_slew_reference,
     json_default,
     load_rollout_spec,
     resolve_action_safety_profile,
@@ -453,7 +454,9 @@ def _run_episode(env, scene_spec, spec, root):
                 )
             else:
                 if previous_applied_action is None:
-                    previous_applied_action = state.copy()
+                    previous_applied_action = initial_command_slew_reference(
+                        state, scene_spec.get("initial_state")
+                    )
                 applied, safety = constrain_policy_action(
                     raw_action,
                     state,

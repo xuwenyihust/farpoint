@@ -10,6 +10,7 @@ from farpoint.contracts import load_schema, validate_contract
 from farpoint.policy_rollout import (
     constrain_policy_action,
     evaluate_rollout_acceptance,
+    initial_command_slew_reference,
     json_default,
     load_rollout_spec,
     resolve_action_safety_profile,
@@ -153,6 +154,19 @@ def test_command_slew_uses_previous_command_not_lagging_joint_state():
     assert diagnostics["command_slew_limited_count"] == 6
     assert diagnostics["maximum_applied_delta"] == 6.0
     assert diagnostics["maximum_tracking_error_calibrated"] == 36.0
+
+
+def test_state_restored_replay_continues_from_captured_handoff_command():
+    measured = np.asarray([-20.0] * 6)
+    captured = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0]
+    assert initial_command_slew_reference(measured, None).tolist() == measured.tolist()
+    assert initial_command_slew_reference(
+        measured, {"applied_policy_action_calibrated": captured}
+    ).tolist() == captured
+    with pytest.raises(ValueError, match="six finite"):
+        initial_command_slew_reference(
+            measured, {"applied_policy_action_calibrated": [1.0]}
+        )
 
 
 def test_viam_physical_speed_profile_resolves_for_30_hz_so101():
