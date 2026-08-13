@@ -27,12 +27,12 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def parse_episode_slice(expression: str) -> list[int]:
+def parse_episode_slice(expression: str, *, allow_empty: bool = False) -> list[int]:
     parts = expression.split(":")
     if len(parts) != 2 or not all(part.isdigit() for part in parts):
         raise ValueError(f"episode split must be a non-negative start:stop slice: {expression}")
     start, stop = map(int, parts)
-    if stop <= start:
+    if stop < start or (stop == start and not allow_empty):
         raise ValueError(f"episode split must have stop greater than start: {expression}")
     return list(range(start, stop))
 
@@ -55,7 +55,22 @@ def validate_split_partition(spec: dict[str, Any]) -> None:
     flat = [episode for values in split_indices.values() for episode in values]
     expected_total = spec["dataset"]["expected"]["total_episodes"]
     if len(flat) != expected_total or sorted(flat) != list(range(expected_total)):
-        raise ValueError("train, validation, and test must partition all episode indices exactly")
+        raise ValueError("logical dataset splits must partition all episode indices exactly")
+
+    metadata_splits = spec["dataset"].get("metadata_splits")
+    if metadata_splits is not None:
+        metadata_indices = {
+            name: parse_episode_slice(expression, allow_empty=True)
+            for name, expression in metadata_splits.items()
+        }
+        metadata_flat = [episode for values in metadata_indices.values() for episode in values]
+        if len(metadata_flat) != expected_total or sorted(metadata_flat) != list(
+            range(expected_total)
+        ):
+            raise ValueError("metadata splits must partition all episode indices exactly")
+        for name, expression in spec["dataset"]["splits"].items():
+            if metadata_splits.get(name) != expression:
+                raise ValueError(f"logical split {name} must match its metadata split")
 
 
 def validate_training_profiles(spec: dict[str, Any]) -> None:
@@ -105,8 +120,9 @@ def validate_dataset_info(spec: dict[str, Any], info: dict[str, Any]) -> None:
         for key, value in checks.items()
         if info.get(key) != value
     ]
-    if info.get("splits") != dataset["splits"]:
-        errors.append(f"splits: expected {dataset['splits']!r}, got {info.get('splits')!r}")
+    expected_info_splits = dataset.get("metadata_splits", dataset["splits"])
+    if info.get("splits") != expected_info_splits:
+        errors.append(f"splits: expected {expected_info_splits!r}, got {info.get('splits')!r}")
     for name, required in dataset["required_features"].items():
         actual = (info.get("features") or {}).get(name)
         if actual is None:
@@ -193,6 +209,14 @@ def training_arguments(
     ]
     if run.get("save_freq") is not None:
         arguments.append(f"--save_freq={run['save_freq']}")
+    for name in (
+        "vision_backbone",
+        "pretrained_backbone_weights",
+        "chunk_size",
+        "n_action_steps",
+    ):
+        if name in spec["policy"]:
+            arguments.append(f"--policy.{name}={spec['policy'][name]}")
     return arguments
 
 

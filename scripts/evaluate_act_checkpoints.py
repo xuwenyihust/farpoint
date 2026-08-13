@@ -195,7 +195,11 @@ def main() -> int:
             "available_frame_count": len(dataset),
             "sample_indices_sha256": canonical_sha256(sample_indices),
             "sample_count": len(sample_indices),
-            "excluded_test_expression": spec["dataset"]["splits"]["test"],
+            "excluded_split_expressions": {
+                name: expression
+                for name, expression in spec["dataset"]["splits"].items()
+                if name != validation["split"]
+            },
         },
         "checkpoints": sorted(results, key=lambda result: result["step"]),
         "selection": {
@@ -211,6 +215,10 @@ def main() -> int:
             "this is not simulator rollout success."
         ),
     }
+    # Preserve the published v0.0.3 report field while allowing later datasets
+    # to use train/validation without inventing demonstration test episodes.
+    if "test" in spec["dataset"]["splits"]:
+        report["dataset"]["excluded_test_expression"] = spec["dataset"]["splits"]["test"]
     args.report.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.report.with_suffix(args.report.suffix + ".tmp")
     temporary.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

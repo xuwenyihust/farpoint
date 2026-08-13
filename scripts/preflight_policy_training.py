@@ -115,11 +115,13 @@ def main() -> int:
     if len(dataset) != expected_frames:
         raise RuntimeError(f"loaded train length mismatch: {len(dataset)} != {expected_frames}")
     sample = dataset[0]
-    required_shapes = {
-        "observation.state": (6,),
-        "observation.images.front": (3, 480, 640),
-        "action": (6,),
-    }
+    required_shapes = {}
+    for feature, contract in dataset_spec["required_features"].items():
+        shape = tuple(contract["shape"])
+        if contract["dtype"] == "video":
+            height, width, channels = shape
+            shape = (channels, height, width)
+        required_shapes[feature] = shape
     sample_shapes = {}
     for feature, expected_shape in required_shapes.items():
         value = sample[feature]
