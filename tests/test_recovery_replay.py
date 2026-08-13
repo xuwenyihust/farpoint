@@ -102,6 +102,17 @@ def _write_episode(root, episode_id):
         joint_order=metadata["recording"]["action_features"],
     )
     metadata["demonstration"]["intervention"]["command_trace"] = command_trace
+    pre_handoff_rows = []
+    for policy_step in range(120):
+        pre_handoff_rows.append(
+            {
+                "policy_step": policy_step,
+                "applied_action_calibrated": [0.0] * 6,
+            }
+        )
+    (root / "pre-handoff-actions.jsonl").write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in pre_handoff_rows)
+    )
     (root / "metadata.json").write_text(json.dumps(metadata))
     (root / "handoff.json").write_text(
         json.dumps(
@@ -182,9 +193,9 @@ def test_recovery_replay_binds_live_snapshot_and_exported_actions(tmp_path):
     assert spec["recovery_replay_source"]["selection_sha256"] == file_sha256(selection_path)
     assert spec["scenes"][0]["seed"] == episode_v4()["identity"]["attempt_seed"]
     assert spec["scenes"][0]["seed"] != episode_v4()["identity"]["variation_seed"]
-    assert spec["scenes"][0]["initial_state"]["policy_step"] == 119
-    assert len(replay["scenes"][0]["actions_calibrated"]) == 2
-    assert len(replay["scenes"][0]["physics_action_groups_radians"]) == 2
+    assert "initial_state" not in spec["scenes"][0]
+    assert len(replay["scenes"][0]["actions_calibrated"]) == 122
+    assert len(replay["scenes"][0]["physics_action_groups_radians"]) == 122
     assert all(len(group) == 4 for group in replay["scenes"][0]["physics_action_groups_radians"])
     assert replay["physics_replay"] == {
         "mode": "exact_trace",
@@ -193,7 +204,13 @@ def test_recovery_replay_binds_live_snapshot_and_exported_actions(tmp_path):
         "policy_hz": 30,
         "maximum_targets_per_policy_step": 4,
     }
-    assert spec["recovery_replay_source"]["command_replay"] == ("physics_rate_trace_v1")
+    assert spec["recovery_replay_source"]["state_restore"] == (
+        "reset_plus_full_command_history_v1"
+    )
+    assert spec["recovery_replay_source"]["command_replay"] == (
+        "policy_history_then_physics_rate_trace_v1"
+    )
+    assert replay["scenes"][0]["source_pre_handoff_trace"]["sample_count"] == 120
     assert replay["scenes"][0]["source_values_clipped_by_exporter"] == 0
     assert replay["scenes"][0]["source_physics_values_clipped_by_exporter"] == 0
 

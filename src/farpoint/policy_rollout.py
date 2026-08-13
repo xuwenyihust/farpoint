@@ -54,13 +54,19 @@ def load_rollout_spec(path: Path) -> dict[str, Any]:
         source = payload.get("recovery_replay_source")
         if source is None or source["evaluated_episode_count"] != len(scene_ids):
             raise ValueError("recovery replay source does not match scenes")
+        state_restore = source["state_restore"]
         for scene in payload["scenes"]:
             initial = scene.get("initial_state")
-            if initial is None:
-                raise ValueError("recovery replay scene requires initial_state")
-            snapshot = {key: value for key, value in initial.items() if key != "snapshot_sha256"}
-            if state_snapshot_sha256(snapshot) != initial["snapshot_sha256"]:
-                raise ValueError("recovery replay state snapshot hash mismatch")
+            if state_restore == "handoff_snapshot_v1":
+                if initial is None:
+                    raise ValueError("recovery replay scene requires initial_state")
+                snapshot = {
+                    key: value for key, value in initial.items() if key != "snapshot_sha256"
+                }
+                if state_snapshot_sha256(snapshot) != initial["snapshot_sha256"]:
+                    raise ValueError("recovery replay state snapshot hash mismatch")
+            elif initial is not None:
+                raise ValueError("full-history recovery replay must start from reset")
     return payload
 
 
