@@ -445,7 +445,9 @@ def _body_index(robot) -> int:
     return int(indexes[0])
 
 
-def _run_recovery_handoff(env, trial, active_object, sensors, root, runtime):
+def _run_recovery_handoff(
+    env, trial, active_object, sensors, root, runtime, *, oracle_profile_id
+):
     """Execute ACT to a measured pre-lift trigger without resetting the scene."""
     binding = scene_binding(runtime, trial["variation_id"])
     policy = runtime["source_policy"]
@@ -559,7 +561,7 @@ def _run_recovery_handoff(env, trial, active_object, sensors, root, runtime):
             "recovery handoff was not admitted before the bounded pre-lift deadline"
         )
     demonstration = recovery_demonstration(
-        oracle_profile_id="contact_aware_local_frame_dls_v0",
+        oracle_profile_id=oracle_profile_id,
         source_policy=policy,
         trigger_id=runtime["trigger"]["trigger_id"],
         failure_class=trigger["failure_class"],
@@ -1956,6 +1958,7 @@ def run_attempt(
             contact,
             root,
             recovery_runtime,
+            oracle_profile_id=v010_context["plan"]["oracle_profile_id"],
         )
         run_state["recovery"] = {
             "runtime_id": recovery_runtime["runtime_id"],
