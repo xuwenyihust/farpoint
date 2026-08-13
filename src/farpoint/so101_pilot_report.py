@@ -383,7 +383,7 @@ def build_so101_pilot_report(
     )
     if attempt_seed_count != len(attempts):
         errors.append("attempt_seeds_not_unique")
-    if variation_seed_count != len(attempts):
+    if variation_seed_count != len(attempted_ids):
         errors.append("variation_seeds_not_unique")
     acceptance_errors = []
     pilot_kind = (plan.get("pilot") or {}).get("kind")
