@@ -110,10 +110,28 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
         scene = record.get("scene") or {}
         variation = record.get("variation") or {}
         recording = record.get("recording") or {}
+        demonstration = record.get("demonstration")
         if identity.get("task_id") != task.get("task_id"):
             errors.append("identity.task_id does not match task.task_id")
         if identity.get("split") != variation.get("split"):
             errors.append("variation.split does not match identity.split")
+        if isinstance(demonstration, dict):
+            demonstration_type = demonstration.get("type")
+            controller = demonstration.get("controller") or {}
+            if demonstration_type == "recovery":
+                if identity.get("split") != "train":
+                    errors.append("recovery demonstrations must use the train split")
+                if controller.get("type") != "oracle":
+                    errors.append("recovery demonstration actions must be Oracle-authored")
+                intervention = demonstration.get("intervention") or {}
+                handoff = intervention.get("handoff") or {}
+                trigger = intervention.get("trigger") or {}
+                if handoff.get("source_control_step") != trigger.get("control_step"):
+                    errors.append(
+                        "recovery handoff source_control_step does not match trigger.control_step"
+                    )
+                if handoff.get("source_scene_id") == identity.get("episode_id"):
+                    errors.append("recovery source scene must not reuse the recovery episode id")
         if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
             errors.append("variation axes cannot be both varied and frozen")
         entities = scene.get("entities") or []
@@ -128,9 +146,7 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
         }
         requested_entities = (variation.get("requested") or {}).get("entities")
         resolved_entities = (variation.get("resolved") or {}).get("entities")
-        if not isinstance(requested_entities, dict) or not isinstance(
-            resolved_entities, dict
-        ):
+        if not isinstance(requested_entities, dict) or not isinstance(resolved_entities, dict):
             errors.append("episode v4 variation must record requested/resolved entities")
         else:
             expected_ids = set(entity_index)
@@ -168,17 +184,15 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
         }:
             errors.append("task.acceptance_region_id is missing from the target entity")
         manipulated = entity_index.get(task.get("manipulated_entity_id")) or {}
-        archetype = ((scene.get("object_archetype") or {}).get("resolved") or {})
-        variant = ((scene.get("object_variant") or {}).get("resolved") or {})
+        archetype = (scene.get("object_archetype") or {}).get("resolved") or {}
+        variant = (scene.get("object_variant") or {}).get("resolved") or {}
         if archetype.get("semantic_type") != manipulated.get("entity_type"):
             errors.append(
                 "scene.object_archetype.resolved.semantic_type does not match "
                 "the manipulated entity"
             )
         if variant.get("archetype_id") != archetype.get("archetype_id"):
-            errors.append(
-                "scene.object_variant.resolved.archetype_id does not match the archetype"
-            )
+            errors.append("scene.object_variant.resolved.archetype_id does not match the archetype")
         expected_variant_values = (
             ("dimensions_m", (manipulated.get("geometry") or {}).get("dimensions_m")),
             ("rgba", (manipulated.get("appearance") or {}).get("rgba")),
@@ -191,21 +205,16 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
         for field, actual in expected_variant_values:
             if variant.get(field) != actual:
                 errors.append(
-                    f"scene.object_variant.resolved.{field} does not match "
-                    "the manipulated entity"
+                    f"scene.object_variant.resolved.{field} does not match the manipulated entity"
                 )
         material_configs = scene.get("materials") or {}
         for field in ("object", "table", "gripper"):
             resolved_material = (material_configs.get(field) or {}).get("resolved")
             if resolved_material != variant.get(f"{field}_material"):
-                errors.append(
-                    f"scene.materials.{field}.resolved does not match the object variant"
-                )
+                errors.append(f"scene.materials.{field}.resolved does not match the object variant")
         cameras = recording.get("cameras") or []
         camera_ids = {camera.get("camera_id") for camera in cameras if isinstance(camera, dict)}
-        feature_keys = {
-            camera.get("feature_key") for camera in cameras if isinstance(camera, dict)
-        }
+        feature_keys = {camera.get("feature_key") for camera in cameras if isinstance(camera, dict)}
         if camera_ids != {"front", "wrist"}:
             errors.append("episode v4 requires exactly front and wrist cameras")
         if feature_keys != {
@@ -228,7 +237,15 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
             errors.append("identity.task_id does not match task.task_id")
         if task.get("object_shape") != obj.get("shape"):
             errors.append("task.object_shape does not match scene.object.shape")
-        for field, scene_field in (("shape", "shape"), ("dimensions_m", "dimensions_m"), ("position_m", None), ("rgba", "rgba"), ("mass_kg", "mass_kg"), ("static_friction", "static_friction"), ("dynamic_friction", "dynamic_friction")):
+        for field, scene_field in (
+            ("shape", "shape"),
+            ("dimensions_m", "dimensions_m"),
+            ("position_m", None),
+            ("rgba", "rgba"),
+            ("mass_kg", "mass_kg"),
+            ("static_friction", "static_friction"),
+            ("dynamic_friction", "dynamic_friction"),
+        ):
             expected = pose.get("position_m") if field == "position_m" else obj.get(scene_field)
             if resolved.get(field) != expected:
                 errors.append(f"variation.resolved.{field} does not match the scene object")
@@ -258,9 +275,7 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
                 if entity.get("role") != "manipulated_object":
                     errors.append("task.manipulated_entity_id does not name a manipulated object")
                 if task.get("object_shape") != entity.get("entity_type"):
-                    errors.append(
-                        "task.object_shape does not match the manipulated entity type"
-                    )
+                    errors.append("task.object_shape does not match the manipulated entity type")
             if target_id in entity_index:
                 target_entity = entity_index[target_id]
                 if target_entity.get("role") != "placement_target":
@@ -271,9 +286,7 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
                     for region in target_entity.get("regions", ())
                     if isinstance(region, dict)
                 }:
-                    errors.append(
-                        "task.acceptance_region_id is missing from the target entity"
-                    )
+                    errors.append("task.acceptance_region_id is missing from the target entity")
             resolved_entities = resolved.get("entities")
             if resolved_entities is not None:
                 if not isinstance(resolved_entities, dict):

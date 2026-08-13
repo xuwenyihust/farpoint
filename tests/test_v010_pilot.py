@@ -87,9 +87,7 @@ def test_v010_pilot_is_deterministic_continuous_and_exactly_stratified():
     assert first["campaign_contract"]["campaign_kind"] == "pilot"
 
     for object_id in ("red-40mm-40g", "blue-30mm-30g"):
-        trials = [
-            trial for trial in first["trials"] if trial["object_variant_id"] == object_id
-        ]
+        trials = [trial for trial in first["trials"] if trial["object_variant_id"] == object_id]
         assert Counter(trial["region_band"] for trial in trials) == {
             "core": 2,
             "middle": 2,
@@ -116,15 +114,11 @@ def test_v010_pilot_is_deterministic_continuous_and_exactly_stratified():
 
 def test_v010_pilot_manifest_and_campaign_declarations_are_hash_bound(tmp_path):
     plan = _plan()
-    manifest = create_pilot_manifest(
-        plan, collection_id=plan["plan_id"], git_commit="a" * 40
-    )
+    manifest = create_pilot_manifest(plan, collection_id=plan["plan_id"], git_commit="a" * 40)
     assert manifest["required_successes"] == 10
     assert manifest["maximum_attempts"] == 12
     assert manifest["completion_policy"] == "all_planned_trials"
-    bundle = initialize_v010_pilot_campaign(
-        tmp_path, plan, git_commit="a" * 40
-    )
+    bundle = initialize_v010_pilot_campaign(tmp_path, plan, git_commit="a" * 40)
     assert validate_campaign_semantics(bundle["campaign"]) == []
     assert validate_segment_semantics(bundle["segment"]) == []
     assert bundle["segment"]["plan_sha256"] == plan["plan_sha256"]
@@ -137,10 +131,7 @@ def test_v010_acceptance_requires_a_success_for_every_object_region_pair():
     selected = [
         {"variation_id": trial["variation_id"]}
         for trial in plan["trials"]
-        if not (
-            trial["object_variant_id"] == "red-40mm-40g"
-            and trial["region_band"] == "outer"
-        )
+        if not (trial["object_variant_id"] == "red-40mm-40g" and trial["region_band"] == "outer")
     ]
     assert _required_object_region_errors(plan, selected) == [
         "required_object_region_failed:red-40mm-40g::outer"
@@ -194,6 +185,14 @@ def test_v010_episode_writer_emits_strict_v4_with_measured_pose():
         physics_audit={"mass": {"verified": True}},
     )
     assert metadata["schema_version"] == "farpoint.episode.v4"
+    assert metadata["demonstration"] == {
+        "schema_version": "farpoint.demonstration.v1",
+        "type": "nominal",
+        "controller": {
+            "type": "oracle",
+            "profile_id": plan["oracle_profile_id"],
+        },
+    }
     assert metadata["variation"]["resolved"]["position_xy_m"][0] == pytest.approx(
         resolved_object["position_m"][0]
     )
