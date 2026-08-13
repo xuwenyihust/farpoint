@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from farpoint.policy_training import file_sha256
-from farpoint.so101 import radians_to_lerobot
+from farpoint.so101 import USD_MAX_DEGREES, USD_MIN_DEGREES, radians_to_lerobot
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,12 +30,19 @@ def build_manifest(source_scenes: dict) -> dict:
             raise ValueError(f"source metadata hash mismatch: {metadata_path}")
         actions = []
         phases = []
+        clipped_source_values = 0
         for line in observations_path.read_text(encoding="utf-8").splitlines():
             row = json.loads(line)
             radians = np.asarray(row["action_joint_positions"], dtype=np.float64)
             if radians.shape != (6,) or not np.isfinite(radians).all():
                 raise ValueError(f"invalid source action in {observations_path}")
-            actions.append(radians_to_lerobot(radians, clip=False).tolist())
+            degrees = np.rad2deg(radians)
+            clipped_source_values += int(
+                np.count_nonzero((degrees < USD_MIN_DEGREES) | (degrees > USD_MAX_DEGREES))
+            )
+            # Match the published LeRobot exporter exactly. The diagnostic replays
+            # the actions ACT was trained on, not unbounded internal Oracle targets.
+            actions.append(radians_to_lerobot(radians, clip=True).tolist())
             phases.append(str(row.get("phase", "unknown")))
         if not actions:
             raise ValueError(f"source episode has no observations: {episode_root}")
@@ -47,6 +54,7 @@ def build_manifest(source_scenes: dict) -> dict:
                 "source_observations_sha256": file_sha256(observations_path),
                 "actions_calibrated": actions,
                 "phases": phases,
+                "source_values_clipped_by_exporter": clipped_source_values,
             }
         )
     return {
@@ -56,6 +64,11 @@ def build_manifest(source_scenes: dict) -> dict:
             "observation.images.front",
             "observation.images.wrist",
         ],
+        "action_conversion": {
+            "source_unit": "radian",
+            "output_unit": "so101_calibrated_position",
+            "clip_to_calibrated_range": True,
+        },
         "scenes": scenes,
     }
 

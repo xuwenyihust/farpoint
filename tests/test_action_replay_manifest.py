@@ -42,6 +42,8 @@ def test_replay_manifest_binds_source_and_converts_actions(tmp_path):
     manifest = MODULE.build_manifest(source)
     assert manifest["schema_version"] == "farpoint.expert-action-replay.v1"
     assert manifest["scenes"][0]["phases"] == ["home"]
+    assert manifest["action_conversion"]["clip_to_calibrated_range"] is True
+    assert manifest["scenes"][0]["source_values_clipped_by_exporter"] == 0
     assert len(manifest["scenes"][0]["actions_calibrated"][0]) == 6
     assert manifest["scenes"][0]["source_observations_sha256"] == file_sha256(
         observations
