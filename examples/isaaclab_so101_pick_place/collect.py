@@ -234,7 +234,10 @@ from farpoint.recovery_runtime import (  # noqa: E402
     RecoveryTriggerDetector,
     load_recovery_runtime,
     recovery_descent_duration_seconds,
+    recovery_oracle_command_continuity_enabled,
+    recovery_oracle_slew_limits,
     scene_binding,
+    slew_recovery_oracle_target,
 )
 from farpoint.scene_entities import bind_scene_entities  # noqa: E402
 from farpoint.so101 import (  # noqa: E402
@@ -2041,6 +2044,16 @@ def run_attempt(
         ),
     )
     commanded_joints = _numpy(robot.data.joint_pos[0]).astype(np.float32).copy()
+    recovery_oracle_previous_target = None
+    recovery_oracle_maximum_delta = None
+    if recovery_snapshot is not None and recovery_oracle_command_continuity_enabled(
+        recovery_runtime
+    ):
+        recovery_oracle_previous_target = np.asarray(
+            recovery_snapshot["joint_position_target_rad"], dtype=np.float32
+        )
+        commanded_joints = recovery_oracle_previous_target.copy()
+        recovery_oracle_maximum_delta = recovery_oracle_slew_limits(recovery_runtime)
     cube_was_lifted = False
     grasp_hold_pose = None
     grasp_hold_nominal_pose = None
@@ -2076,6 +2089,7 @@ def run_attempt(
         phase = machine.phase
         phase_motion_complete = True
         descent_fraction = None
+        recovery_oracle_safety = None
         current = robot.data.joint_pos[0]
         ee_position = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
         control_point_position = None
@@ -3020,6 +3034,17 @@ def run_attempt(
         if grasp_decision.phase is GraspPhase.FAILED:
             machine.fail(grasp_decision.failure_reason or "grasp_failed")
 
+        if recovery_oracle_previous_target is not None:
+            bounded, recovery_oracle_safety = slew_recovery_oracle_target(
+                recovery_oracle_previous_target,
+                _numpy(action[0]),
+                recovery_oracle_maximum_delta,
+            )
+            action = torch.tensor([bounded], dtype=torch.float32, device=device)
+            recovery_oracle_previous_target = bounded.copy()
+            if not grasp_decision.rebase_joint_command:
+                commanded_joints = bounded.copy()
+
         stable_grasp_contact = (
             grasp_decision.phase
             in {GraspPhase.PROOF_LIFT, GraspPhase.VALIDATED}
@@ -3072,6 +3097,8 @@ def run_attempt(
                     else cube_z - verify_object_start_z
                 ),
             }
+            if recovery_oracle_safety is not None:
+                row["recovery_oracle_command_safety"] = recovery_oracle_safety
             row["truth"] = {
                 "object_root_pose_xyzw": object_pose.tolist(),
                 "object_linear_velocity_mps": _numpy(
