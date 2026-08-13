@@ -16,6 +16,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from farpoint.policy_rollout import resolve_replan_interval
 from farpoint.policy_training import file_sha256
 
 
@@ -25,16 +26,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--expected-model-sha256", required=True)
+    parser.add_argument("--replan-interval-steps", type=int)
+    parser.add_argument("--replay-manifest", type=Path)
     return parser.parse_args()
 
 
-def load_policy(checkpoint: Path):
+def load_policy(checkpoint: Path, replan_interval_steps: int | None):
     from lerobot.configs.policies import PreTrainedConfig
     from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 
     config = PreTrainedConfig.from_pretrained(checkpoint, local_files_only=True)
     config.pretrained_path = str(checkpoint)
     config.device = "cuda"
+    checkpoint_steps = int(config.n_action_steps)
+    chunk_size = int(config.chunk_size)
+    config.n_action_steps = resolve_replan_interval(
+        replan_interval_steps,
+        checkpoint_steps=checkpoint_steps,
+        chunk_size=chunk_size,
+    )
     if hasattr(config, "pretrained_backbone_weights"):
         config.pretrained_backbone_weights = None
     policy_class = get_policy_class(config.type)
@@ -62,13 +72,59 @@ def load_policy(checkpoint: Path):
         )
     if not camera_features:
         raise RuntimeError("ACT checkpoint declares no camera input features")
-    return policy, preprocessor, postprocessor, camera_features
+    return policy, preprocessor, postprocessor, camera_features, {
+        "chunk_size": chunk_size,
+        "checkpoint_n_action_steps": checkpoint_steps,
+        "replan_interval_steps": int(config.n_action_steps),
+    }
 
 
 def reset_components(*components) -> None:
     for component in components:
         if hasattr(component, "reset"):
             component.reset()
+
+
+class ExpertActionReplay:
+    """Serve a frozen expert action stream through the policy HTTP contract."""
+
+    def __init__(self, manifest_path: Path):
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != "farpoint.expert-action-replay.v1":
+            raise ValueError("unsupported expert action replay manifest")
+        scenes = payload.get("scenes")
+        if not isinstance(scenes, list) or not scenes:
+            raise ValueError("expert action replay manifest has no scenes")
+        self.manifest_sha256 = file_sha256(manifest_path)
+        self.camera_features = payload["camera_features"]
+        self.scenes = {scene["scene_id"]: scene for scene in scenes}
+        if len(self.scenes) != len(scenes):
+            raise ValueError("expert action replay scene IDs must be unique")
+        self.scene_id: str | None = None
+        self.step = 0
+
+    def reset(self, scene_id: str) -> None:
+        if scene_id not in self.scenes:
+            raise KeyError(f"scene is absent from expert replay: {scene_id}")
+        self.scene_id = scene_id
+        self.step = 0
+
+    def next_action(self) -> tuple[np.ndarray, dict]:
+        if self.scene_id is None:
+            raise RuntimeError("expert replay was not reset for a scene")
+        actions = self.scenes[self.scene_id]["actions_calibrated"]
+        if not actions:
+            raise RuntimeError(f"expert replay scene has no actions: {self.scene_id}")
+        source_step = min(self.step, len(actions) - 1)
+        action = np.asarray(actions[source_step], dtype=np.float32)
+        exhausted = self.step >= len(actions)
+        self.step += 1
+        return action, {
+            "source": "dataset_replay",
+            "source_step": source_step,
+            "source_steps": len(actions),
+            "source_exhausted": exhausted,
+        }
 
 
 def main() -> int:
@@ -82,8 +138,20 @@ def main() -> int:
     import importlib.metadata
     from lerobot.utils.control_utils import predict_action
 
-    policy, preprocessor, postprocessor, camera_features = load_policy(args.checkpoint)
-    reset_components(policy, preprocessor, postprocessor)
+    replay = ExpertActionReplay(args.replay_manifest) if args.replay_manifest else None
+    if replay is None:
+        policy, preprocessor, postprocessor, camera_features, execution = load_policy(
+            args.checkpoint, args.replan_interval_steps
+        )
+        reset_components(policy, preprocessor, postprocessor)
+    else:
+        policy = preprocessor = postprocessor = None
+        camera_features = replay.camera_features
+        execution = {
+            "source": "dataset_replay",
+            "replan_interval_steps": args.replan_interval_steps,
+            "replay_manifest_sha256": replay.manifest_sha256,
+        }
     identity = {
         "status": "ready",
         "model_sha256": model_sha256,
@@ -91,6 +159,7 @@ def main() -> int:
         "policy_image_id": os.environ.get("FARPOINT_POLICY_IMAGE_ID", ""),
         "cuda_device": torch.cuda.get_device_name(0),
         "camera_features": camera_features,
+        "action_execution": execution,
     }
 
     class Handler(BaseHTTPRequestHandler):
@@ -117,7 +186,15 @@ def main() -> int:
 
         def do_POST(self):
             if self.path == "/reset":
-                reset_components(policy, preprocessor, postprocessor)
+                payload = self.read_json()
+                if replay is None:
+                    reset_components(policy, preprocessor, postprocessor)
+                else:
+                    try:
+                        replay.reset(str(payload["scene_id"]))
+                    except (KeyError, ValueError) as error:
+                        self.response(400, {"error": str(error)})
+                        return
                 self.response(200, {"status": "reset"})
                 return
             if self.path != "/action":
@@ -144,21 +221,37 @@ def main() -> int:
                     self.response(400, {"error": "invalid_image_shape"})
                     return
                 observation[feature] = image
-            action = predict_action(
-                observation,
-                policy,
-                torch.device("cuda"),
-                preprocessor,
-                postprocessor,
-                use_amp=False,
-                task=payload.get("task"),
-                robot_type="so101",
-            )
-            values = action.detach().cpu().numpy().reshape(-1)
+            if replay is None:
+                queue_depth_before = len(policy._action_queue)
+                action = predict_action(
+                    observation,
+                    policy,
+                    torch.device("cuda"),
+                    preprocessor,
+                    postprocessor,
+                    use_amp=False,
+                    task=payload.get("task"),
+                    robot_type="so101",
+                )
+                values = action.detach().cpu().numpy().reshape(-1)
+                action_execution = {
+                    "source": "act_policy",
+                    "inference_refreshed": queue_depth_before == 0,
+                    "queue_depth_before": queue_depth_before,
+                    "queue_depth_after": len(policy._action_queue),
+                }
+            else:
+                values, action_execution = replay.next_action()
             if values.shape != (6,) or not np.all(np.isfinite(values)):
                 self.response(500, {"error": "invalid_policy_action"})
                 return
-            self.response(200, {"action": values.tolist()})
+            self.response(
+                200,
+                {
+                    "action": values.tolist(),
+                    "execution": action_execution,
+                },
+            )
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(json.dumps(identity, sort_keys=True), flush=True)

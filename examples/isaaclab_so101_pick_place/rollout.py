@@ -58,6 +58,7 @@ from farpoint.policy_rollout import (  # noqa: E402
     evaluate_rollout_acceptance,
     json_default,
     load_rollout_spec,
+    resolve_action_safety_profile,
 )
 from farpoint.policy_training import canonical_sha256, file_sha256  # noqa: E402
 from farpoint.so101 import lerobot_to_radians, radians_to_lerobot  # noqa: E402
@@ -189,7 +190,9 @@ def _jpeg_payload(image: np.ndarray) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str) -> np.ndarray:
+def _policy_action(
+    state: np.ndarray, images: dict[str, np.ndarray], task: str
+) -> tuple[np.ndarray, dict]:
     response = _policy_request(
         "/action",
         {
@@ -201,7 +204,7 @@ def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str) 
             "task": task,
         },
     )
-    return np.asarray(response["action"], dtype=np.float32)
+    return np.asarray(response["action"], dtype=np.float32), response.get("execution", {})
 
 
 def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
@@ -309,12 +312,13 @@ def _run_episode(env, scene_spec, spec, root):
     episode_root = root / "episodes" / scene_spec["scene_id"]
     episode_root.mkdir(parents=True)
     active_name, reset_audit = _reset_scene(env, scene_spec)
-    _policy_request("/reset", {})
+    _policy_request("/reset", {"scene_id": scene_spec["scene_id"]})
     scene = env.scene
     robot = scene["robot"]
     active = scene[active_name]
     obj = scene_spec["object"]
     control = spec["control"]
+    action_safety_profile = resolve_action_safety_profile(control)
     physics_steps_per_policy = control["physics_hz"] // control["policy_hz"]
     initial_z = float(obj["position_m"][2])
     ever_contact = False
@@ -328,6 +332,7 @@ def _run_episode(env, scene_spec, spec, root):
     nonfinite = 0
     policy_steps = 0
     task_success = False
+    previous_applied_action = None
     camera_ids = [feature.rsplit(".", 1)[-1] for feature in spec["environment"]["camera_features"]]
     writers = {
         camera_id: VideoWriter(episode_root / f"{camera_id}.mp4", control["policy_hz"])
@@ -341,13 +346,28 @@ def _run_episode(env, scene_spec, spec, root):
                 writers[camera_id].write(image)
             joint_radians = _numpy(robot.data.joint_pos[0]).astype(np.float32)
             state = radians_to_lerobot(joint_radians, clip=True)
-            raw_action = _policy_action(state, images, spec["task"]["instruction"])
+            raw_action, policy_execution = _policy_action(
+                state, images, spec["task"]["instruction"]
+            )
             if raw_action.shape != (6,) or not np.all(np.isfinite(raw_action)):
                 nonfinite += 1
                 raise RuntimeError(f"invalid policy action at step {step}: {raw_action}")
-            applied, safety = constrain_policy_action(
-                raw_action, state, max_delta=control["max_delta_calibrated"]
-            )
+            if action_safety_profile["limiter_reference"] == "current_position":
+                applied, safety = constrain_policy_action(
+                    raw_action,
+                    state,
+                    max_delta=action_safety_profile["max_command_slew_calibrated_per_step"][0],
+                )
+            else:
+                if previous_applied_action is None:
+                    previous_applied_action = state.copy()
+                applied, safety = constrain_policy_action(
+                    raw_action,
+                    state,
+                    action_safety_profile=action_safety_profile,
+                    previous_applied_action=previous_applied_action,
+                )
+                previous_applied_action = applied.copy()
             hard_range_violations += safety["hard_range_violation_count"]
             maximum_range_excess = max(
                 maximum_range_excess,
@@ -388,6 +408,7 @@ def _run_episode(env, scene_spec, spec, root):
                 "applied_action_calibrated": applied.tolist(),
                 "target_radians": target_radians.tolist(),
                 "action_safety": safety,
+                "policy_execution": policy_execution,
                 "cube_pose_xyzw": cube_pose.tolist(),
                 "cube_velocity_mps": cube_velocity.tolist(),
                 "contact_forces_n": list(forces),
@@ -477,6 +498,7 @@ def _run_episode(env, scene_spec, spec, root):
         "hard_range_violation_count": hard_range_violations,
         "maximum_hard_range_excess_calibrated": maximum_range_excess,
         "delta_limited_count": delta_limited,
+        "action_safety_profile": action_safety_profile,
     }
     _write_json(episode_root / "result.json", result)
     return result
@@ -513,6 +535,12 @@ def main() -> int:
         raise RuntimeError("policy server LeRobot version mismatch")
     if policy_health.get("camera_features") != spec["environment"]["camera_features"]:
         raise RuntimeError("policy server camera feature contract mismatch")
+    requested_replan = spec["control"].get("replan_interval_steps")
+    if requested_replan is not None and (
+        (policy_health.get("action_execution") or {}).get("replan_interval_steps")
+        != requested_replan
+    ):
+        raise RuntimeError("policy server replan interval does not match rollout spec")
     from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
 
     env_cfg = SO101CubePickPlaceEnvCfg()
@@ -555,6 +583,7 @@ def main() -> int:
         "isaac_base_image_id": base_image_id,
         "spec_sha256": canonical_sha256(spec),
         "checkpoint": spec["checkpoint"],
+        "action_safety_profile": resolve_action_safety_profile(spec["control"]),
         "holdout_source": spec.get("holdout_source"),
         "data_policy": {
             "training_episodes": spec["checkpoint"]["dataset"]["train_episodes"],

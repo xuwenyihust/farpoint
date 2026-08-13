@@ -12,6 +12,9 @@ from farpoint.policy_rollout import (
     evaluate_rollout_acceptance,
     json_default,
     load_rollout_spec,
+    resolve_action_safety_profile,
+    resolve_replan_interval,
+    summarize_action_errors,
 )
 
 
@@ -135,6 +138,139 @@ def test_policy_action_applies_hard_and_delta_safety_bounds():
         constrain_policy_action([0, 0, 0, 0, np.nan, 0], current, max_delta=6.0)
 
 
+def test_command_slew_uses_previous_command_not_lagging_joint_state():
+    profile = {"max_command_slew_calibrated_per_step": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]}
+    current = np.asarray([-20.0] * 6)
+    previous = np.asarray([10.0] * 6)
+    applied, diagnostics = constrain_policy_action(
+        [50.0] * 6,
+        current,
+        action_safety_profile=profile,
+        previous_applied_action=previous,
+    )
+    assert applied.tolist() == [11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
+    assert diagnostics["limiter_reference"] == "previous_applied_action"
+    assert diagnostics["command_slew_limited_count"] == 6
+    assert diagnostics["maximum_applied_delta"] == 6.0
+    assert diagnostics["maximum_tracking_error_calibrated"] == 36.0
+
+
+def test_viam_physical_speed_profile_resolves_for_30_hz_so101():
+    control = {
+        "policy_hz": 30,
+        "action_safety_profile": {
+            "schema_version": "farpoint.action-safety-profile.v1",
+            "profile_id": "so101-viam-50deg-s-v1",
+            "joint_order": [
+                "shoulder_pan.pos",
+                "shoulder_lift.pos",
+                "elbow_flex.pos",
+                "wrist_flex.pos",
+                "wrist_roll.pos",
+                "gripper.pos",
+            ],
+            "arm_max_command_speed_deg_s": 50.0,
+            "gripper_max_command_slew_calibrated_per_step": 5.5,
+            "source": {
+                "kind": "open_source_hardware_default",
+                "reference": "https://github.com/viam-devrel/so-101",
+                "resolved_revision": "f497923360e1ded44194ffcbed7b169866574c81",
+                "statistic": "default per-joint hardware speed cap of 50 degrees per second",
+            },
+        },
+    }
+    resolved = resolve_action_safety_profile(control)
+    assert resolved["limiter_reference"] == "previous_applied_action"
+    assert resolved["max_command_slew_calibrated_per_step"] == pytest.approx(
+        [1.5151515, 1.6666667, 1.7543860, 1.7543860, 1.0416667, 5.5]
+    )
+
+
+def test_rollout_contract_accepts_new_profile_and_rejects_ambiguous_legacy(tmp_path):
+    spec = json.loads(CONFIG.read_text())
+    spec["control"].pop("max_delta_calibrated")
+    spec["control"]["action_safety_profile"] = {
+        "schema_version": "farpoint.action-safety-profile.v1",
+        "profile_id": "so101-armnetbench-p995-v1",
+        "joint_order": [
+            "shoulder_pan.pos",
+            "shoulder_lift.pos",
+            "elbow_flex.pos",
+            "wrist_flex.pos",
+            "wrist_roll.pos",
+            "gripper.pos",
+        ],
+        "max_command_slew_calibrated_per_step": [3.0, 4.5, 5.0, 4.0, 6.0, 5.5],
+        "source": {
+            "kind": "dataset_percentile",
+            "reference": "armnet/armnetbench_v01_lerobot_so101",
+            "resolved_revision": "2e5e89aee0e7f081078d9d6ab3b279fc4b83ea84",
+            "statistic": "successful teleoperation absolute state delta P99.5 at 30 Hz",
+        },
+    }
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(spec))
+    loaded = load_rollout_spec(path)
+    assert resolve_action_safety_profile(loaded["control"])[
+        "max_command_slew_calibrated_per_step"
+    ] == [3.0, 4.5, 5.0, 4.0, 6.0, 5.5]
+
+    spec["control"]["max_delta_calibrated"] = 6.0
+    path.write_text(json.dumps(spec))
+    with pytest.raises(ValueError, match="invalid policy rollout contract"):
+        load_rollout_spec(path)
+
+
+def test_replan_interval_defaults_to_checkpoint_and_validates_chunk_size():
+    assert resolve_replan_interval(None, checkpoint_steps=100, chunk_size=100) == 100
+    assert resolve_replan_interval(10, checkpoint_steps=100, chunk_size=100) == 10
+    with pytest.raises(ValueError, match="positive"):
+        resolve_replan_interval(0, checkpoint_steps=100, chunk_size=100)
+    with pytest.raises(ValueError, match="chunk_size"):
+        resolve_replan_interval(101, checkpoint_steps=100, chunk_size=100)
+
+
+def test_teacher_action_error_summary_separates_model_and_limiter_error():
+    rows = [
+        {
+            "predicted": [110, 0, 0, 0, 0, 0],
+            "applied": [6, 0, 0, 0, 0, 0],
+            "expert": [5, 0, 0, 0, 0, 0],
+            "prediction_safety": {
+                "hard_range_violation_count": 1,
+                "delta_limited_count": 1,
+                "maximum_hard_range_excess_calibrated": 10.0,
+            },
+            "expert_safety": {
+                "hard_range_violation_count": 0,
+                "delta_limited_count": 0,
+                "maximum_hard_range_excess_calibrated": 0.0,
+            },
+        },
+        {
+            "predicted": [5, 0, 0, 0, 0, 0],
+            "applied": [5, 0, 0, 0, 0, 0],
+            "expert": [5, 0, 0, 0, 0, 0],
+            "prediction_safety": {
+                "hard_range_violation_count": 0,
+                "delta_limited_count": 0,
+                "maximum_hard_range_excess_calibrated": 0.0,
+            },
+            "expert_safety": {
+                "hard_range_violation_count": 0,
+                "delta_limited_count": 0,
+                "maximum_hard_range_excess_calibrated": 0.0,
+            },
+        },
+    ]
+    summary = summarize_action_errors(rows)
+    assert summary["sample_count"] == 2
+    assert summary["raw_prediction_error"]["mean_l2"] == pytest.approx(52.5)
+    assert summary["applied_prediction_error"]["mean_l2"] == pytest.approx(0.5)
+    assert summary["prediction_safety"]["hard_range_violation_count"] == 1
+    assert summary["expert_safety"]["delta_limited_count"] == 0
+
+
 def test_interface_smoke_acceptance_reports_task_success_without_requiring_it():
     spec = load_rollout_spec(CONFIG)
     results = [
@@ -195,6 +331,43 @@ def test_v010_holdout_builder_preserves_high_seeds_and_stratifies_smoke(tmp_path
     assert spec["scenes"][1]["seed"] == 2**63 + 10
     assert spec["holdout_source"]["evaluated_scene_count"] == 2
     assert spec["acceptance"]["required_completed_episodes"] == 2
+
+
+def test_v010_holdout_builder_selects_explicit_balanced_diagnostic_indexes(tmp_path):
+    campaign_root, template = _write_campaign_fixture(tmp_path)
+    spec = build_rollout_spec(
+        template,
+        campaign_root,
+        scene_indexes=(0, 1, 2, 10, 11, 12),
+    )
+    assert [scene["scene_id"] for scene in spec["scenes"]] == [
+        "holdout_00",
+        "holdout_01",
+        "holdout_02",
+        "holdout_10",
+        "holdout_11",
+        "holdout_12",
+    ]
+    assert {scene["object_variant_id"] for scene in spec["scenes"]} == {
+        "red_40mm_40g",
+        "blue_30mm_30g",
+    }
+    assert {scene["region_band"] for scene in spec["scenes"]} == {
+        "core",
+        "middle",
+        "outer",
+    }
+    assert spec["acceptance"]["required_completed_episodes"] == 6
+
+
+def test_v010_holdout_builder_rejects_invalid_explicit_indexes(tmp_path):
+    campaign_root, template = _write_campaign_fixture(tmp_path)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        build_rollout_spec(template, campaign_root, scene_limit=2, scene_indexes=(0, 10))
+    with pytest.raises(ValueError, match="unique"):
+        build_rollout_spec(template, campaign_root, scene_indexes=(0, 0))
+    with pytest.raises(ValueError, match="out-of-range"):
+        build_rollout_spec(template, campaign_root, scene_indexes=(20,))
 
 
 def test_v010_holdout_builder_rejects_collection_overlap(tmp_path):

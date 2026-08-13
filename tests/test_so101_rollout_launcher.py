@@ -24,7 +24,7 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
         "  fi\n"
         "  exit 0\n"
         "fi\n"
-        "if [[ \"$1\" == run && \"$2\" == -d ]]; then touch \"$TEST_POLICY_STARTED\"; echo policy-container; exit 0; fi\n"
+        "if [[ \"$1\" == run && \"$2\" == -d ]]; then printf '%s\\n' \"$@\" > \"$TEST_POLICY_ARGS\"; touch \"$TEST_POLICY_STARTED\"; echo policy-container; exit 0; fi\n"
         "if [[ \"$1\" == inspect || \"$1\" == logs || \"$1\" == stop ]]; then exit 0; fi\n"
         "mkdir -p \"$TEST_REPORT_ROOT\"\n"
         "printf '%s\\n' '{\"status\":\"PASS\"}' > \"$TEST_REPORT_ROOT/report.json\"\n"
@@ -43,22 +43,27 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
     (checkpoint / "model.safetensors").write_bytes(b"model")
     asset = tmp_path / "SO-ARM101-USD.usd"
     asset.touch()
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    spec = data_root / "spec with spaces.json"
+    spec.write_text('{"control":{"replan_interval_steps":10}}')
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
-        "FARPOINT_DATA_ROOT": str(tmp_path / "data"),
+        "FARPOINT_DATA_ROOT": str(data_root),
         "FARPOINT_SO101_ASSET": str(asset),
         "FARPOINT_ACT_CHECKPOINT": str(checkpoint),
         "FARPOINT_GIT_COMMIT": "a" * 40,
         "TEST_POLICY_STARTED": str(tmp_path / "policy-started"),
-        "TEST_REPORT_ROOT": str(tmp_path / "data" / "run"),
+        "TEST_POLICY_ARGS": str(tmp_path / "policy-args"),
+        "TEST_REPORT_ROOT": str(data_root / "run"),
     }
     completed = subprocess.run(
         [
             str(LAUNCHER),
             "headless",
             "--spec",
-            "/workspace/project/configs/evaluations/spec with spaces.json",
+            "/workspace/farpoint-data/spec with spaces.json",
             "--output-root",
             "/workspace/farpoint-data/run",
         ],
@@ -78,3 +83,62 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
     assert command[command.index("--checkpoint") + 1] == "/workspace/policy"
     assert command[command.index("--spec") + 1].endswith("spec with spaces.json")
     assert command.count("--enable_cameras") == 1
+    policy_arguments = (tmp_path / "policy-args").read_text().splitlines()
+    assert policy_arguments[policy_arguments.index("--replan-interval-steps") + 1] == "10"
+
+
+def test_rollout_launcher_mounts_frozen_expert_replay_manifest(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == image && \"$2\" == inspect ]]; then echo sha256:$(printf a%.0s {1..64}); exit 0; fi\n"
+        "if [[ \"$1\" == run && \"$2\" == -d ]]; then printf '%s\\n' \"$@\" > \"$TEST_POLICY_ARGS\"; touch \"$TEST_POLICY_STARTED\"; echo policy; exit 0; fi\n"
+        "if [[ \"$1\" == inspect || \"$1\" == logs || \"$1\" == stop ]]; then exit 0; fi\n"
+        "mkdir -p \"$TEST_REPORT_ROOT\"; echo '{\"status\":\"PASS\"}' > \"$TEST_REPORT_ROOT/report.json\"\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+    curl = bin_dir / "curl"
+    curl.write_text("#!/usr/bin/env bash\n[[ -f \"$TEST_POLICY_STARTED\" ]]\n")
+    curl.chmod(0o755)
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    spec = data_root / "spec.json"
+    spec.write_text('{"control":{"replan_interval_steps":10}}')
+    replay = data_root / "replay.json"
+    replay.write_text('{"schema_version":"farpoint.expert-action-replay.v1"}')
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "model.safetensors").write_bytes(b"model")
+    asset = tmp_path / "asset.usd"
+    asset.touch()
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "FARPOINT_DATA_ROOT": str(data_root),
+        "FARPOINT_SO101_ASSET": str(asset),
+        "FARPOINT_ACT_CHECKPOINT": str(checkpoint),
+        "FARPOINT_ACTION_REPLAY_MANIFEST": str(replay),
+        "FARPOINT_GIT_COMMIT": "b" * 40,
+        "TEST_POLICY_STARTED": str(tmp_path / "started"),
+        "TEST_POLICY_ARGS": str(tmp_path / "policy-args"),
+        "TEST_REPORT_ROOT": str(data_root / "run"),
+    }
+    subprocess.run(
+        [
+            str(LAUNCHER),
+            "headless",
+            "--spec",
+            "/workspace/farpoint-data/spec.json",
+            "--output-root",
+            "/workspace/farpoint-data/run",
+        ],
+        check=True,
+        env=env,
+    )
+    policy_arguments = (tmp_path / "policy-args").read_text().splitlines()
+    replay_arg = policy_arguments.index("--replay-manifest")
+    assert policy_arguments[replay_arg + 1] == "/workspace/farpoint-data/replay.json"
+    assert f"{data_root}:/workspace/farpoint-data:ro" in policy_arguments
