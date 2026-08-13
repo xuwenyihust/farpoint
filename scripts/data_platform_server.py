@@ -21,6 +21,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from data_platform_cli import build_reports  # noqa: E402
 from farpoint.campaign_live import CampaignDashboardIndex  # noqa: E402
+from farpoint.policy_rollout_dashboard import PolicyRolloutDashboardIndex  # noqa: E402
 from farpoint.registry import EpisodeRegistry  # noqa: E402
 from farpoint.retention import RetentionManager  # noqa: E402
 
@@ -86,9 +87,7 @@ def build_preview_manifest(episodes_root, episode_id, episode_dir=None):
         raise ValueError("invalid episode id")
     if episode_dir is None:
         try:
-            episode_dir = resolve_episode_asset(
-                episodes_root, f"{episode_id}/metadata.json"
-            ).parent
+            episode_dir = resolve_episode_asset(episodes_root, f"{episode_id}/metadata.json").parent
         except ValueError as error:
             raise FileNotFoundError(episode_id) from error
     else:
@@ -129,9 +128,7 @@ def build_episode_detail(episode_dir, episode_id, registry_row=None):
         "episode_id": episode_id,
         "schema_version": metadata.get("schema_version"),
         "task": {
-            "task_id": task.get("task_id")
-            or identity.get("task_id")
-            or metadata.get("task_name"),
+            "task_id": task.get("task_id") or identity.get("task_id") or metadata.get("task_name"),
             "instruction": task.get("instruction"),
             "manipulated_entity_id": task.get("manipulated_entity_id"),
             "target_entity_id": task.get("target_entity_id"),
@@ -183,6 +180,7 @@ class PlatformState:
         incomplete_timeout,
         episode_roots=None,
         campaign_roots=None,
+        policy_rollout_roots=None,
     ):
         self.registry = EpisodeRegistry(
             outputs_root,
@@ -190,9 +188,8 @@ class PlatformState:
             episode_roots=episode_roots,
         )
         self.retention = RetentionManager(self.registry)
-        self.campaigns = CampaignDashboardIndex(
-            campaign_roots or [], stale_after_seconds=60
-        )
+        self.campaigns = CampaignDashboardIndex(campaign_roots or [], stale_after_seconds=60)
+        self.policy_rollouts = PolicyRolloutDashboardIndex(policy_rollout_roots or [])
         self.scan_interval = scan_interval
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -256,43 +253,38 @@ class PlatformHandler(BaseHTTPRequestHandler):
                     row["cameras"] = []
                 row["preview_url"] = self._artifact_url(row.get("preview_path"), row)
                 row["report_url"] = (
-                    f"/reports/{row['episode_id']}/index.html"
-                    if row.get("report_path")
-                    else None
+                    f"/reports/{row['episode_id']}/index.html" if row.get("report_path") else None
                 )
             self._json({"episodes": rows, "count": len(rows)})
         elif parsed.path == "/api/live-runs":
             self._json({"live_runs": self.state.campaigns.live_runs()})
         elif parsed.path == "/api/collections":
             self._json({"collections": self.state.campaigns.collections()})
+        elif parsed.path == "/api/policy-rollouts":
+            self._json({"policy_rollouts": self.state.policy_rollouts.list_rollouts()})
+        elif parsed.path.startswith("/api/policy-rollouts/"):
+            rollout_id = unquote(parsed.path.removeprefix("/api/policy-rollouts/"))
+            try:
+                self._json(self.state.policy_rollouts.detail(rollout_id))
+            except FileNotFoundError:
+                self.send_error(HTTPStatus.NOT_FOUND)
         elif parsed.path == "/api/events":
             self._serve_campaign_events(parsed)
-        elif (
-            parsed.path.startswith("/api/campaigns/")
-            and parsed.path.endswith("/active-preview")
-        ):
+        elif parsed.path.startswith("/api/campaigns/") and parsed.path.endswith("/active-preview"):
             campaign_id = unquote(
-                parsed.path.removeprefix("/api/campaigns/").removesuffix(
-                    "/active-preview"
-                )
+                parsed.path.removeprefix("/api/campaigns/").removesuffix("/active-preview")
             )
             try:
                 self._serve_file(
-                    self.state.campaigns.campaign_root(campaign_id)
-                    / "active-preview.jpg"
+                    self.state.campaigns.campaign_root(campaign_id) / "active-preview.jpg"
                 )
             except FileNotFoundError:
                 self.send_error(HTTPStatus.NOT_FOUND)
-        elif (
-            parsed.path.startswith("/api/campaigns/")
-            and "/segments/" in parsed.path
-        ):
+        elif parsed.path.startswith("/api/campaigns/") and "/segments/" in parsed.path:
             relative = parsed.path.removeprefix("/api/campaigns/")
             campaign_id, segment_id = map(unquote, relative.split("/segments/", 1))
             try:
-                self._json(
-                    self.state.campaigns.segment_detail(campaign_id, segment_id)
-                )
+                self._json(self.state.campaigns.segment_detail(campaign_id, segment_id))
             except FileNotFoundError:
                 self.send_error(HTTPStatus.NOT_FOUND)
         elif parsed.path.startswith("/api/campaigns/"):
@@ -301,13 +293,8 @@ class PlatformHandler(BaseHTTPRequestHandler):
                 self._json(self.state.campaigns.campaign_detail(campaign_id))
             except FileNotFoundError:
                 self.send_error(HTTPStatus.NOT_FOUND)
-        elif (
-            parsed.path.startswith("/api/episodes/")
-            and parsed.path.endswith("/preview")
-        ):
-            episode_id = parsed.path.removeprefix("/api/episodes/").removesuffix(
-                "/preview"
-            )
+        elif parsed.path.startswith("/api/episodes/") and parsed.path.endswith("/preview"):
+            episode_id = parsed.path.removeprefix("/api/episodes/").removesuffix("/preview")
             try:
                 row = self.state.registry.get_episode(episode_id)
                 if not row or not row.get("artifact_path"):
@@ -331,11 +318,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
                 row = self.state.registry.get_episode(episode_id)
                 if not row or not row.get("artifact_path"):
                     raise FileNotFoundError(episode_id)
-                self._json(
-                    build_episode_detail(
-                        row["artifact_path"], episode_id, registry_row=row
-                    )
-                )
+                self._json(build_episode_detail(row["artifact_path"], episode_id, registry_row=row))
             except FileNotFoundError:
                 self.send_error(HTTPStatus.NOT_FOUND)
             except ValueError as error:
@@ -392,6 +375,18 @@ class PlatformHandler(BaseHTTPRequestHandler):
             self._serve_episode_asset(parsed.path.removeprefix("/episodes/"))
         elif parsed.path.startswith("/files/episodes/"):
             self._serve_episode_asset(parsed.path.removeprefix("/files/episodes/"))
+        elif parsed.path.startswith("/policy-rollouts/"):
+            relative = parsed.path.removeprefix("/policy-rollouts/")
+            try:
+                rollout_id, marker, scene_id, filename = map(unquote, relative.split("/", 3))
+                if marker != "episodes" or not filename.endswith(".mp4"):
+                    raise FileNotFoundError(relative)
+                camera_id = filename.removesuffix(".mp4")
+                self._serve_file(
+                    self.state.policy_rollouts.video_path(rollout_id, scene_id, camera_id)
+                )
+            except (FileNotFoundError, ValueError):
+                self.send_error(HTTPStatus.NOT_FOUND)
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -548,10 +543,41 @@ class PlatformHandler(BaseHTTPRequestHandler):
             return
         content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         size = path.stat().st_size
-        self.send_response(HTTPStatus.OK)
+        start, end = 0, size - 1
+        range_header = self.headers.get("Range")
+        partial = False
+        if range_header and range_header.startswith("bytes="):
+            try:
+                requested = range_header.removeprefix("bytes=")
+                if "," in requested:
+                    raise ValueError("multiple byte ranges are unsupported")
+                requested_start, requested_end = requested.split("-", 1)
+                if not requested_start:
+                    suffix_length = int(requested_end)
+                    if suffix_length <= 0:
+                        raise ValueError("invalid suffix byte range")
+                    start = max(0, size - suffix_length)
+                    end = size - 1
+                else:
+                    start = int(requested_start)
+                    end = int(requested_end) if requested_end else size - 1
+                if start < 0 or end < start or start >= size:
+                    raise ValueError("invalid byte range")
+                end = min(end, size - 1)
+                partial = True
+            except ValueError:
+                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                self._security_headers()
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+        self.send_response(HTTPStatus.PARTIAL_CONTENT if partial else HTTPStatus.OK)
         self._security_headers()
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(size))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(end - start + 1))
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header(
             "Cache-Control",
             "public, max-age=86400, immutable"
@@ -560,8 +586,11 @@ class PlatformHandler(BaseHTTPRequestHandler):
         )
         self.end_headers()
         with path.open("rb") as handle:
-            while chunk := handle.read(1024 * 1024):
+            handle.seek(start)
+            remaining = end - start + 1
+            while remaining and (chunk := handle.read(min(1024 * 1024, remaining))):
                 self.wfile.write(chunk)
+                remaining -= len(chunk)
 
     def _security_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -569,7 +598,8 @@ class PlatformHandler(BaseHTTPRequestHandler):
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; img-src 'self' data:; "
-            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'",
+            "media-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'",
         )
 
     def _artifact_url(self, path, row):
@@ -599,8 +629,7 @@ class PlatformHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format_string, *args):
         sys.stderr.write(
-            f"{self.address_string()} [{self.log_date_time_string()}] "
-            f"{format_string % args}\n"
+            f"{self.address_string()} [{self.log_date_time_string()}] {format_string % args}\n"
         )
 
 
@@ -665,6 +694,13 @@ def main():
         type=Path,
         help="Read-only root containing collection-campaign.v1 directories.",
     )
+    parser.add_argument(
+        "--policy-rollout-root",
+        action="append",
+        default=[],
+        type=Path,
+        help="Read-only root containing immutable policy rollout evidence.",
+    )
     args = parser.parse_args()
     environment_roots = [
         Path(value)
@@ -676,12 +712,21 @@ def main():
         for value in os.environ.get("FARPOINT_CAMPAIGN_ROOTS", "").split(os.pathsep)
         if value
     ]
+    environment_policy_rollout_roots = [
+        Path(value)
+        for value in os.environ.get("FARPOINT_POLICY_ROLLOUT_ROOTS", "").split(os.pathsep)
+        if value
+    ]
     state = PlatformState(
         args.outputs_root,
         max(args.scan_interval, 5),
         max(args.incomplete_timeout, 60),
         episode_roots=[*environment_roots, *args.episode_root],
         campaign_roots=[*environment_campaign_roots, *args.campaign_root],
+        policy_rollout_roots=[
+            *environment_policy_rollout_roots,
+            *args.policy_rollout_root,
+        ],
     )
     state.refresh(reports=True)
     watcher = threading.Thread(target=state.watch, daemon=True)
