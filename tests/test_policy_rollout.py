@@ -318,6 +318,26 @@ def test_holdout_acceptance_gates_violation_magnitude_not_clipped_count(tmp_path
     assert "safety envelope" in failed["acceptance_errors"][0]
 
 
+def test_acceptance_can_require_zero_delta_limited_actions():
+    spec = load_rollout_spec(CONFIG)
+    spec["acceptance"]["maximum_delta_limited_actions"] = 0
+    results = [
+        {
+            "scene_id": scene["scene_id"],
+            "execution_status": "FINISHED",
+            "task_success": False,
+            "nonfinite_action_count": 0,
+            "hard_range_violation_count": 0,
+            "delta_limited_count": int(index == 0),
+        }
+        for index, scene in enumerate(spec["scenes"])
+    ]
+    report = evaluate_rollout_acceptance(spec, results)
+    assert report["status"] == "FAIL"
+    assert report["delta_limited_count"] == 1
+    assert "delta-limited" in report["acceptance_errors"][0]
+
+
 def test_v010_holdout_builder_preserves_high_seeds_and_stratifies_smoke(tmp_path):
     campaign_root, template = _write_campaign_fixture(tmp_path)
     spec = build_rollout_spec(template, campaign_root, scene_limit=2)
