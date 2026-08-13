@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import io
 import json
@@ -11,6 +12,7 @@ import os
 import signal
 import sys
 import traceback
+import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -108,6 +110,14 @@ def parse_args():
         help="Versioned dual-camera profile used by v0.1.0 collection and diagnostics.",
     )
     parser.add_argument(
+        "--recovery-runtime",
+        type=Path,
+        help=(
+            "Run a frozen ACT policy until a versioned live-handoff trigger, "
+            "then continue the same PhysX state with the Oracle."
+        ),
+    )
+    parser.add_argument(
         "--campaign-root",
         type=Path,
         help="Campaign directory for atomic status, heartbeat, preview, and events.",
@@ -163,6 +173,7 @@ from farpoint_so101_env.mdp import (  # noqa: E402
     SO101_GRIPPER_STATIC_FRICTION,
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
+from farpoint.demonstration import recovery_demonstration  # noqa: E402
 from farpoint.camera_profiles import (  # noqa: E402
     build_camera_records,
     camera_cfg_drift_errors,
@@ -215,8 +226,24 @@ from farpoint.oracle import (  # noqa: E402
     oriented_box_footprint_inside_target,
     quaternion_direction_error,
 )
+from farpoint.policy_rollout import (  # noqa: E402
+    constrain_policy_action,
+    resolve_action_safety_profile,
+)
+from farpoint.recovery_runtime import (  # noqa: E402
+    RecoveryTriggerDetector,
+    load_recovery_runtime,
+    recovery_descent_duration_seconds,
+    scene_binding,
+)
 from farpoint.scene_entities import bind_scene_entities  # noqa: E402
-from farpoint.so101 import LEROBOT_JOINT_NAMES, SIM_JOINT_NAMES, mapping_metadata  # noqa: E402
+from farpoint.so101 import (  # noqa: E402
+    LEROBOT_JOINT_NAMES,
+    SIM_JOINT_NAMES,
+    lerobot_to_radians,
+    mapping_metadata,
+    radians_to_lerobot,
+)
 from farpoint.so101_grasp_geometry import (  # noqa: E402
     SO101_APERTURE_REFERENCE_IN_GRIPPER_M,
     SO101_CAPTURE_CLOSING_AXIS_LOCAL,
@@ -313,6 +340,40 @@ def _image(camera, device):
     return np.asarray(_numpy(camera.data.output["rgb"][0, ..., :3]), dtype=np.uint8)
 
 
+def _policy_request(path: str, payload: dict | None = None) -> dict:
+    data = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+    policy_url = os.environ.get("FARPOINT_ACT_POLICY_URL", "http://127.0.0.1:8766")
+    request = urllib.request.Request(
+        f"{policy_url.rstrip('/')}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"} if data is not None else {},
+        method="POST" if data is not None else "GET",
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read())
+
+
+def _jpeg_payload(image: np.ndarray) -> str:
+    buffer = io.BytesIO()
+    Image.fromarray(image, mode="RGB").save(buffer, format="JPEG", quality=95)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str):
+    response = _policy_request(
+        "/action",
+        {
+            "state": state.tolist(),
+            "images_jpeg": {
+                f"observation.images.{camera_id}": _jpeg_payload(image)
+                for camera_id, image in images.items()
+            },
+            "task": task,
+        },
+    )
+    return np.asarray(response["action"], dtype=np.float32), response.get("execution", {})
+
+
 def _aim_front_camera(scene, device) -> None:
     """Set the fixed front camera from an unambiguous eye/target pair."""
     eye = torch.tensor([[0.42, -0.38, 0.34]], dtype=torch.float32, device=device)
@@ -383,6 +444,154 @@ def _body_index(robot) -> int:
     if len(indexes) != 1:
         raise RuntimeError(f"expected one SO-101 gripper body, got {indexes}")
     return int(indexes[0])
+
+
+def _run_recovery_handoff(
+    env, trial, active_object, sensors, root, runtime, *, oracle_profile_id
+):
+    """Execute ACT to a measured pre-lift trigger without resetting the scene."""
+    binding = scene_binding(runtime, trial["variation_id"])
+    policy = runtime["source_policy"]
+    runtime_git_commit = os.environ.get("FARPOINT_GIT_COMMIT", "")
+    if len(runtime_git_commit) != 40:
+        raise RuntimeError("recovery runtime requires an exact 40-character git commit")
+    policy_provenance = {
+        **policy,
+        "rollout_git_commit": runtime_git_commit,
+    }
+    health = _policy_request("/health")
+    if health.get("status") != "ready":
+        raise RuntimeError("recovery source policy server is not ready")
+    if health.get("model_sha256") != policy["model_sha256"]:
+        raise RuntimeError("recovery source policy checkpoint identity mismatch")
+    policy_execution = health.get("action_execution") or {}
+    if int(policy_execution.get("replan_interval_steps", -1)) != int(
+        runtime["control"]["replan_interval_steps"]
+    ):
+        raise RuntimeError("recovery source policy replan interval mismatch")
+    if health.get("camera_features") != [
+        "observation.images.front",
+        "observation.images.wrist",
+    ]:
+        raise RuntimeError("recovery source policy camera feature mismatch")
+    _policy_request("/reset", {"scene_id": binding["source_scene_id"]})
+
+    scene = env.scene
+    robot = scene["robot"]
+    body_index = _body_index(robot)
+    control = runtime["control"]
+    safety_profile = resolve_action_safety_profile(control)
+    detector = RecoveryTriggerDetector(runtime["trigger"])
+    physics_steps = int(control["physics_hz"]) // int(control["policy_hz"])
+    previous_applied = radians_to_lerobot(
+        _numpy(robot.data.joint_pos[0]).astype(np.float32), clip=True
+    )
+    initial_z = float(_numpy(active_object.data.root_pos_w[0])[2])
+    rows = []
+    trigger = None
+    snapshot = None
+    maximum_steps = int(runtime["trigger"]["maximum_policy_steps_before_handoff"])
+    for policy_step in range(maximum_steps):
+        images = {
+            "front": _image(scene["front_camera"], env.device),
+            "wrist": _image(scene["wrist_camera"], env.device),
+        }
+        joint_radians = _numpy(robot.data.joint_pos[0]).astype(np.float32)
+        state = radians_to_lerobot(joint_radians, clip=True)
+        raw_action, execution = _policy_action(
+            state,
+            images,
+            "Pick up the cube and place it on the green target pad.",
+        )
+        applied, safety = constrain_policy_action(
+            raw_action,
+            state,
+            action_safety_profile=safety_profile,
+            previous_applied_action=previous_applied,
+        )
+        previous_applied = applied.copy()
+        target_radians = lerobot_to_radians(applied, clip=True)
+        target = torch.tensor([target_radians], dtype=torch.float32, device=env.device)
+        for _ in range(physics_steps):
+            env.step(target)
+        object_pose = _numpy(active_object.data.root_pose_w[0]).astype(np.float32)
+        object_velocity = _numpy(active_object.data.root_lin_vel_w[0]).astype(np.float32)
+        gripper_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).astype(np.float32)
+        forces = _cube_contact_forces(sensors)
+        lifted = max(forces) >= 0.1 and float(object_pose[2]) > initial_z + 0.005
+        trigger = detector.observe(
+            policy_step=policy_step,
+            gripper_position_m=gripper_pose[:3],
+            object_position_m=object_pose[:3],
+            cube_lifted=lifted,
+            hard_range_violation_count=safety["hard_range_violation_count"],
+            command_slew_limited_count=safety["command_slew_limited_count"],
+        )
+        rows.append(
+            {
+                "policy_step": policy_step,
+                "state_calibrated": state.tolist(),
+                "raw_action_calibrated": raw_action.tolist(),
+                "applied_action_calibrated": applied.tolist(),
+                "policy_execution": execution,
+                "action_safety": safety,
+                "object_pose_xyzw": object_pose.tolist(),
+                "object_velocity_mps": object_velocity.tolist(),
+                "contact_forces_n": list(forces),
+                "triggered": trigger is not None,
+            }
+        )
+        if trigger is not None:
+            snapshot = {
+                "policy_step": policy_step,
+                "joint_positions_rad": _numpy(robot.data.joint_pos[0]).tolist(),
+                "joint_velocities_rad_s": _numpy(robot.data.joint_vel[0]).tolist(),
+                "joint_position_target_rad": _numpy(
+                    robot.data.joint_pos_target[0]
+                ).tolist(),
+                "object_pose_xyzw": object_pose.tolist(),
+                "object_linear_velocity_mps": object_velocity.tolist(),
+                "object_angular_velocity_rad_s": _numpy(
+                    active_object.data.root_ang_vel_w[0]
+                ).tolist(),
+                "contact_forces_n": list(forces),
+                "applied_policy_action_calibrated": applied.tolist(),
+            }
+            break
+    (root / "pre-handoff-actions.jsonl").write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    if trigger is None or snapshot is None:
+        raise RuntimeError(
+            "recovery handoff was not admitted before the bounded pre-lift deadline"
+        )
+    demonstration = recovery_demonstration(
+        oracle_profile_id=oracle_profile_id,
+        source_policy=policy_provenance,
+        trigger_id=runtime["trigger"]["trigger_id"],
+        failure_class=trigger["failure_class"],
+        control_step=int(trigger["policy_step"]),
+        stage=trigger["stage"],
+        trigger_evidence=trigger,
+        source_rollout_id=binding["source_rollout_id"],
+        source_scene_id=binding["source_scene_id"],
+        state_snapshot=snapshot,
+        recovery_strategy_id=runtime["trigger"]["strategy_id"],
+    )
+    _write_json(
+        root / "handoff.json",
+        {
+            "runtime_id": runtime["runtime_id"],
+            "binding": binding,
+            "trigger": trigger,
+            "state_snapshot": snapshot,
+            "demonstration": demonstration,
+        },
+    )
+    return demonstration, snapshot
 
 
 def _ik_action(
@@ -1600,6 +1809,7 @@ def run_attempt(
     camera_profile=None,
     live_publisher=None,
     v010_context=None,
+    recovery_runtime=None,
 ):
     from farpoint.so101_mass_feasibility import audit_resolved_mass
 
@@ -1744,6 +1954,25 @@ def run_attempt(
             "SO-101 arm failed reset HOME restoration: "
             f"maximum_error_rad={maximum_home_error_rad}"
         )
+    body_index = _body_index(robot)
+    home_ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
+    demonstration = None
+    recovery_snapshot = None
+    if recovery_runtime is not None:
+        demonstration, recovery_snapshot = _run_recovery_handoff(
+            env,
+            trial,
+            active_object,
+            contact,
+            root,
+            recovery_runtime,
+            oracle_profile_id=v010_context["plan"]["oracle_profile_id"],
+        )
+        run_state["recovery"] = {
+            "runtime_id": recovery_runtime["runtime_id"],
+            "handoff": copy.deepcopy(demonstration["intervention"]["handoff"]),
+        }
+        _write_json(root / "run-state.json", run_state)
     print(
         "SO101_RESET_SUPPORT "
         f"position={measured_object_position.tolist()} "
@@ -1760,11 +1989,15 @@ def run_attempt(
         f"joint_targets={_numpy(robot.data.joint_pos_target[0]).tolist()}",
         flush=True,
     )
-    body_index = _body_index(robot)
-    home_ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
-    open_jaw = float(robot.data.joint_pos[0, 5].item())
+    # Recovery can hand off while ACT is already closing. Release success must
+    # still mean the authored fully-open jaw, not the incidental handoff angle.
+    open_jaw = float(SO101_HOME_JOINTS[5])
     closed_jaw = float(np.deg2rad(-10.0))
-    object_position = np.asarray(object_spec["position_m"], dtype=np.float32)
+    object_position = (
+        np.asarray(recovery_snapshot["object_pose_xyzw"][:3], dtype=np.float32)
+        if recovery_snapshot is not None
+        else np.asarray(object_spec["position_m"], dtype=np.float32)
+    )
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
     target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
@@ -1807,7 +2040,7 @@ def run_attempt(
             object_spec["dimensions_m"][0]
         ),
     )
-    commanded_joints = _numpy(initial_joints[0]).astype(np.float32).copy()
+    commanded_joints = _numpy(robot.data.joint_pos[0]).astype(np.float32).copy()
     cube_was_lifted = False
     grasp_hold_pose = None
     grasp_hold_nominal_pose = None
@@ -2075,7 +2308,9 @@ def run_attempt(
             if phase is OraclePhase.PREGRASP:
                 final_target = distal_pregrasp
             else:
-                insertion_steps = schedule.steps_for_seconds(2.3333333333)
+                insertion_steps = schedule.steps_for_seconds(
+                    recovery_descent_duration_seconds(recovery_runtime)
+                )
                 descent_fraction = min(
                     1.0, (machine.phase_steps + 1) / insertion_steps
                 )
@@ -3139,6 +3374,7 @@ def run_attempt(
                 "mass": copy.deepcopy(mass_audit),
                 "reset_support": copy.deepcopy(reset_support_audit),
             },
+            demonstration=demonstration,
         )
     errors = validate_contract(metadata)
     if errors:
@@ -3168,6 +3404,11 @@ def main():
         else None
     )
     plan = _read_json(args_cli.plan) if args_cli.plan.exists() else generate_variation_plan(config)
+    recovery_runtime = (
+        load_recovery_runtime(args_cli.recovery_runtime)
+        if args_cli.recovery_runtime is not None
+        else None
+    )
     v010_context = None
     if is_v010_episode_plan(plan):
         if not args_cli.require_dual_camera:
@@ -3194,6 +3435,19 @@ def main():
             "plan": plan,
             "simulator_image_digest": simulator_image_digest,
         }
+    if recovery_runtime is not None:
+        if v010_context is None:
+            raise ValueError("recovery collection requires an episode v4 campaign plan")
+        if not args_cli.require_dual_camera:
+            raise ValueError("recovery collection requires synchronized front+wrist cameras")
+        plan_variations = {trial["variation_id"] for trial in plan["trials"]}
+        runtime_variations = {
+            scene["variation_id"] for scene in recovery_runtime["scenes"]
+        }
+        if plan_variations != runtime_variations:
+            raise ValueError(
+                "recovery runtime scene bindings must exactly match plan variations"
+            )
     watchdog_policy = (
         load_watchdog_policy(args_cli.watchdog_policy)
         if args_cli.watchdog_policy is not None
@@ -3348,6 +3602,7 @@ def main():
                     camera_profile,
                     live_publisher,
                     v010_context,
+                    recovery_runtime,
                 )
             except Exception as error:
                 details = traceback.format_exc()
