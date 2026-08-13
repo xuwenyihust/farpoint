@@ -5,6 +5,7 @@ import pytest
 from farpoint.recovery_runtime import (
     RecoveryTriggerDetector,
     load_recovery_runtime,
+    recovery_descent_duration_seconds,
     scene_binding,
 )
 
@@ -54,6 +55,10 @@ def runtime_spec():
             "consecutive_safety_event_steps": 2,
             "require_not_lifted": True,
         },
+        "oracle_handoff_profile": {
+            "profile_id": "gentle-descent-test-v1",
+            "descent_duration_seconds": 4.0,
+        },
         "scenes": [
             {
                 "variation_id": "variation-0",
@@ -70,6 +75,8 @@ def test_runtime_contract_and_binding(tmp_path):
     path.write_text(json.dumps(runtime_spec()))
     loaded = load_recovery_runtime(path)
     assert scene_binding(loaded, "variation-0")["source_partition"] == "train"
+    assert recovery_descent_duration_seconds(loaded) == pytest.approx(4.0)
+    assert recovery_descent_duration_seconds(None) == pytest.approx(2.3333333333)
     with pytest.raises(ValueError, match="no unique binding"):
         scene_binding(loaded, "missing")
 

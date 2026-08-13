@@ -162,6 +162,7 @@ def build_recovery_plan(
         "source_policy": deepcopy(config["source_policy"]),
         "control": deepcopy(config["control"]),
         "trigger": deepcopy(config["trigger"]),
+        "oracle_handoff_profile": deepcopy(config["oracle_handoff_profile"]),
         "scenes": [
             {
                 "variation_id": trial["variation_id"],

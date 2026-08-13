@@ -4,7 +4,7 @@
   "title": "Farpoint live recovery runtime contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "runtime_id", "source_policy", "control", "trigger", "scenes"],
+  "required": ["schema_version", "runtime_id", "source_policy", "control", "trigger", "oracle_handoff_profile", "scenes"],
   "properties": {
     "schema_version": {"const": "farpoint.recovery-runtime.v1"},
     "runtime_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
@@ -60,6 +60,14 @@
         "minimum_progress_m": {"type": "number", "exclusiveMinimum": 0},
         "consecutive_safety_event_steps": {"type": "integer", "minimum": 1},
         "require_not_lifted": {"const": true}
+      }
+    },
+    "oracle_handoff_profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "descent_duration_seconds"],
+      "properties": {
+        "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+        "descent_duration_seconds": {"type": "number", "minimum": 2.3333333333, "maximum": 8.0}
       }
     },
     "scenes": {

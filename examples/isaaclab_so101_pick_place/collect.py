@@ -233,6 +233,7 @@ from farpoint.policy_rollout import (  # noqa: E402
 from farpoint.recovery_runtime import (  # noqa: E402
     RecoveryTriggerDetector,
     load_recovery_runtime,
+    recovery_descent_duration_seconds,
     scene_binding,
 )
 from farpoint.scene_entities import bind_scene_entities  # noqa: E402
@@ -2307,7 +2308,9 @@ def run_attempt(
             if phase is OraclePhase.PREGRASP:
                 final_target = distal_pregrasp
             else:
-                insertion_steps = schedule.steps_for_seconds(2.3333333333)
+                insertion_steps = schedule.steps_for_seconds(
+                    recovery_descent_duration_seconds(recovery_runtime)
+                )
                 descent_fraction = min(
                     1.0, (machine.phase_steps + 1) / insertion_steps
                 )

@@ -1,6 +1,6 @@
 {
   "schema_version": "farpoint.recovery-plan-config.v1",
-  "config_version": "0.1.1-recovery.1",
+  "config_version": "0.1.1-recovery.2",
   "selection_seed": 20260814,
   "target_successes": 20,
   "objects": ["red-40mm-40g", "blue-30mm-30g"],
@@ -44,5 +44,9 @@
     "minimum_progress_m": 0.002,
     "consecutive_safety_event_steps": 20,
     "require_not_lifted": true
+  },
+  "oracle_handoff_profile": {
+    "profile_id": "so101-recovery-gentle-descent-v1",
+    "descent_duration_seconds": 4.0
   }
 }

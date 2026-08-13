@@ -40,6 +40,13 @@ def scene_binding(spec: dict[str, Any], variation_id: str) -> dict[str, Any]:
     return deepcopy(matches[0])
 
 
+def recovery_descent_duration_seconds(spec: dict[str, Any] | None) -> float:
+    """Resolve the versioned Oracle insertion duration for a live handoff."""
+    if spec is None:
+        return 2.3333333333
+    return float(spec["oracle_handoff_profile"]["descent_duration_seconds"])
+
+
 class RecoveryTriggerDetector:
     """Detect a bounded pre-lift deviation using measured closed-loop state."""
 
