@@ -11,6 +11,15 @@ from farpoint.recovery_replay import write_recovery_replay_bundle
 from test_episode_metadata_v4 import episode_v4
 
 
+ACTION_SAFETY_CALIBRATION = {
+    "reference_suite_id": "nominal-expert-replay",
+    "reference_report_sha256": "f" * 64,
+    "reference_minimum_delta_limited_actions_per_episode": 26,
+    "reference_maximum_delta_limited_actions_per_episode": 32,
+    "allowed_maximum_delta_limited_actions_per_episode": 45,
+}
+
+
 def _snapshot():
     return {
         "policy_step": 119,
@@ -116,12 +125,15 @@ def test_recovery_replay_binds_live_snapshot_and_exported_actions(tmp_path):
         output,
         scene_count=2,
         suite_id="recovery_replay_test",
+        action_safety_calibration=ACTION_SAFETY_CALIBRATION,
     )
     spec = load_rollout_spec(output / "spec.json")
     replay = json.loads((output / "replay-manifest.json").read_text())
     assert result["scene_count"] == 2
     assert spec["task"]["evaluation_class"] == "recovery_expert_replay"
     assert spec["acceptance"]["minimum_task_successes"] == 2
+    assert spec["acceptance"]["maximum_delta_limited_actions"] == 90
+    assert spec["recovery_replay_source"]["action_safety_calibration"] == ACTION_SAFETY_CALIBRATION
     assert spec["recovery_replay_source"]["selection_sha256"] == file_sha256(selection_path)
     assert spec["scenes"][0]["initial_state"]["policy_step"] == 119
     assert len(replay["scenes"][0]["actions_calibrated"]) == 2
@@ -156,6 +168,7 @@ def test_recovery_replay_rejects_non_train_episode(tmp_path):
             tmp_path / "out",
             scene_count=1,
             suite_id="invalid",
+            action_safety_calibration=ACTION_SAFETY_CALIBRATION,
         )
     except ValueError as error:
         assert "train" in str(error)
@@ -187,4 +200,35 @@ def test_recovery_replay_rejects_snapshot_hash_mismatch(tmp_path):
             tmp_path / "out",
             scene_count=1,
             suite_id="invalid_snapshot",
+            action_safety_calibration=ACTION_SAFETY_CALIBRATION,
+        )
+
+
+def test_recovery_replay_rejects_safety_bound_below_reference(tmp_path):
+    episode = tmp_path / "episode"
+    _write_episode(episode, "episode")
+    selection_path = tmp_path / "selection.json"
+    selection_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "collection_id": "recovery",
+                "episodes": [{"episode_dir": str(episode), "split": "train"}],
+            }
+        )
+    )
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text(json.dumps({"control": {}}))
+    invalid = {**ACTION_SAFETY_CALIBRATION}
+    invalid["allowed_maximum_delta_limited_actions_per_episode"] = 31
+    root = Path(__file__).resolve().parents[1]
+    with pytest.raises(ValueError, match="calibration bounds"):
+        write_recovery_replay_bundle(
+            selection_path,
+            root / "configs/evaluations/so101_act_v0_1_0_holdout_template.json",
+            runtime_path,
+            tmp_path / "out",
+            scene_count=1,
+            suite_id="invalid_bounds",
+            action_safety_calibration=invalid,
         )

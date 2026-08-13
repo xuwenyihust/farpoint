@@ -120,12 +120,23 @@
     },
     "recovery_replay_source": {
       "type": "object", "additionalProperties": false,
-      "required": ["campaign_id", "selection_sha256", "evaluated_episode_count", "state_restore"],
+      "required": ["campaign_id", "selection_sha256", "evaluated_episode_count", "state_restore", "action_safety_calibration"],
       "properties": {
         "campaign_id": {"type": "string", "minLength": 1},
         "selection_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "evaluated_episode_count": {"type": "integer", "minimum": 1},
-        "state_restore": {"const": "handoff_snapshot_v1"}
+        "state_restore": {"const": "handoff_snapshot_v1"},
+        "action_safety_calibration": {
+          "type": "object", "additionalProperties": false,
+          "required": ["reference_suite_id", "reference_report_sha256", "reference_minimum_delta_limited_actions_per_episode", "reference_maximum_delta_limited_actions_per_episode", "allowed_maximum_delta_limited_actions_per_episode"],
+          "properties": {
+            "reference_suite_id": {"type": "string", "minLength": 1},
+            "reference_report_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "reference_minimum_delta_limited_actions_per_episode": {"type": "integer", "minimum": 0},
+            "reference_maximum_delta_limited_actions_per_episode": {"type": "integer", "minimum": 0},
+            "allowed_maximum_delta_limited_actions_per_episode": {"type": "integer", "minimum": 0}
+          }
+        }
       }
     },
     "holdout_source": {

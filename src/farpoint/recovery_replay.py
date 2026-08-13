@@ -43,12 +43,24 @@ def build_recovery_replay(
     selection_sha256: str,
     scene_count: int,
     suite_id: str,
+    action_safety_calibration: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Freeze state-restored replay scenes and their exported action streams."""
     if selection.get("schema_version") != "farpoint.export-selection.v1":
         raise ValueError("unsupported recovery selection schema")
     episodes = selection.get("episodes") or []
     chosen = _select_evenly(episodes, scene_count)
+    reference_minimum = int(
+        action_safety_calibration["reference_minimum_delta_limited_actions_per_episode"]
+    )
+    reference_maximum = int(
+        action_safety_calibration["reference_maximum_delta_limited_actions_per_episode"]
+    )
+    allowed_maximum = int(
+        action_safety_calibration["allowed_maximum_delta_limited_actions_per_episode"]
+    )
+    if not 0 <= reference_minimum <= reference_maximum <= allowed_maximum:
+        raise ValueError("invalid recovery replay action-safety calibration bounds")
     if len({row["episode_dir"] for row in chosen}) != len(chosen):
         raise ValueError("recovery replay selected duplicate episodes")
     spec_scenes = []
@@ -142,6 +154,7 @@ def build_recovery_replay(
         "selection_sha256": selection_sha256,
         "evaluated_episode_count": len(spec_scenes),
         "state_restore": "handoff_snapshot_v1",
+        "action_safety_calibration": deepcopy(action_safety_calibration),
     }
     spec["control"] = {
         **deepcopy(runtime["control"]),
@@ -154,7 +167,7 @@ def build_recovery_replay(
         "maximum_nonfinite_actions": 0,
         "maximum_hard_range_violations": 0,
         "maximum_hard_range_excess_calibrated": 0.0,
-        "maximum_delta_limited_actions": 0,
+        "maximum_delta_limited_actions": allowed_maximum * len(spec_scenes),
     }
     spec["scenes"] = spec_scenes
     replay = {
@@ -183,6 +196,7 @@ def write_recovery_replay_bundle(
     *,
     scene_count: int,
     suite_id: str,
+    action_safety_calibration: dict[str, Any],
 ) -> dict[str, Any]:
     if output_root.exists():
         raise FileExistsError(output_root)
@@ -196,6 +210,7 @@ def write_recovery_replay_bundle(
         selection_sha256=file_sha256(selection_path),
         scene_count=scene_count,
         suite_id=suite_id,
+        action_safety_calibration=action_safety_calibration,
     )
     output_root.mkdir(parents=True)
     spec_path = output_root / "spec.json"
