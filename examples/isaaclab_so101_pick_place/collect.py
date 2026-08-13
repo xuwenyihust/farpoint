@@ -32,8 +32,8 @@ from isaaclab.app import AppLauncher  # noqa: E402
 # USD limits observed from the pinned SO-101 asset (radians), kept explicit so
 # controller targets cannot be normalized or extrapolated by a backend.
 SO101_JOINT_LIMITS = np.asarray(
-    [[-1.920, 1.920], [-1.745, 1.745], [-1.745, 1.571], [-1.658, 1.658], [-2.793, 2.793]],
-    dtype=np.float32,
+    [[-1.920, 1.920], [-1.745, 1.745], [-1.745, 1.571],
+     [-1.658, 1.658], [-2.793, 2.793]], dtype=np.float32
 )
 SO101_HOME_JOINTS = np.asarray(
     [-0.2736, -0.6109, -0.0745, 1.5148, -1.6034, 1.7453], dtype=np.float32
@@ -50,12 +50,8 @@ SO101_CAPTURE_ORIENTATION_XYZW = np.asarray(
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("headless", "viewer"), default="headless")
-    parser.add_argument(
-        "--plan", type=Path, default=PROJECT_ROOT / "outputs/so101_variation_plan.json"
-    )
-    parser.add_argument(
-        "--manifest", type=Path, default=PROJECT_ROOT / "outputs/so101_collection/manifest.json"
-    )
+    parser.add_argument("--plan", type=Path, default=PROJECT_ROOT / "outputs/so101_variation_plan.json")
+    parser.add_argument("--manifest", type=Path, default=PROJECT_ROOT / "outputs/so101_collection/manifest.json")
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT / "outputs/episodes")
     parser.add_argument("--max-attempts-this-run", type=int, default=150)
     parser.add_argument(
@@ -136,7 +132,9 @@ def parse_args():
     if any(value is not None for value in campaign_values) and not all(
         value is not None for value in campaign_values
     ):
-        parser.error("--campaign-root, --campaign-id, and --segment-id must be provided together")
+        parser.error(
+            "--campaign-root, --campaign-id, and --segment-id must be provided together"
+        )
     args.headless = resolve_headless_mode(
         args.mode,
         args.livestream,
@@ -236,10 +234,7 @@ from farpoint.recovery_runtime import (  # noqa: E402
     RecoveryTriggerDetector,
     load_recovery_runtime,
     recovery_descent_duration_seconds,
-    recovery_oracle_command_continuity_enabled,
-    recovery_oracle_slew_limits,
     scene_binding,
-    slew_recovery_oracle_target,
 )
 from farpoint.scene_entities import bind_scene_entities  # noqa: E402
 from farpoint.so101 import (  # noqa: E402
@@ -284,7 +279,9 @@ from farpoint.so101_watchdog import (  # noqa: E402
 )
 
 
-CONTROL_RECORDING_SCHEDULE = ControlRecordingSchedule(control_hz=120, recording_hz=30)
+CONTROL_RECORDING_SCHEDULE = ControlRecordingSchedule(
+    control_hz=120, recording_hz=30
+)
 
 
 def _read_json(path: Path) -> dict:
@@ -306,18 +303,23 @@ def _evaluate_watchdog(plan, manifest, policy):
     _write_json(args_cli.manifest.with_name("watchdog.json"), report)
     decision = report["decision"]
     print(
-        f"SO101_WATCHDOG decision={decision} reasons={','.join(report['reasons']) or 'none'}",
+        f"SO101_WATCHDOG decision={decision} "
+        f"reasons={','.join(report['reasons']) or 'none'}",
         flush=True,
     )
     if decision in {"STOP", "INVALID"} and manifest.get("execution_status") == "RUNNING":
         reason = ";".join(report["reasons"] or report["errors"]) or "watchdog_stop"
-        abort_collection_manifest(manifest, f"watchdog:{decision.lower()}:{reason}")
+        abort_collection_manifest(
+            manifest, f"watchdog:{decision.lower()}:{reason}"
+        )
         write_manifest(args_cli.manifest, manifest)
     return decision
 
 
 def _torch_pose(position, device, orientation_xyzw=(0.0, 0.0, 0.0, 1.0)):
-    return torch.tensor([[*position, *orientation_xyzw]], dtype=torch.float32, device=device)
+    return torch.tensor(
+        [[*position, *orientation_xyzw]], dtype=torch.float32, device=device
+    )
 
 
 def _numpy(value):
@@ -428,7 +430,9 @@ def _cube_contact_forces(sensors) -> tuple[float, float]:
     for sensor in sensors:
         force = 0.0
         if hasattr(sensor.data, "force_matrix_w"):
-            force = float(torch.linalg.vector_norm(sensor.data.force_matrix_w, dim=-1).max().item())
+            force = float(
+                torch.linalg.vector_norm(sensor.data.force_matrix_w, dim=-1).max().item()
+            )
         forces.append(force)
     if len(forces) != 2:
         raise RuntimeError(f"expected two SO-101 finger sensors, got {len(forces)}")
@@ -442,7 +446,9 @@ def _body_index(robot) -> int:
     return int(indexes[0])
 
 
-def _run_recovery_handoff(env, trial, active_object, sensors, root, runtime, *, oracle_profile_id):
+def _run_recovery_handoff(
+    env, trial, active_object, sensors, root, runtime, *, oracle_profile_id
+):
     """Execute ACT to a measured pre-lift trigger without resetting the scene."""
     binding = scene_binding(runtime, trial["variation_id"])
     policy = runtime["source_policy"]
@@ -510,7 +516,9 @@ def _run_recovery_handoff(env, trial, active_object, sensors, root, runtime, *, 
             env.step(target)
         object_pose = _numpy(active_object.data.root_pose_w[0]).astype(np.float32)
         object_velocity = _numpy(active_object.data.root_lin_vel_w[0]).astype(np.float32)
-        gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).astype(np.float32)
+        gripper_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).astype(np.float32)
         forces = _cube_contact_forces(sensors)
         lifted = max(forces) >= 0.1 and float(object_pose[2]) > initial_z + 0.005
         trigger = detector.observe(
@@ -540,7 +548,9 @@ def _run_recovery_handoff(env, trial, active_object, sensors, root, runtime, *, 
                 "policy_step": policy_step,
                 "joint_positions_rad": _numpy(robot.data.joint_pos[0]).tolist(),
                 "joint_velocities_rad_s": _numpy(robot.data.joint_vel[0]).tolist(),
-                "joint_position_target_rad": _numpy(robot.data.joint_pos_target[0]).tolist(),
+                "joint_position_target_rad": _numpy(
+                    robot.data.joint_pos_target[0]
+                ).tolist(),
                 "object_pose_xyzw": object_pose.tolist(),
                 "object_linear_velocity_mps": object_velocity.tolist(),
                 "object_angular_velocity_rad_s": _numpy(
@@ -555,7 +565,9 @@ def _run_recovery_handoff(env, trial, active_object, sensors, root, runtime, *, 
         encoding="utf-8",
     )
     if trigger is None or snapshot is None:
-        raise RuntimeError("recovery handoff was not admitted before the bounded pre-lift deadline")
+        raise RuntimeError(
+            "recovery handoff was not admitted before the bounded pre-lift deadline"
+        )
     demonstration = recovery_demonstration(
         oracle_profile_id=oracle_profile_id,
         source_policy=policy_provenance,
@@ -607,10 +619,7 @@ def _ik_action(
     # The fixed-base root body has no Jacobian row. Body-pose indices after
     # the root are therefore shifted by one in Isaac Lab's articulation view.
     jacobi_body_index = body_index - 1
-    if (
-        not getattr(_ik_action, "_jac_printed", False)
-        and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02
-    ):
+    if not getattr(_ik_action, "_jac_printed", False) and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02:
         print(
             f"SO101_JAC_DEBUG body_index={body_index} shape={tuple(jacobians.shape)} "
             f"max={float(torch.abs(jacobians).max().item())} "
@@ -624,9 +633,15 @@ def _ik_action(
         position_jacobian = spatial_jacobian[:3]
     else:
         if control_point_offset_world is None:
-            raise ValueError("control_point_offset_world is required with control_point_position")
-        controlled_position = np.asarray(control_point_position, dtype=np.float32)
-        point_offset = np.asarray(control_point_offset_world, dtype=np.float32)
+            raise ValueError(
+                "control_point_offset_world is required with control_point_position"
+            )
+        controlled_position = np.asarray(
+            control_point_position, dtype=np.float32
+        )
+        point_offset = np.asarray(
+            control_point_offset_world, dtype=np.float32
+        )
         skew_offset = np.asarray(
             (
                 (0.0, -point_offset[2], point_offset[1]),
@@ -637,7 +652,10 @@ def _ik_action(
         )
         # For a rigid point p = x + r attached to the end effector,
         # p_dot = v + omega x r = (Jv - skew(r) Jw) q_dot.
-        position_jacobian = spatial_jacobian[:3] - skew_offset @ spatial_jacobian[3:]
+        position_jacobian = (
+            spatial_jacobian[:3]
+            - skew_offset @ spatial_jacobian[3:]
+        )
     position_error = np.asarray(target) - controlled_position
     measured = _numpy(robot.data.joint_pos[0]).astype(np.float32)
     posture_error = np.zeros(5, dtype=np.float32)
@@ -670,7 +688,9 @@ def _ik_action(
         )
         jacobian = spatial_jacobian.copy()
         jacobian[3:] *= orientation_weight
-        task_error = np.concatenate((position_error, orientation_weight * orientation_error))
+        task_error = np.concatenate(
+            (position_error, orientation_weight * orientation_error)
+        )
         nullspace_error = posture_error
     if position_weights is not None:
         if orientation_target is not None:
@@ -687,7 +707,9 @@ def _ik_action(
     controlled_joint_count = 3 if lock_wrist else 5
     controlled_jacobian = jacobian[:, :controlled_joint_count]
     controlled_nullspace_error = (
-        None if lock_wrist or nullspace_error is None else nullspace_error[:controlled_joint_count]
+        None
+        if lock_wrist or nullspace_error is None
+        else nullspace_error[:controlled_joint_count]
     )
     delta = damped_least_squares(
         controlled_jacobian,
@@ -709,20 +731,16 @@ def _ik_action(
     max_delta = float(np.max(np.abs(delta)))
     if max_delta > joint_step_limit:
         delta = delta * (joint_step_limit / max_delta)
-    action[:controlled_joint_count] = action[:controlled_joint_count] + delta
+    action[:controlled_joint_count] = (
+        action[:controlled_joint_count] + delta
+    )
     action[:5] = np.clip(action[:5], measured[:5] - 0.30, measured[:5] + 0.30)
     # Keep the generated target inside the pinned USD joint limits.  The
     # position action manager does not clamp targets when offset-free control
     # is enabled, and some PhysX articulations report wider soft limits.
     action[:5] = np.clip(action[:5], SO101_JOINT_LIMITS[:, 0], SO101_JOINT_LIMITS[:, 1])
-    if (
-        not getattr(_ik_action, "_printed", False)
-        and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02
-    ):
-        print(
-            f"SO101_IK_DEBUG ee={ee.tolist()} delta={delta.tolist()} commanded={np.asarray(commanded).tolist()} action={action.tolist()}",
-            flush=True,
-        )
+    if not getattr(_ik_action, "_printed", False) and float(np.linalg.norm(np.asarray(target) - ee)) > 0.02:
+        print(f"SO101_IK_DEBUG ee={ee.tolist()} delta={delta.tolist()} commanded={np.asarray(commanded).tolist()} action={action.tolist()}", flush=True)
         _ik_action._printed = True
     return torch.tensor(action, dtype=torch.float32, device=device).unsqueeze(0)
 
@@ -788,9 +806,7 @@ def run_jacobian_diagnostic(env) -> None:
                 "empirical": empirical.tolist(),
                 "observed": observed.tolist(),
                 "cosine_by_body": [
-                    float(
-                        np.dot(row, empirical) / (np.linalg.norm(row) * np.linalg.norm(empirical))
-                    )
+                    float(np.dot(row, empirical) / (np.linalg.norm(row) * np.linalg.norm(empirical)))
                     if np.linalg.norm(row) > 1e-8 and np.linalg.norm(empirical) > 1e-8
                     else 0.0
                     for row in jacobians
@@ -843,7 +859,9 @@ def run_grasp_posture_diagnostic(env, output_root: Path) -> None:
         for inactive_index, name in enumerate(cube_names):
             _move_object(
                 scene[name],
-                object_position if name == active_name else (-10.0 - inactive_index, 0.0, 0.1),
+                object_position
+                if name == active_name
+                else (-10.0 - inactive_index, 0.0, 0.1),
                 device,
             )
         _aim_front_camera(scene, device)
@@ -873,9 +891,13 @@ def run_grasp_posture_diagnostic(env, output_root: Path) -> None:
             command = _numpy(action[0]).astype(np.float32).copy()
             env.step(action)
         front = _image(scene["front_camera"], device)
-        gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+        gripper_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
         jaw_pose = _numpy(
-            robot.data.body_link_pose_w.torch[0, robot.body_names.index("jaw")]
+            robot.data.body_link_pose_w.torch[
+                0, robot.body_names.index("jaw")
+            ]
         ).copy()
         geometry = posture_geometry_diagnostics(
             gripper_pose,
@@ -883,7 +905,10 @@ def run_grasp_posture_diagnostic(env, output_root: Path) -> None:
             object_position,
             object_half_height_m=object_edge_m * 0.5,
         )
-        label = f"posture_{index}_pitch_{pitch:+.2f}_roll_{roll:+.3f}_jaw_{jaw_target:+.3f}"
+        label = (
+            f"posture_{index}_pitch_{pitch:+.2f}_roll_{roll:+.3f}"
+            f"_jaw_{jaw_target:+.3f}"
+        )
         front_path = destination / f"{label}_front.png"
         Image.fromarray(front, mode="RGB").save(front_path)
         if args_cli.enable_wrist_camera:
@@ -905,7 +930,8 @@ def run_grasp_posture_diagnostic(env, output_root: Path) -> None:
         }
         results.append(record)
         print(
-            "SO101_GRASP_POSTURE " + json.dumps(record, sort_keys=True),
+            "SO101_GRASP_POSTURE "
+            + json.dumps(record, sort_keys=True),
             flush=True,
         )
     report = {
@@ -921,7 +947,9 @@ def run_grasp_posture_diagnostic(env, output_root: Path) -> None:
             "edge_m": object_edge_m,
             "center_world_m": object_position.tolist(),
         },
-        "aperture_reference_in_gripper_m": (SO101_APERTURE_REFERENCE_IN_GRIPPER_M.tolist()),
+        "aperture_reference_in_gripper_m": (
+            SO101_APERTURE_REFERENCE_IN_GRIPPER_M.tolist()
+        ),
         "candidates": results,
     }
     (destination / "results.json").write_text(
@@ -972,7 +1000,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     env.reset(seed=seed)
     for index, name in enumerate(inactive):
         _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
-    _move_object(scene[active_name], object_position, device, object_orientation)
+    _move_object(
+        scene[active_name], object_position, device, object_orientation
+    )
     _aim_front_camera(scene, device)
     command = SO101_HOME_JOINTS.copy()
     action = torch.tensor(command[None, :], dtype=torch.float32, device=device)
@@ -1004,7 +1034,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     # Route above a distal, tip-first pregrasp.  The fixed finger extends along
     # gripper-local -Z, so +Z translation places the cube beyond both tips.
     for _ in range(180):
-        live_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+        live_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
@@ -1031,7 +1063,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
 
     # Descend to the distal pregrasp while the cube remains outside the tips.
     for _ in range(180):
-        live_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+        live_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
@@ -1058,14 +1092,18 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     descent_steps_completed = 0
     for step in range(280):
         fraction = (step + 1) / 280
-        live_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+        live_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
         aligned_target = gripper_target_for_object_local_offset(
             settled_cube,
             live_pose[3:7],
             aperture_reference,
         )
         local_z_world = quaternion_rotation_matrix_xyzw(live_pose[3:7])[:, 2]
-        target = aligned_target + (feed_distance_m * (1.0 - fraction) * local_z_world)
+        target = aligned_target + (
+            feed_distance_m * (1.0 - fraction) * local_z_world
+        )
         action = _ik_action(
             robot,
             scene["ee_frame"],
@@ -1091,7 +1129,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
     Image.fromarray(_image(scene["front_camera"], device), mode="RGB").save(
         destination / "aligned_open_front.png"
     )
-    alignment_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+    alignment_pose = _numpy(
+        robot.data.body_link_pose_w.torch[0, body_index]
+    ).copy()
     cube_before_close = _numpy(scene[active_name].data.root_pos_w[0]).copy()
     close_force_history = []
     bilateral_steps = 0
@@ -1104,7 +1144,11 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
             overload = max(forces) > 30.0
             if overload:
                 break
-            bilateral_steps = bilateral_steps + 1 if min(forces) >= bilateral_threshold_n else 0
+            bilateral_steps = (
+                bilateral_steps + 1
+                if min(forces) >= bilateral_threshold_n
+                else 0
+            )
             if bilateral_steps >= 15:
                 contact_jaw_target = float(command[5])
                 break
@@ -1201,7 +1245,9 @@ def run_calibrated_grasp_diagnostic(env, output_root: Path) -> None:
         "bilateral_threshold_n": bilateral_threshold_n,
         "aligned_target_m": np.asarray(aligned_target).tolist(),
         "alignment_pose_xyzw": alignment_pose.tolist(),
-        "jaw_pose_xyzw": _numpy(robot.data.body_link_pose_w.torch[0, jaw_body_index]).tolist(),
+        "jaw_pose_xyzw": _numpy(
+            robot.data.body_link_pose_w.torch[0, jaw_body_index]
+        ).tolist(),
         "descent_steps_completed": descent_steps_completed,
         "first_contact_fraction": first_contact_fraction,
         "unexpected_descent_contact": unexpected_descent_contact,
@@ -1334,7 +1380,9 @@ def run_grasp_grid_diagnostic(env, output_root: Path) -> None:
         env.step(action)
 
         outside_y_offset = 0.080
-        pregrasp = object_position + np.asarray((offset[0], outside_y_offset, 0.150))
+        pregrasp = object_position + np.asarray(
+            (offset[0], outside_y_offset, 0.150)
+        )
         for _ in range(180):
             action = _ik_action(
                 robot,
@@ -1354,7 +1402,9 @@ def run_grasp_grid_diagnostic(env, output_root: Path) -> None:
         for step in range(descent_steps):
             fraction = (step + 1) / descent_steps
             target = pregrasp.copy()
-            target[2] = object_position[2] + ((1.0 - fraction) * 0.150 + fraction * offset[2])
+            target[2] = object_position[2] + (
+                (1.0 - fraction) * 0.150 + fraction * offset[2]
+            )
             action = _ik_action(
                 robot,
                 scene["ee_frame"],
@@ -1381,7 +1431,8 @@ def run_grasp_grid_diagnostic(env, output_root: Path) -> None:
                 target = object_position + np.asarray(
                     (
                         offset[0],
-                        (1.0 - fraction) * outside_y_offset + fraction * offset[1],
+                        (1.0 - fraction) * outside_y_offset
+                        + fraction * offset[1],
                         offset[2],
                     )
                 )
@@ -1402,7 +1453,9 @@ def run_grasp_grid_diagnostic(env, output_root: Path) -> None:
                     break
 
         hold_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
-        hold_orientation = _numpy(robot.data.body_link_pose_w.torch[0, body_index, 3:7]).copy()
+        hold_orientation = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index, 3:7]
+        ).copy()
         first_contact_debug = _contact_debug(contact)
         first_contact_cube = _numpy(scene[active_name].data.root_pos_w[0]).copy()
         bilateral_steps = 0
@@ -1517,7 +1570,8 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
     # the closing axis. Keep its best roll branch, directly level the measured
     # end-effector axis above the cube, and retain a small height screen.
     candidates = tuple(
-        (0.25, aperture_height_offset_m) for aperture_height_offset_m in (-0.010, 0.0, 0.010)
+        (0.25, aperture_height_offset_m)
+        for aperture_height_offset_m in (-0.010, 0.0, 0.010)
     )
     destination = output_root / "grasp_path_diagnostic"
     destination.mkdir(parents=True, exist_ok=True)
@@ -1527,7 +1581,10 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
         cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
         return gripper_target_for_object_local_offset(
-            cube + np.asarray((0.0, 0.0, aperture_height_offset_m), dtype=np.float32),
+            cube
+            + np.asarray(
+                (0.0, 0.0, aperture_height_offset_m), dtype=np.float32
+            ),
             pose[3:7],
             aperture_reference,
         )
@@ -1539,7 +1596,9 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         env.reset(seed=0)
         for index, name in enumerate(inactive):
             _move_object(scene[name], (-10.0 - index, 0.0, 0.1), device)
-        _move_object(scene[active_name], object_position, device, object_orientation)
+        _move_object(
+            scene[active_name], object_position, device, object_orientation
+        )
         _aim_front_camera(scene, device)
         command = SO101_HOME_JOINTS.copy()
         action = torch.tensor(command[None, :], dtype=torch.float32, device=device)
@@ -1556,7 +1615,9 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
             nonlocal first_contact_segment
             nonlocal first_contact_fraction
             nonlocal first_contact_forces
-            segment_start_cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+            segment_start_cube = _numpy(
+                scene[active_name].data.root_pos_w[0, :3]
+            ).copy()
             for step in range(steps):
                 fraction = (step + 1) / steps
                 target = target_for_fraction(fraction)
@@ -1582,7 +1643,9 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
                     first_contact_fraction = fraction
                     first_contact_forces = forces
                     return False
-                cube_now = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
+                cube_now = _numpy(
+                    scene[active_name].data.root_pos_w[0, :3]
+                ).copy()
                 if float(np.linalg.norm(cube_now - segment_start_cube)) >= 0.003:
                     first_contact_segment = segment
                     first_contact_fraction = fraction
@@ -1591,18 +1654,31 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
             return True
 
         safe_target = np.asarray((0.165, -0.11, 0.18), dtype=np.float32)
-        contact_free = advance_segment("safe_posture", 180, lambda _fraction: safe_target)
-        unlevelled_safe_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
-        orientation_target = so101_level_capture_orientation_xyzw(unlevelled_safe_pose[3:7])
+        contact_free = advance_segment(
+            "safe_posture", 180, lambda _fraction: safe_target
+        )
+        unlevelled_safe_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
+        orientation_target = so101_level_capture_orientation_xyzw(
+            unlevelled_safe_pose[3:7]
+        )
         if contact_free:
-            contact_free = advance_segment("level_capture_axis", 240, lambda _fraction: safe_target)
-        safe_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+            contact_free = advance_segment(
+                "level_capture_axis", 240, lambda _fraction: safe_target
+            )
+        safe_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
         closing_axis_world = (
-            quaternion_rotation_matrix_xyzw(safe_pose[3:7]) @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+            quaternion_rotation_matrix_xyzw(safe_pose[3:7])
+            @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
         )
         # Use the side that v9 showed to be reachable.  The opposite side
         # drove the arm across the cube during the outside descent.
-        direction = so101_capture_channel_direction_world(orientation_target)
+        direction = so101_capture_channel_direction_world(
+            orientation_target
+        )
         if contact_free:
             contact_free = advance_segment(
                 "above_outside",
@@ -1636,16 +1712,24 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
                 ),
             )
 
-        final_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index]).copy()
+        final_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        ).copy()
         final_cube = _numpy(scene[active_name].data.root_pos_w[0, :3]).copy()
         final_target = gripper_target_for_object_local_offset(
-            final_cube + np.asarray((0.0, 0.0, aperture_height_offset_m), dtype=np.float32),
+            final_cube
+            + np.asarray(
+                (0.0, 0.0, aperture_height_offset_m), dtype=np.float32
+            ),
             final_pose[3:7],
             aperture_reference,
         )
-        final_position_error_m = float(np.linalg.norm(final_target - final_pose[:3]))
+        final_position_error_m = float(
+            np.linalg.norm(final_target - final_pose[:3])
+        )
         final_closing_axis_world = (
-            quaternion_rotation_matrix_xyzw(final_pose[3:7]) @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
+            quaternion_rotation_matrix_xyzw(final_pose[3:7])
+            @ SO101_CAPTURE_CLOSING_AXIS_LOCAL
         )
         record = {
             "candidate_index": candidate_index,
@@ -1693,7 +1777,9 @@ def run_grasp_path_diagnostic(env, output_root: Path) -> None:
         "vertical_clearance_m": vertical_clearance_m,
         "contact_threshold_n": contact_threshold_n,
         "maximum_closing_axis_abs_z": 0.05,
-        "successful_candidate_labels": [item["label"] for item in results if item["contact_free"]],
+        "successful_candidate_labels": [
+            item["label"] for item in results if item["contact_free"]
+        ],
         "candidates": results,
     }
     _write_json(destination / "results.json", report)
@@ -1733,18 +1819,16 @@ def run_attempt(
     ee_frame = scene["ee_frame"]
     contact = (scene["contact_jaw"], scene["contact_gripper"])
     active_name = _variant_name(trial)
-    inactive = [
-        name
-        for name in ("cube_small_red", "cube_small_blue", "cube_large_red", "cube_large_blue")
-        if name != active_name
-    ]
+    inactive = [name for name in ("cube_small_red", "cube_small_blue", "cube_large_red", "cube_large_blue") if name != active_name]
     env.farpoint_active_cube = active_name
     episode_seed = int(trial["attempt_seed"])
     environment_seed = int(trial.get("environment_seed", episode_seed)) % (2**32)
     root = output_root / episode_id_for_attempt(collection_id, trial["attempt_id"])
     if root.exists():
         raise FileExistsError(f"episode output already exists: {root}")
-    run_state = build_attempt_run_state(trial, collection_id=collection_id, git_commit=git_commit)
+    run_state = build_attempt_run_state(
+        trial, collection_id=collection_id, git_commit=git_commit
+    )
     if v010_context is not None:
         run_state["recording"]["cameras"] = [
             "observation.images.front",
@@ -1759,7 +1843,9 @@ def run_attempt(
     active_object = scene[active_name]
     resolved_mass_kg = float(object_spec["mass_kg"])
     active_object.set_masses_index(
-        masses=torch.tensor([[resolved_mass_kg]], dtype=torch.float32, device=device)
+        masses=torch.tensor(
+            [[resolved_mass_kg]], dtype=torch.float32, device=device
+        )
     )
     physx_actual_mass_kg = float(active_object.data.body_mass.torch[0, 0].item())
     mass_audit = audit_resolved_mass(
@@ -1828,7 +1914,9 @@ def run_attempt(
         "maximum_speed_mps": 0.05,
         "verified": reset_support_verified,
     }
-    run_state["physics_audit"]["reset_support"] = copy.deepcopy(reset_support_audit)
+    run_state["physics_audit"]["reset_support"] = copy.deepcopy(
+        reset_support_audit
+    )
     _write_json(root / "run-state.json", run_state)
     if not reset_support_verified:
         raise RuntimeError(
@@ -1850,14 +1938,21 @@ def run_attempt(
     env.sim.forward()
     scene.update(0.0)
     restored_joints = _numpy(robot.data.joint_pos[0])
-    maximum_home_error_rad = float(np.max(np.abs(restored_joints - SO101_HOME_JOINTS)))
-    reset_support_audit["arm_restored_to_home"] = bool(maximum_home_error_rad <= 1e-5)
+    maximum_home_error_rad = float(
+        np.max(np.abs(restored_joints - SO101_HOME_JOINTS))
+    )
+    reset_support_audit["arm_restored_to_home"] = bool(
+        maximum_home_error_rad <= 1e-5
+    )
     reset_support_audit["maximum_home_error_rad"] = maximum_home_error_rad
-    run_state["physics_audit"]["reset_support"] = copy.deepcopy(reset_support_audit)
+    run_state["physics_audit"]["reset_support"] = copy.deepcopy(
+        reset_support_audit
+    )
     _write_json(root / "run-state.json", run_state)
     if not reset_support_audit["arm_restored_to_home"]:
         raise RuntimeError(
-            f"SO-101 arm failed reset HOME restoration: maximum_error_rad={maximum_home_error_rad}"
+            "SO-101 arm failed reset HOME restoration: "
+            f"maximum_error_rad={maximum_home_error_rad}"
         )
     body_index = _body_index(robot)
     home_ee = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
@@ -1885,9 +1980,7 @@ def run_attempt(
         f"maximum_home_error_rad={maximum_home_error_rad}",
         flush=True,
     )
-    print(
-        f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True
-    )
+    print(f"SO101_RESET_DEBUG after_env_step={_numpy(robot.data.joint_pos[0]).tolist()}", flush=True)
     action_term = env.action_manager.get_term("joint_positions")
     print(
         "SO101_ACTION_DEBUG "
@@ -1943,19 +2036,11 @@ def run_attempt(
         # 30 Hz ticks for the rotary jaw to finish closing; 40 mm cubes retain
         # the validated 0.20 s window. Stable timers still reset on every
         # unilateral sample and physical proof lift remains mandatory.
-        maximum_contact_loss_s=so101_capture_contact_loss_grace_s(object_spec["dimensions_m"][0]),
+        maximum_contact_loss_s=so101_capture_contact_loss_grace_s(
+            object_spec["dimensions_m"][0]
+        ),
     )
     commanded_joints = _numpy(robot.data.joint_pos[0]).astype(np.float32).copy()
-    recovery_oracle_previous_target = None
-    recovery_oracle_maximum_delta = None
-    if recovery_snapshot is not None and recovery_oracle_command_continuity_enabled(
-        recovery_runtime
-    ):
-        recovery_oracle_previous_target = np.asarray(
-            recovery_snapshot["joint_position_target_rad"], dtype=np.float32
-        )
-        commanded_joints = recovery_oracle_previous_target.copy()
-        recovery_oracle_maximum_delta = recovery_oracle_slew_limits(recovery_runtime)
     cube_was_lifted = False
     grasp_hold_pose = None
     grasp_hold_nominal_pose = None
@@ -1991,7 +2076,6 @@ def run_attempt(
         phase = machine.phase
         phase_motion_complete = True
         descent_fraction = None
-        recovery_oracle_safety = None
         current = robot.data.joint_pos[0]
         ee_position = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3]).copy()
         control_point_position = None
@@ -2035,10 +2119,11 @@ def run_attempt(
             float(current[5].item()),
             object_spec["dimensions_m"][0],
         )
-        settling_capture = phase is OraclePhase.CLOSE and grasp_machine.phase in {
-            GraspPhase.BILATERAL_SETTLE,
-            GraspPhase.STATIC_HOLD,
-        }
+        settling_capture = (
+            phase is OraclePhase.CLOSE
+            and grasp_machine.phase
+            in {GraspPhase.BILATERAL_SETTLE, GraspPhase.STATIC_HOLD}
+        )
         if (
             grasp_jaw_hold is not None
             and balanced_forces is not None
@@ -2060,7 +2145,9 @@ def run_attempt(
                 # force so the rotary jaw closes while contact still exists;
                 # persistence and maximum-force validation remain independent.
                 min_force=(
-                    capture_preload_force_floor(grasp_machine.capture_contact_force_n)
+                    capture_preload_force_floor(
+                        grasp_machine.capture_contact_force_n
+                    )
                     if settling_capture
                     else 3.0
                 ),
@@ -2085,8 +2172,13 @@ def run_attempt(
         closing_alignment = phase is OraclePhase.CLOSE and (
             grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
-        verification_alignment = phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
-        if (closing_alignment or settling_capture) and balanced_forces is not None:
+        verification_alignment = (
+            phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
+        )
+        if (
+            (closing_alignment or settling_capture)
+            and balanced_forces is not None
+        ):
             recenter_memory = so101_recenter_contact_memory(
                 *balanced_forces,
                 capture_recenter_side,
@@ -2112,15 +2204,21 @@ def run_attempt(
                 # simulator truth and the measured gripper orientation to
                 # recover the calibrated object-in-aperture XY offset while
                 # preserving the contact handoff height.
-                live_gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index])
-                object_world = _numpy(scene[active_name].data.root_pos_w[0, :3])
+                live_gripper_pose = _numpy(
+                    robot.data.body_link_pose_w.torch[0, body_index]
+                )
+                object_world = _numpy(
+                    scene[active_name].data.root_pos_w[0, :3]
+                )
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
                     live_gripper_pose,
                     capture_object_in_gripper,
                 )
                 desired_object_minus_grasp = object_world - desired_gripper
-                correction_limit = so101_pre_capture_recenter_limit(object_spec["dimensions_m"][0])
+                correction_limit = so101_pre_capture_recenter_limit(
+                    object_spec["dimensions_m"][0]
+                )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
                     desired_object_minus_grasp,
@@ -2139,9 +2237,13 @@ def run_attempt(
                 }
             else:
                 jaw_center = _numpy(
-                    robot.data.body_link_pose_w.torch[0, robot.body_names.index("jaw"), :3]
+                    robot.data.body_link_pose_w.torch[
+                        0, robot.body_names.index("jaw"), :3
+                    ]
                 )
-                gripper_center = _numpy(robot.data.body_link_pose_w.torch[0, body_index, :3])
+                gripper_center = _numpy(
+                    robot.data.body_link_pose_w.torch[0, body_index, :3]
+                )
                 recenter = unilateral_contact_recenter_target(
                     grasp_hold_pose,
                     grasp_hold_nominal_pose,
@@ -2176,7 +2278,9 @@ def run_attempt(
                 max_correction=(0.006, 0.006, 0.006),
             )
             if float(np.linalg.norm(relative_recenter["error"])) > 0.002:
-                grasp_hold_pose = np.asarray(relative_recenter["position"], dtype=np.float32)
+                grasp_hold_pose = np.asarray(
+                    relative_recenter["position"], dtype=np.float32
+                )
                 recenter_active = True
                 relative_recenter_active = True
         if phase is OraclePhase.HOME:
@@ -2188,13 +2292,17 @@ def run_attempt(
             # 5-DOF arm because its world orientation changes with shoulder and
             # elbow configuration even when both wrist targets stay fixed.
             object_world = _numpy(scene[active_name].data.root_pos_w[0, :3])
-            live_gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index])
+            live_gripper_pose = _numpy(
+                robot.data.body_link_pose_w.torch[0, body_index]
+            )
             capture_target = gripper_target_for_object_local_offset(
                 object_world,
                 live_gripper_pose[3:7],
                 capture_object_in_gripper,
             )
-            local_z_world = quaternion_rotation_matrix_xyzw(live_gripper_pose[3:7])[:, 2]
+            local_z_world = quaternion_rotation_matrix_xyzw(
+                live_gripper_pose[3:7]
+            )[:, 2]
             feed_distance_m = 0.070
             distal_pregrasp = capture_target + feed_distance_m * local_z_world
             if phase is OraclePhase.PREGRASP:
@@ -2203,7 +2311,9 @@ def run_attempt(
                 insertion_steps = schedule.steps_for_seconds(
                     recovery_descent_duration_seconds(recovery_runtime)
                 )
-                descent_fraction = min(1.0, (machine.phase_steps + 1) / insertion_steps)
+                descent_fraction = min(
+                    1.0, (machine.phase_steps + 1) / insertion_steps
+                )
                 final_target = capture_target + (
                     feed_distance_m * (1.0 - descent_fraction) * local_z_world
                 )
@@ -2229,15 +2339,20 @@ def run_attempt(
                 target = route[pregrasp_route_index]
                 phase_motion_complete = False
                 route_position_tolerance = 0.008
-                route_posture_tolerance = 0.10 if pregrasp_route_index == 0 else 0.20
+                route_posture_tolerance = (
+                    0.10 if pregrasp_route_index == 0 else 0.20
+                )
                 route_posture_ready = (
                     abs(float(current[3].item()) - float(grasp_posture[0]))
                     < route_posture_tolerance
-                    and abs(float(current[4].item()) - float(grasp_posture[1]))
+                    and abs(
+                        float(current[4].item()) - float(grasp_posture[1])
+                    )
                     < route_posture_tolerance
                 )
                 if (
-                    float(np.linalg.norm(ee_position - target)) < route_position_tolerance
+                    float(np.linalg.norm(ee_position - target))
+                    < route_position_tolerance
                     and route_posture_ready
                 ):
                     pregrasp_route_index += 1
@@ -2361,7 +2476,9 @@ def run_attempt(
                 # jaw target can squeeze the cube back out on the next tick.
                 verify_capture_latched = True
                 verify_capture_wait_steps = 0
-                grasp_jaw_hold = max(closed_jaw, float(current[5].item()) - 0.005)
+                grasp_jaw_hold = max(
+                    closed_jaw, float(current[5].item()) - 0.005
+                )
                 grasp_jaw_reference = grasp_jaw_hold
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 grasp_hold_pose = ee_position.copy()
@@ -2429,10 +2546,14 @@ def run_attempt(
             # Continue from the proof-lift height without a target discontinuity.
             # A 0.25 mm/control-step ramp stays within the demonstrated stable
             # contact envelope and still reaches 8 cm inside the phase timeout.
-            lift_height = min(0.08, verify_lift_height + 0.0000625 * (machine.phase_steps + 1))
+            lift_height = min(
+                0.08, verify_lift_height + 0.0000625 * (machine.phase_steps + 1)
+            )
             transport_lift_target_m = lift_height - verify_lift_height
             phase_motion_complete = lift_height >= 0.08
-            object_world_position = _numpy(scene[active_name].data.root_pos_w[0])
+            object_world_position = _numpy(
+                scene[active_name].data.root_pos_w[0]
+            )
             if lift_object_start_position is None:
                 lift_object_start_position = object_world_position.copy()
             target = lift_object_start_position + np.asarray(
@@ -2452,7 +2573,9 @@ def run_attempt(
                 entering_motion=machine.phase_steps == 0,
             )
         elif phase is OraclePhase.PREPLACE:
-            object_world_position = _numpy(scene[active_name].data.root_pos_w[0])
+            object_world_position = _numpy(
+                scene[active_name].data.root_pos_w[0]
+            )
             if transport_object_target is None:
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 # Move only as far onto the target pad as success requires. The
@@ -2466,9 +2589,13 @@ def run_attempt(
                     np.linalg.norm(object_spec["dimensions_m"])
                 )
                 valid_half_extent = (
-                    0.5 * target_dimensions[:2] - conservative_footprint_radius - 0.005
+                    0.5 * target_dimensions[:2]
+                    - conservative_footprint_radius
+                    - 0.005
                 )
-                interior_margin = np.minimum(0.010, 0.5 * valid_half_extent)
+                interior_margin = np.minimum(
+                    0.010, 0.5 * valid_half_extent
+                )
                 lower = target_position[:2] - valid_half_extent + interior_margin
                 upper = target_position[:2] + valid_half_extent - interior_margin
                 transport_object_target = np.asarray(
@@ -2489,7 +2616,10 @@ def run_attempt(
                     # retain the integrated command until clearance returns.
                     commanded_joints = _numpy(current).astype(np.float32).copy()
                 transport_recovering_height = True
-            elif transport_recovering_height and object_world_position[2] >= 0.092:
+            elif (
+                transport_recovering_height
+                and object_world_position[2] >= 0.092
+            ):
                 transport_recovering_height = False
                 transport_recovery_xy = None
                 commanded_joints = _numpy(current).astype(np.float32).copy()
@@ -2504,9 +2634,17 @@ def run_attempt(
                     ),
                     dtype=np.float32,
                 )
-                target = recovery_object_target + ee_position - object_world_position
+                target = (
+                    recovery_object_target
+                    + ee_position
+                    - object_world_position
+                )
             else:
-                target = transport_object_target + ee_position - object_world_position
+                target = (
+                    transport_object_target
+                    + ee_position
+                    - object_world_position
+                )
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw
             # Transport with the same measured-joint resolved-rate control as
             # LIFT.  Accumulating a distant Cartesian target in command space
@@ -2514,10 +2652,14 @@ def run_attempt(
             # a lateral acceleration that shears the cube from the fingers.
         elif phase is OraclePhase.PLACE_DESCEND:
             if placement_object_xy is None:
-                placement_object_xy = _numpy(scene[active_name].data.root_pos_w[0, :2]).copy()
+                placement_object_xy = _numpy(
+                    scene[active_name].data.root_pos_w[0, :2]
+                ).copy()
                 commanded_joints = _numpy(current).astype(np.float32).copy()
             if placement_grasp_offset is None:
-                placement_grasp_offset = ee_position - _numpy(scene[active_name].data.root_pos_w[0])
+                placement_grasp_offset = (
+                    ee_position - _numpy(scene[active_name].data.root_pos_w[0])
+                )
             release_object_position = np.asarray(
                 (
                     placement_object_xy[0],
@@ -2526,8 +2668,14 @@ def run_attempt(
                 ),
                 dtype=np.float32,
             )
-            current_object_position = _numpy(scene[active_name].data.root_pos_w[0])
-            target = release_object_position + ee_position - current_object_position
+            current_object_position = _numpy(
+                scene[active_name].data.root_pos_w[0]
+            )
+            target = (
+                release_object_position
+                + ee_position
+                - current_object_position
+            )
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw
         elif phase is OraclePhase.OPEN:
             if release_hold_pose is None:
@@ -2548,7 +2696,9 @@ def run_attempt(
             jaw = open_jaw
         else:
             target = (
-                release_hold_pose if release_hold_pose is not None else ee_position
+                release_hold_pose
+                if release_hold_pose is not None
+                else ee_position
             ) + np.asarray((0.0, 0.0, 0.09))
             jaw = open_jaw
 
@@ -2573,7 +2723,9 @@ def run_attempt(
             )
         if phase is OraclePhase.HOME:
             posture_target = SO101_HOME_JOINTS[3:5]
-            action = torch.tensor(SO101_HOME_JOINTS[None, :], dtype=torch.float32, device=device)
+            action = torch.tensor(
+                SO101_HOME_JOINTS[None, :], dtype=torch.float32, device=device
+            )
         else:
             if grasp_hold_posture is not None and phase in {
                 OraclePhase.CLOSE,
@@ -2626,7 +2778,9 @@ def run_attempt(
                     }
                     else 0.20
                 ),
-                max_joint_step=0.02 * schedule.recording_hz / schedule.control_hz,
+                max_joint_step=0.02
+                * schedule.recording_hz
+                / schedule.control_hz,
                 lock_wrist=(
                     grasp_hold_posture is not None
                     and phase
@@ -2642,7 +2796,8 @@ def run_attempt(
                 control_point_offset_world=control_point_offset_world,
                 position_weights=(
                     (1.0, 1.0, 4.0)
-                    if phase in {OraclePhase.PREPLACE, OraclePhase.PLACE_DESCEND}
+                    if phase
+                    in {OraclePhase.PREPLACE, OraclePhase.PLACE_DESCEND}
                     else (1.0, 1.0, 2.0)
                     if phase is OraclePhase.LIFT
                     else None
@@ -2689,6 +2844,7 @@ def run_attempt(
                     float(grasp_hold_posture[1] + wrist_excursion),
                 )
         action[0, 5] = jaw
+        commanded_joints = _numpy(action[0]).astype(np.float32).copy()
         has_contact = _contact(contact)
         bilateral_contact = _bilateral_contact(contact)
         contact_forces = _cube_contact_forces(contact)
@@ -2703,20 +2859,27 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )["side"]
         object_pose = _numpy(scene[active_name].data.root_pose_w[0])
-        gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index])
-        object_in_gripper = point_in_local_frame(gripper_pose, object_pose[:3])
+        gripper_pose = _numpy(
+            robot.data.body_link_pose_w.torch[0, body_index]
+        )
+        object_in_gripper = point_in_local_frame(
+            gripper_pose, object_pose[:3]
+        )
         if grasp_relative_reference is None and min(contact_forces) >= 0.10:
             grasp_relative_reference = object_in_gripper.copy()
         relative_translation_error = (
             float("inf")
             if grasp_relative_reference is None
-            else float(np.linalg.norm(object_in_gripper - grasp_relative_reference))
+            else float(
+                np.linalg.norm(object_in_gripper - grasp_relative_reference)
+            )
         )
         relative_speed = (
             float("inf")
             if previous_object_in_gripper is None
             else float(
-                np.linalg.norm(object_in_gripper - previous_object_in_gripper) * schedule.control_hz
+                np.linalg.norm(object_in_gripper - previous_object_in_gripper)
+                * schedule.control_hz
             )
         )
         previous_object_in_gripper = object_in_gripper.copy()
@@ -2730,7 +2893,9 @@ def run_attempt(
             and cube_z > verify_object_start_z + 0.003
         )
         state_machine_cube_lifted = (
-            grasp_proof_lifted if phase is OraclePhase.VERIFY_CONTACT else cube_lifted
+            grasp_proof_lifted
+            if phase is OraclePhase.VERIFY_CONTACT
+            else cube_lifted
         )
         # A closing fingertip can briefly kick the cube more than 5 mm before
         # a grasp exists.  That impact is not lift proof and must not arm the
@@ -2765,28 +2930,33 @@ def run_attempt(
         )
         cube_dropped = (
             cube_was_lifted
-            and phase in {OraclePhase.VERIFY_CONTACT, OraclePhase.LIFT, OraclePhase.PREPLACE}
+            and phase
+            in {OraclePhase.VERIFY_CONTACT, OraclePhase.LIFT, OraclePhase.PREPLACE}
             and not has_contact
             and cube_z < object_position[2] + 0.002
         )
         grasp_evidence = GraspEvidence(
-            left_force_n=float(contact_forces[0]),
-            right_force_n=float(contact_forces[1]),
-            # The SO-101 fingers are long along local Z. Enclosure needs
-            # tight alignment across the aperture plane; physical depth
-            # is validated separately by bilateral force, rigidity and
-            # proof lift. A 3-D norm incorrectly rejected stable fingertip
-            # captures at short-reach workspace positions.
-            aperture_aligned=capture_aperture_laterally_aligned(
-                object_in_gripper,
-                capture_object_in_gripper,
-            ),
-            capture_admissible=capture_admissible,
-            relative_translation_error_m=relative_translation_error,
-            relative_speed_mps=relative_speed,
-            proof_lift_m=(0.0 if verify_object_start_z is None else cube_z - verify_object_start_z),
-            collision=unexpected_collision,
-        )
+                left_force_n=float(contact_forces[0]),
+                right_force_n=float(contact_forces[1]),
+                # The SO-101 fingers are long along local Z. Enclosure needs
+                # tight alignment across the aperture plane; physical depth
+                # is validated separately by bilateral force, rigidity and
+                # proof lift. A 3-D norm incorrectly rejected stable fingertip
+                # captures at short-reach workspace positions.
+                aperture_aligned=capture_aperture_laterally_aligned(
+                    object_in_gripper,
+                    capture_object_in_gripper,
+                ),
+                capture_admissible=capture_admissible,
+                relative_translation_error_m=relative_translation_error,
+                relative_speed_mps=relative_speed,
+                proof_lift_m=(
+                    0.0
+                    if verify_object_start_z is None
+                    else cube_z - verify_object_start_z
+                ),
+                collision=unexpected_collision,
+            )
         if phase in {
             OraclePhase.DESCEND,
             OraclePhase.CLOSE,
@@ -2813,7 +2983,10 @@ def run_attempt(
             # its historical translation error and only exits by timeout.
             grasp_relative_reference = object_in_gripper.copy()
             previous_object_in_gripper = object_in_gripper.copy()
-        if grasp_decision.entered_phase and grasp_decision.phase is GraspPhase.BILATERAL_SETTLE:
+        if (
+            grasp_decision.entered_phase
+            and grasp_decision.phase is GraspPhase.BILATERAL_SETTLE
+        ):
             # Freeze the exact physical capture before sending the CLOSE
             # command computed earlier in this tick. Continuing to close for
             # even one 120 Hz step can turn bilateral contact into a one-sided
@@ -2847,18 +3020,9 @@ def run_attempt(
         if grasp_decision.phase is GraspPhase.FAILED:
             machine.fail(grasp_decision.failure_reason or "grasp_failed")
 
-        if recovery_oracle_previous_target is not None:
-            bounded, recovery_oracle_safety = slew_recovery_oracle_target(
-                recovery_oracle_previous_target,
-                _numpy(action[0]),
-                recovery_oracle_maximum_delta,
-            )
-            action = torch.tensor([bounded], dtype=torch.float32, device=device)
-            recovery_oracle_previous_target = bounded.copy()
-        commanded_joints = _numpy(action[0]).astype(np.float32).copy()
-
         stable_grasp_contact = (
-            grasp_decision.phase in {GraspPhase.PROOF_LIFT, GraspPhase.VALIDATED}
+            grasp_decision.phase
+            in {GraspPhase.PROOF_LIFT, GraspPhase.VALIDATED}
             if phase is OraclePhase.CLOSE
             else grasp_decision.phase is GraspPhase.VALIDATED
         )
@@ -2866,7 +3030,11 @@ def run_attempt(
         if schedule.should_record(control_step):
             frame = schedule.frame_index(control_step)
             front = _image(scene["front_camera"], device)
-            wrist = _image(scene["wrist_camera"], device) if args_cli.enable_wrist_camera else None
+            wrist = (
+                _image(scene["wrist_camera"], device)
+                if args_cli.enable_wrist_camera
+                else None
+            )
             if live_publisher is not None and live_publisher.preview_due():
                 preview = io.BytesIO()
                 Image.fromarray(front, mode="RGB").save(
@@ -2899,11 +3067,11 @@ def run_attempt(
                 "relative_translation_error_m": relative_translation_error,
                 "relative_speed_mps": relative_speed,
                 "proof_lift_m": (
-                    0.0 if verify_object_start_z is None else cube_z - verify_object_start_z
+                    0.0
+                    if verify_object_start_z is None
+                    else cube_z - verify_object_start_z
                 ),
             }
-            if recovery_oracle_safety is not None:
-                row["recovery_oracle_command_safety"] = recovery_oracle_safety
             row["truth"] = {
                 "object_root_pose_xyzw": object_pose.tolist(),
                 "object_linear_velocity_mps": _numpy(
@@ -2911,7 +3079,9 @@ def run_attempt(
                 ).tolist(),
                 "gripper_link_pose_xyzw": gripper_pose.tolist(),
                 "jaw_link_pose_xyzw": _numpy(
-                    robot.data.body_link_pose_w.torch[0, robot.body_names.index("jaw")]
+                    robot.data.body_link_pose_w.torch[
+                        0, robot.body_names.index("jaw")
+                    ]
                 ).tolist(),
                 "gripper_control": gripper_control,
                 "recenter_contact_memory_side": capture_recenter_side,
@@ -2927,11 +3097,14 @@ def run_attempt(
                     [0.0, 0.0]
                     if grasp_hold_nominal_pose is None
                     else (
-                        np.asarray(grasp_hold_pose[:2]) - np.asarray(grasp_hold_nominal_pose[:2])
+                        np.asarray(grasp_hold_pose[:2])
+                        - np.asarray(grasp_hold_nominal_pose[:2])
                     ).tolist()
                 ),
                 "approach_jaw_target_rad": approach_jaw,
-                "capture_aperture_reference_local_m": (capture_object_in_gripper.tolist()),
+                "capture_aperture_reference_local_m": (
+                    capture_object_in_gripper.tolist()
+                ),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),
                 "transport_lift_actual_m": (
@@ -2949,29 +3122,37 @@ def run_attempt(
             else 0.05
         )
         posture_ready = (
-            abs(float(current[3].item()) - float(posture_target[0])) < posture_tolerance
-            and abs(float(current[4].item()) - float(posture_target[1])) < posture_tolerance
+            abs(float(current[3].item()) - float(posture_target[0]))
+            < posture_tolerance
+            and abs(float(current[4].item()) - float(posture_target[1]))
+            < posture_tolerance
         )
         if phase in {OraclePhase.HOME, OraclePhase.RETREAT}:
             orientation_ready = True
         elif active_orientation_target is not None:
-            orientation_ready = (
-                float(
-                    np.linalg.norm(
-                        quaternion_direction_error(
-                            active_orientation_target,
-                            gripper_pose[3:7],
-                        )
+            orientation_ready = float(
+                np.linalg.norm(
+                    quaternion_direction_error(
+                        active_orientation_target,
+                        gripper_pose[3:7],
                     )
                 )
-                < 0.10
-            )
+            ) < 0.10
         else:
             orientation_ready = posture_ready
         position_tolerance = 0.003 if phase is OraclePhase.DESCEND else 0.012
-        reached_position = ee_position if control_point_position is None else control_point_position
+        reached_position = (
+            ee_position
+            if control_point_position is None
+            else control_point_position
+        )
         position_reached = (
-            float(np.linalg.norm(reached_position - target)) < position_tolerance
+            float(
+                np.linalg.norm(
+                    reached_position - target
+                )
+            )
+            < position_tolerance
             and orientation_ready
             and phase_motion_complete
         )
@@ -3018,7 +3199,9 @@ def run_attempt(
                     and transport_object_target is not None
                     and float(
                         np.linalg.norm(
-                            _numpy(scene[active_name].data.root_pos_w[0, :2])
+                            _numpy(
+                                scene[active_name].data.root_pos_w[0, :2]
+                            )
                             - transport_object_target[:2]
                         )
                     )
@@ -3034,10 +3217,7 @@ def run_attempt(
             cube_lifted=state_machine_cube_lifted,
             cube_in_target=cube_in_target,
             gripper_released=abs(float(current[5].item()) - open_jaw) < 0.08,
-            cube_stable=float(
-                torch.linalg.vector_norm(scene[active_name].data.root_lin_vel_w[0]).item()
-            )
-            < 0.03,
+            cube_stable=float(torch.linalg.vector_norm(scene[active_name].data.root_lin_vel_w[0]).item()) < 0.03,
             collision=unexpected_collision,
             cube_dropped=cube_dropped,
         )
@@ -3103,11 +3283,13 @@ def run_attempt(
     if "entities" not in requested_variation:
         requested_variation = bind_scene_entities(requested_variation, scene_target)
     resolved_variation = bind_scene_entities(object_spec, scene_target)
-    resolved_variation["entities"]["pick_object"]["physics"]["mass_audit"] = copy.deepcopy(
-        mass_audit
+    resolved_variation["entities"]["pick_object"]["physics"]["mass_audit"] = (
+        copy.deepcopy(mass_audit)
     )
     resolved_camera_records = (
-        _runtime_camera_records(scene, camera_profile) if camera_profile is not None else None
+        _runtime_camera_records(scene, camera_profile)
+        if camera_profile is not None
+        else None
     )
     if resolved_camera_records is not None:
         if v010_context is not None:
@@ -3121,7 +3303,9 @@ def run_attempt(
                 for camera_id in ("front", "wrist")
             }
             for camera_record in resolved_camera_records:
-                camera_record["video_artifact"] = video_artifacts[camera_record["camera_id"]]
+                camera_record["video_artifact"] = video_artifacts[
+                    camera_record["camera_id"]
+                ]
         _write_json(
             root / "camera-evidence.json",
             {
@@ -3133,99 +3317,14 @@ def run_attempt(
         )
     legacy_metadata = {
         "schema_version": "farpoint.episode.v3",
-        "identity": {
-            "episode_id": root.name,
-            "trial_id": trial["trial_id"],
-            "task_id": "so101_cube_pick_place",
-            "split": trial["split"],
-            "episode_seed": environment_seed,
-        },
-        "provenance": {
-            "collection_id": collection_id,
-            "git_commit": git_commit,
-            "simulator": "Isaac Sim",
-            "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0",
-            "physics_engine": "PhysX",
-            "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7",
-            "variation_seed": int(trial["seed"]),
-            "attempt_seed": episode_seed,
-            "environment_seed": environment_seed,
-        },
-        "task": {
-            "task_id": "so101_cube_pick_place",
-            "instruction": f"Pick up the {object_spec['shape']} and place it on the green target pad.",
-            "object_shape": object_spec["shape"],
-            "success_criteria_id": "contact_pick_place_footprint_v2",
-            "manipulated_entity_id": "pick_object",
-            "target_entity_id": "placement_target",
-            "acceptance_region_id": "placement_region",
-        },
-        "embodiment": {
-            "robot": "so101",
-            "gripper": "so101_jaw",
-            "arm_dof": 5,
-            "gripper_dof": 1,
-            "controller": "contact_aware_local_frame_dls_v0",
-            "control_mode": "joint_position",
-            "grasp_mode": "contact_only",
-            "joint_mapping": mapping_metadata(),
-            "finger_physics_material": {
-                "static_friction": SO101_GRIPPER_STATIC_FRICTION,
-                "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION,
-                "restitution": SO101_GRIPPER_RESTITUTION,
-                "friction_combine_mode": "max",
-            },
-        },
-        "scene": {
-            "coordinate_frame": "isaac_world",
-            "object": scene_object,
-            "target": scene_target,
-            "entities": list(resolved_variation["entities"].values()),
-            "cameras": (
-                resolved_camera_records
-                if resolved_camera_records is not None
-                else (
-                    [{"name": "observation.images.front", "resolution": [640, 480]}]
-                    + (
-                        [{"name": "observation.images.wrist", "resolution": [640, 480]}]
-                        if args_cli.enable_wrist_camera
-                        else []
-                    )
-                )
-            ),
-            "lighting_profile_id": "fixed_default",
-        },
-        "variation": {
-            "schema_version": "farpoint.variation.v3",
-            "variation_id": trial["variation_id"],
-            "varied_axes": copy.deepcopy(trial["varied_axes"]),
-            "frozen_axes": copy.deepcopy(trial["frozen_axes"]),
-            "requested": requested_variation,
-            "resolved": resolved_variation,
-            "split": trial["split"],
-        },
-        "recording": {
-            "fps": schedule.recording_hz,
-            "control_hz": schedule.control_hz,
-            "recording_stride": schedule.recording_stride,
-            "cameras": (
-                ["observation.images.front", "observation.images.wrist"]
-                if args_cli.enable_wrist_camera
-                else ["observation.images.front"]
-            ),
-            "frame_count": len(rows),
-            "state_features": list(LEROBOT_JOINT_NAMES),
-            "action_features": list(LEROBOT_JOINT_NAMES),
-            "state_unit": "radian",
-            "action_unit": "radian",
-            "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render",
-        },
-        "outcome": {
-            "success": success,
-            "dataset_valid": bool(rows),
-            "failure_category": None if success else "oracle",
-            "failure_reason": None if success else machine.failure_reason,
-        },
+        "identity": {"episode_id": root.name, "trial_id": trial["trial_id"], "task_id": "so101_cube_pick_place", "split": trial["split"], "episode_seed": environment_seed},
+        "provenance": {"collection_id": collection_id, "git_commit": git_commit, "simulator": "Isaac Sim", "simulator_image": "nvcr.io/nvidia/isaac-sim:6.0.0", "physics_engine": "PhysX", "asset_commit": "ce807d99724cb65671abec01f908a2fcb4a6eab7", "variation_seed": int(trial["seed"]), "attempt_seed": episode_seed, "environment_seed": environment_seed},
+        "task": {"task_id": "so101_cube_pick_place", "instruction": f"Pick up the {object_spec['shape']} and place it on the green target pad.", "object_shape": object_spec["shape"], "success_criteria_id": "contact_pick_place_footprint_v2", "manipulated_entity_id": "pick_object", "target_entity_id": "placement_target", "acceptance_region_id": "placement_region"},
+        "embodiment": {"robot": "so101", "gripper": "so101_jaw", "arm_dof": 5, "gripper_dof": 1, "controller": "contact_aware_local_frame_dls_v0", "control_mode": "joint_position", "grasp_mode": "contact_only", "joint_mapping": mapping_metadata(), "finger_physics_material": {"static_friction": SO101_GRIPPER_STATIC_FRICTION, "dynamic_friction": SO101_GRIPPER_DYNAMIC_FRICTION, "restitution": SO101_GRIPPER_RESTITUTION, "friction_combine_mode": "max"}},
+        "scene": {"coordinate_frame": "isaac_world", "object": scene_object, "target": scene_target, "entities": list(resolved_variation["entities"].values()), "cameras": (resolved_camera_records if resolved_camera_records is not None else ([{"name": "observation.images.front", "resolution": [640, 480]}] + ([{"name": "observation.images.wrist", "resolution": [640, 480]}] if args_cli.enable_wrist_camera else []))), "lighting_profile_id": "fixed_default"},
+        "variation": {"schema_version": "farpoint.variation.v3", "variation_id": trial["variation_id"], "varied_axes": copy.deepcopy(trial["varied_axes"]), "frozen_axes": copy.deepcopy(trial["frozen_axes"]), "requested": requested_variation, "resolved": resolved_variation, "split": trial["split"]},
+        "recording": {"fps": schedule.recording_hz, "control_hz": schedule.control_hz, "recording_stride": schedule.recording_stride, "cameras": (["observation.images.front", "observation.images.wrist"] if args_cli.enable_wrist_camera else ["observation.images.front"]), "frame_count": len(rows), "state_features": list(LEROBOT_JOINT_NAMES), "action_features": list(LEROBOT_JOINT_NAMES), "state_unit": "radian", "action_unit": "radian", "sampling_semantics": "state_before_action_at_control_step; image_latest_30hz_render"},
+        "outcome": {"success": success, "dataset_valid": bool(rows), "failure_category": None if success else "oracle", "failure_reason": None if success else machine.failure_reason},
     }
     if v010_context is None:
         metadata = legacy_metadata
@@ -3234,8 +3333,12 @@ def run_attempt(
             raise ValueError("episode v4 requires resolved front and wrist cameras")
         resolved_object_state = copy.deepcopy(object_spec)
         resolved_object_state["position_m"] = measured_object_position.tolist()
-        resolved_object_state["orientation_xyzw"] = measured_object_orientation.tolist()
-        resolved_object_state["mass_kg"] = float(mass_audit["physx_actual_mass_kg"])
+        resolved_object_state["orientation_xyzw"] = (
+            measured_object_orientation.tolist()
+        )
+        resolved_object_state["mass_kg"] = float(
+            mass_audit["physx_actual_mass_kg"]
+        )
         joint_mapping = mapping_metadata()
         joint_mapping["joint_order"] = list(LEROBOT_JOINT_NAMES)
         metadata = build_so101_episode_v4(
@@ -3278,43 +3381,27 @@ def run_attempt(
         raise ValueError("invalid SO-101 episode metadata: " + "; ".join(errors))
     semantic_errors = validate_episode_semantics(metadata)
     if semantic_errors:
-        raise ValueError("invalid SO-101 episode semantics: " + "; ".join(semantic_errors))
+        raise ValueError(
+            "invalid SO-101 episode semantics: " + "; ".join(semantic_errors)
+        )
     _write_json(root / "metadata.json", metadata)
-    (root / "observations.jsonl").write_text(
-        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
-    )
-    _write_json(
-        root / "metrics.json",
-        {
-            "success": success,
-            "dataset_valid": bool(rows),
-            "failure_category": metadata["outcome"]["failure_category"],
-            "failure_reason": metadata["outcome"]["failure_reason"],
-            "observation_count": len(rows),
-            "physics_audit": {"mass": mass_audit, "reset_support": reset_support_audit},
-        },
-    )
+    (root / "observations.jsonl").write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
+    _write_json(root / "metrics.json", {"success": success, "dataset_valid": bool(rows), "failure_category": metadata["outcome"]["failure_category"], "failure_reason": metadata["outcome"]["failure_reason"], "observation_count": len(rows), "physics_audit": {"mass": mass_audit, "reset_support": reset_support_audit}})
     run_state["execution_status"] = "FINISHED"
     run_state["recording"]["frame_count"] = len(rows)
     run_state["outcome"] = copy.deepcopy(metadata["outcome"])
     _write_json(root / "run-state.json", run_state)
-    return (
-        root.name,
-        success,
-        bool(rows),
-        metadata["outcome"]["failure_category"],
-        metadata["outcome"]["failure_reason"],
-    )
+    return root.name, success, bool(rows), metadata["outcome"]["failure_category"], metadata["outcome"]["failure_reason"]
 
 
 def main():
     from farpoint.object_variation import generate_variation_plan, load_variation_config
 
-    config = load_variation_config(
-        PROJECT_ROOT / "configs/variations/so101_cube_pick_place_v1.json"
-    )
+    config = load_variation_config(PROJECT_ROOT / "configs/variations/so101_cube_pick_place_v1.json")
     camera_profile = (
-        load_camera_profile(args_cli.camera_profile) if args_cli.require_dual_camera else None
+        load_camera_profile(args_cli.camera_profile)
+        if args_cli.require_dual_camera
+        else None
     )
     plan = _read_json(args_cli.plan) if args_cli.plan.exists() else generate_variation_plan(config)
     recovery_runtime = (
@@ -3330,11 +3417,16 @@ def main():
             raise ValueError("v0.1.0 collection requires campaign identity arguments")
         campaign = _read_json(args_cli.campaign_root / "campaign.json")
         segment = _read_json(
-            args_cli.campaign_root / "segments" / args_cli.segment_id / "segment.json"
+            args_cli.campaign_root
+            / "segments"
+            / args_cli.segment_id
+            / "segment.json"
         )
         if campaign.get("campaign_id") != args_cli.campaign_id:
             raise ValueError("v0.1.0 campaign id does not match campaign.json")
-        simulator_image_digest = os.environ.get("FARPOINT_SIMULATOR_IMAGE_DIGEST", "")
+        simulator_image_digest = os.environ.get(
+            "FARPOINT_SIMULATOR_IMAGE_DIGEST", ""
+        )
         if not simulator_image_digest.startswith("sha256:"):
             raise ValueError("v0.1.0 collection requires simulator image digest")
         v010_context = {
@@ -3349,9 +3441,13 @@ def main():
         if not args_cli.require_dual_camera:
             raise ValueError("recovery collection requires synchronized front+wrist cameras")
         plan_variations = {trial["variation_id"] for trial in plan["trials"]}
-        runtime_variations = {scene["variation_id"] for scene in recovery_runtime["scenes"]}
+        runtime_variations = {
+            scene["variation_id"] for scene in recovery_runtime["scenes"]
+        }
         if plan_variations != runtime_variations:
-            raise ValueError("recovery runtime scene bindings must exactly match plan variations")
+            raise ValueError(
+                "recovery runtime scene bindings must exactly match plan variations"
+            )
     watchdog_policy = (
         load_watchdog_policy(args_cli.watchdog_policy)
         if args_cli.watchdog_policy is not None
@@ -3379,7 +3475,9 @@ def main():
                 raise ValueError("formal collection profiles require --collection-id")
             manifest = create_manifest(
                 plan,
-                collection_id=(args_cli.collection_id or "so101_cube_pick_place_pilot"),
+                collection_id=(
+                    args_cli.collection_id or "so101_cube_pick_place_pilot"
+                ),
                 git_commit=os.environ.get("FARPOINT_GIT_COMMIT", "unknown"),
             )
     # Persist RUNNING before Isaac environment construction. A SIGINT/SIGTERM
@@ -3414,7 +3512,8 @@ def main():
             camera_errors = camera_cfg_drift_errors(camera_profile, env_cfg.scene)
             if camera_errors:
                 raise ValueError(
-                    "Isaac camera config does not match profile: " + "; ".join(camera_errors)
+                    "Isaac camera config does not match profile: "
+                    + "; ".join(camera_errors)
                 )
         env = gym.make("Farpoint-SO101-PickPlace-Cube-v0", cfg=env_cfg).unwrapped
         if args_cli.diagnose_jacobian:
@@ -3432,10 +3531,14 @@ def main():
                     args_cli.output_root / "diagnostic_error.json",
                     {"error": repr(error), "traceback": details},
                 )
-                finish_diagnostic_manifest(manifest, "grasp_postures", succeeded=False)
+                finish_diagnostic_manifest(
+                    manifest, "grasp_postures", succeeded=False
+                )
                 write_manifest(args_cli.manifest, manifest)
                 raise
-            finish_diagnostic_manifest(manifest, "grasp_postures", succeeded=True)
+            finish_diagnostic_manifest(
+                manifest, "grasp_postures", succeeded=True
+            )
             write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_calibrated_grasp:
@@ -3448,10 +3551,14 @@ def main():
                     args_cli.output_root / "diagnostic_error.json",
                     {"error": repr(error), "traceback": details},
                 )
-                finish_diagnostic_manifest(manifest, "calibrated_grasp", succeeded=False)
+                finish_diagnostic_manifest(
+                    manifest, "calibrated_grasp", succeeded=False
+                )
                 write_manifest(args_cli.manifest, manifest)
                 raise
-            finish_diagnostic_manifest(manifest, "calibrated_grasp", succeeded=True)
+            finish_diagnostic_manifest(
+                manifest, "calibrated_grasp", succeeded=True
+            )
             write_manifest(args_cli.manifest, manifest)
             return
         if args_cli.diagnose_grasp_offsets:
@@ -3482,7 +3589,9 @@ def main():
                 break
             active_attempt = attempt
             if live_publisher is not None:
-                live_publisher.attempt_started(attempt["attempt_id"], attempt["variation_id"])
+                live_publisher.attempt_started(
+                    attempt["attempt_id"], attempt["variation_id"]
+                )
             try:
                 episode_id, success, valid, category, reason = run_attempt(
                     env,
@@ -3535,7 +3644,8 @@ def main():
                 runner_error_path = (
                     error_root / "runner_error.json"
                     if failed_run_state is not None
-                    else args_cli.output_root / f"runner_error_{attempt['attempt_id']}.json"
+                    else args_cli.output_root
+                    / f"runner_error_{attempt['attempt_id']}.json"
                 )
                 _write_json(
                     runner_error_path,
@@ -3548,16 +3658,7 @@ def main():
                     "runner",
                     f"{type(error).__name__}: {error}",
                 )
-            record_attempt(
-                manifest,
-                plan,
-                attempt,
-                episode_id=episode_id,
-                success=success,
-                dataset_valid=valid,
-                failure_category=category,
-                failure_reason=reason,
-            )
+            record_attempt(manifest, plan, attempt, episode_id=episode_id, success=success, dataset_valid=valid, failure_category=category, failure_reason=reason)
             write_manifest(args_cli.manifest, manifest)
             if live_publisher is not None:
                 live_publisher.attempt_completed(
@@ -3568,13 +3669,12 @@ def main():
                     episode_id=episode_id,
                     failure_reason=reason,
                 )
-            print(
-                f"SO101_ATTEMPT {attempt['attempt_id']} success={success} phase={category or 'complete'}",
-                flush=True,
-            )
+            print(f"SO101_ATTEMPT {attempt['attempt_id']} success={success} phase={category or 'complete'}", flush=True)
             active_attempt = None
             if watchdog_policy is not None:
-                watchdog_decision = _evaluate_watchdog(plan, manifest, watchdog_policy)
+                watchdog_decision = _evaluate_watchdog(
+                    plan, manifest, watchdog_policy
+                )
                 if watchdog_decision in {"STOP", "INVALID"}:
                     break
     except (KeyboardInterrupt, CollectionSignalAbort) as error:
@@ -3585,7 +3685,9 @@ def main():
             interrupted_episode_id = episode_id_for_attempt(
                 manifest["collection_id"], active_attempt["attempt_id"]
             )
-            run_state_path = args_cli.output_root / interrupted_episode_id / "run-state.json"
+            run_state_path = (
+                args_cli.output_root / interrupted_episode_id / "run-state.json"
+            )
             if run_state_path.exists():
                 interrupted_run_state = _read_json(run_state_path)
                 if interrupted_run_state.get("execution_status") == "RUNNING":
@@ -3603,21 +3705,17 @@ def main():
         if live_publisher is not None:
             execution_status = manifest.get("execution_status")
             live_publisher.finish(
-                execution_status=("FINISHED" if execution_status == "FINISHED" else "PAUSED"),
+                execution_status=(
+                    "FINISHED" if execution_status == "FINISHED" else "PAUSED"
+                ),
                 quality_status=manifest.get("quality_status", "NOT_EVALUATED"),
             )
         if env is not None:
             env.close()
         simulation_app.close()
     if manifest["quality_status"] == "PASS" and not args_cli.gate_plan:
-        _write_json(
-            args_cli.manifest.with_name("export_selection.json"),
-            build_export_selection(manifest, str(args_cli.output_root)),
-        )
-    print(
-        f"SO101_COLLECTION status={manifest['quality_status']} selected={len(manifest['selected_variations'])}",
-        flush=True,
-    )
+        _write_json(args_cli.manifest.with_name("export_selection.json"), build_export_selection(manifest, str(args_cli.output_root)))
+    print(f"SO101_COLLECTION status={manifest['quality_status']} selected={len(manifest['selected_variations'])}", flush=True)
 
 
 if __name__ == "__main__":

@@ -11,8 +11,6 @@ from typing import Any
 import numpy as np
 
 from farpoint.contracts import validate_contract
-from farpoint.policy_rollout import resolve_action_safety_profile
-from farpoint.so101 import lerobot_to_radians, radians_to_lerobot
 
 
 def load_recovery_runtime(path: Path) -> dict[str, Any]:
@@ -47,62 +45,6 @@ def recovery_descent_duration_seconds(spec: dict[str, Any] | None) -> float:
     if spec is None:
         return 2.3333333333
     return float(spec["oracle_handoff_profile"]["descent_duration_seconds"])
-
-
-def recovery_oracle_command_continuity_enabled(spec: dict[str, Any] | None) -> bool:
-    """Keep legacy recovery runtimes unchanged unless the profile opts in."""
-    if spec is None:
-        return False
-    return (
-        spec["oracle_handoff_profile"].get("command_continuity")
-        == "action_safety_profile_control_rate_v1"
-    )
-
-
-def recovery_oracle_slew_limits(spec: dict[str, Any]) -> np.ndarray:
-    """Resolve the 120 Hz Oracle target envelope from the 30 Hz actuator profile."""
-    control = spec["control"]
-    control_hz = int(control["physics_hz"])
-    policy_hz = int(control["policy_hz"])
-    if control_hz <= 0 or policy_hz <= 0 or control_hz % policy_hz:
-        raise ValueError("recovery control frequencies must have an integer positive ratio")
-    per_policy_step = np.asarray(
-        resolve_action_safety_profile(control)["max_command_slew_calibrated_per_step"],
-        dtype=np.float64,
-    )
-    if per_policy_step.shape != (6,) or not np.all(np.isfinite(per_policy_step)):
-        raise ValueError("recovery action safety profile must resolve six finite limits")
-    return per_policy_step / (control_hz // policy_hz)
-
-
-def slew_recovery_oracle_target(
-    previous_target_rad: Any,
-    requested_target_rad: Any,
-    maximum_delta_calibrated: Any,
-) -> tuple[np.ndarray, dict[str, Any]]:
-    """Bound one Oracle target without resetting or rebasing the physical state."""
-    previous = np.asarray(previous_target_rad, dtype=np.float64)
-    requested = np.asarray(requested_target_rad, dtype=np.float64)
-    maximum = np.asarray(maximum_delta_calibrated, dtype=np.float64)
-    if previous.shape != (6,) or requested.shape != (6,) or maximum.shape != (6,):
-        raise ValueError("recovery Oracle targets and slew limits must have shape (6,)")
-    if not all(np.all(np.isfinite(value)) for value in (previous, requested, maximum)):
-        raise ValueError("recovery Oracle targets and slew limits must be finite")
-    if np.any(maximum <= 0):
-        raise ValueError("recovery Oracle slew limits must be positive")
-    previous_calibrated = radians_to_lerobot(previous, clip=True)
-    requested_calibrated = radians_to_lerobot(requested, clip=True)
-    requested_delta = requested_calibrated - previous_calibrated
-    applied_delta = np.clip(requested_delta, -maximum, maximum)
-    applied_calibrated = previous_calibrated + applied_delta
-    limited = np.abs(requested_delta) > maximum
-    return lerobot_to_radians(applied_calibrated, clip=True).astype(np.float32), {
-        "limiter_reference": "previous_oracle_target",
-        "limited_joint_count": int(np.count_nonzero(limited)),
-        "requested_delta_calibrated": requested_delta.tolist(),
-        "applied_delta_calibrated": applied_delta.tolist(),
-        "maximum_applied_delta_calibrated": float(np.max(np.abs(applied_delta))),
-    }
 
 
 class RecoveryTriggerDetector:

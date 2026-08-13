@@ -67,8 +67,7 @@
       "required": ["profile_id", "descent_duration_seconds"],
       "properties": {
         "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
-        "descent_duration_seconds": {"type": "number", "minimum": 2.3333333333, "maximum": 8.0},
-        "command_continuity": {"const": "action_safety_profile_control_rate_v1"}
+        "descent_duration_seconds": {"type": "number", "minimum": 2.3333333333, "maximum": 8.0}
       }
     },
     "scenes": {
