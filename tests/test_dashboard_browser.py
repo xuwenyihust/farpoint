@@ -8,7 +8,7 @@ import time
 from contextlib import closing
 from http.client import HTTPConnection
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -132,8 +132,7 @@ def dashboard(tmp_path):
             "created_at": "2026-08-07T00:00:00+00:00",
             "updated_at": "2026-08-07T00:01:00+00:00",
             "attempts": [
-                {"attempt_id": f"attempt_{index}", "success": True}
-                for index in range(50)
+                {"attempt_id": f"attempt_{index}", "success": True} for index in range(50)
             ],
         },
     )
@@ -198,7 +197,9 @@ def dashboard(tmp_path):
                             "pose": {"position_m": [0.2, 0.1, 0.037]},
                             "geometry": {"dimensions_m": [0.16, 0.14, 0.01]},
                             "physics": {"body_type": "static"},
-                            "regions": [{"relation": "on", "geometry": {"dimensions_m": [0.16, 0.14, 0.01]}}],
+                            "regions": [
+                                {"relation": "on", "geometry": {"dimensions_m": [0.16, 0.14, 0.01]}}
+                            ],
                         },
                     ]
                 },
@@ -206,8 +207,22 @@ def dashboard(tmp_path):
                     "variation_id": "cube_30mm_position_01",
                     "split": "validation",
                     "varied_axes": ["entities.pick_object.pose.position_m"],
-                    "requested": {"entities": {"placement_target": {"entity_type": "pad", "pose": {"position_m": [0.2, 0.1, 0.037]}}}},
-                    "resolved": {"entities": {"placement_target": {"entity_type": "pad", "pose": {"position_m": [0.200000003, 0.100000001, 0.037]}}}},
+                    "requested": {
+                        "entities": {
+                            "placement_target": {
+                                "entity_type": "pad",
+                                "pose": {"position_m": [0.2, 0.1, 0.037]},
+                            }
+                        }
+                    },
+                    "resolved": {
+                        "entities": {
+                            "placement_target": {
+                                "entity_type": "pad",
+                                "pose": {"position_m": [0.200000003, 0.100000001, 0.037]},
+                            }
+                        }
+                    },
                 },
                 "recording": {
                     "frame_count": 2,
@@ -240,9 +255,7 @@ def dashboard(tmp_path):
 
     so101_success = make_so101_episode("episode_so101_success", True)
     so101_failure = make_so101_episode("episode_so101_failure", False)
-    so101_incomplete = make_so101_episode(
-        "episode_so101_incomplete", False, include_metrics=False
-    )
+    so101_incomplete = make_so101_episode("episode_so101_incomplete", False, include_metrics=False)
     old = time.time() - 3600
     os.utime(so101_incomplete, (old, old))
 
@@ -286,6 +299,71 @@ def dashboard(tmp_path):
         + "\n"
     )
 
+    rollout_id = "act_v010_holdout20_dashboard_qa"
+    rollout_scene_id = "holdout_red_core_yaw00"
+    rollout = tmp_path / "policy-rollouts" / rollout_id
+    write_json(
+        rollout / "spec.json",
+        {
+            "suite_id": "so101_act_v0_1_0_holdout20",
+            "task": {
+                "task_id": "so101_cube_pick_place",
+                "evaluation_class": "independent_holdout",
+            },
+            "scenes": [
+                {
+                    "scene_id": rollout_scene_id,
+                    "object_variant_id": "red-40mm-40g",
+                    "region_band": "core",
+                    "yaw_stratum_id": "yaw00_18",
+                }
+            ],
+        },
+    )
+    write_json(
+        rollout / "run" / "report.json",
+        {
+            "suite_id": "so101_act_v0_1_0_holdout20",
+            "status": "FAIL",
+            "created_at": "2026-08-13T05:00:00+00:00",
+            "rollout_git_commit": "a" * 40,
+            "checkpoint": {"step": 20000, "model_sha256": "b" * 64},
+            "acceptance": {
+                "completed_episodes": 1,
+                "task_successes": 0,
+                "task_success_rate": 0.0,
+                "stage_progress": {"ever_cube_contact": 1, "ever_lifted": 1},
+                "terminal_reason_counts": {"lift_without_target_entry": 1},
+                "acceptance_errors": ["safety envelope"],
+                "maximum_hard_range_excess_calibrated": 11.12,
+            },
+            "episodes": [
+                {
+                    "scene_id": rollout_scene_id,
+                    "task_success": False,
+                    "terminal_reason": "lift_without_target_entry",
+                    "policy_steps": 600,
+                    "stage_evidence": {
+                        "ever_cube_contact": True,
+                        "ever_lifted": True,
+                    },
+                    "videos": {
+                        camera: {
+                            "path": f"episodes/{rollout_scene_id}/{camera}.mp4",
+                            "decoded_frames": 600,
+                            "sha256": camera[0] * 64,
+                        }
+                        for camera in ("front", "wrist")
+                    },
+                }
+            ],
+        },
+    )
+    video_root = rollout / "run" / "episodes" / rollout_scene_id
+    video_root.mkdir(parents=True)
+    (video_root / "front.mp4").write_bytes(b"front")
+    (video_root / "wrist.mp4").write_bytes(b"wrist")
+
     port = free_port()
     url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
@@ -306,6 +384,8 @@ def dashboard(tmp_path):
             str(external_root),
             "--campaign-root",
             str(tmp_path / "campaigns"),
+            "--policy-rollout-root",
+            str(tmp_path / "policy-rollouts"),
         ],
         cwd=PROJECT_ROOT,
         stdout=subprocess.PIPE,
@@ -326,6 +406,8 @@ def dashboard(tmp_path):
             "so101_incomplete": so101_incomplete.name,
             "collection_id": collection_id,
             "campaign_id": campaign_id,
+            "rollout_id": rollout_id,
+            "rollout_scene_id": rollout_scene_id,
         }
     finally:
         process.terminate()
@@ -350,35 +432,29 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(dashboard["url"], wait_until="networkidle")
         page.get_by_role("button", name="Live Runs").click()
-        page.locator("#liveRunRows").get_by_text(
-            dashboard["campaign_id"], exact=True
-        ).wait_for()
-        playwright.expect(page.locator("#liveRunRows img")).to_have_js_property(
-            "naturalWidth", 1
-        )
+        page.locator("#liveRunRows").get_by_text(dashboard["campaign_id"], exact=True).wait_for()
+        playwright.expect(page.locator("#liveRunRows img")).to_have_js_property("naturalWidth", 1)
         page.get_by_role("button", name="Collections").click()
-        collection_row = page.locator(
-            "#collectionRows tr", has_text=dashboard["campaign_id"]
-        )
+        collection_row = page.locator("#collectionRows tr", has_text=dashboard["campaign_id"])
         assert collection_row.get_by_text("2 / 200", exact=True).count() == 1
+        page.get_by_role("button", name="Policy Rollouts").click()
+        page.get_by_role("button", name="so101_act_v0_1_0_holdout20").click()
+        page.get_by_text(dashboard["rollout_scene_id"], exact=True).wait_for()
+        assert page.get_by_role("button", name="Front + wrist").count() == 1
         page.get_by_role("button", name="Episodes").click()
         page.get_by_placeholder("Search episode or task").fill("dashboard_qa")
         page.get_by_role("link", name=dashboard["episode_id"]).wait_for()
 
         page.get_by_role("button", name=f"Play preview for {dashboard['episode_id']}").click()
         page.get_by_text("2 preview frames").wait_for()
-        playwright.expect(page.locator("#playerImage")).to_have_js_property(
-            "naturalWidth", 1
-        )
+        playwright.expect(page.locator("#playerImage")).to_have_js_property("naturalWidth", 1)
         page.get_by_role("button", name="Close playback").click()
 
         page.get_by_placeholder("Search episode or task").fill("episode_so101")
         page.get_by_text(dashboard["so101_success"], exact=True).wait_for()
         page.get_by_text(dashboard["so101_failure"], exact=True).wait_for()
         page.get_by_text(dashboard["so101_incomplete"], exact=True).wait_for()
-        page.get_by_role(
-            "button", name=f"Play preview for {dashboard['so101_success']}"
-        ).click()
+        page.get_by_role("button", name=f"Play preview for {dashboard['so101_success']}").click()
         page.get_by_text("2 preview frames").wait_for()
         player_source = page.locator("#playerImage").get_attribute("src")
         assert any(
@@ -389,9 +465,7 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
             )
         )
         page.get_by_role("button", name="Close playback").click()
-        page.get_by_role(
-            "button", name=f"View metadata for {dashboard['so101_success']}"
-        ).click()
+        page.get_by_role("button", name=f"View metadata for {dashboard['so101_success']}").click()
         page.get_by_text("Manipulated object", exact=True).wait_for()
         page.get_by_text("Placement target", exact=True).wait_for()
         page.get_by_text("Requested entities", exact=True).wait_for()
@@ -402,12 +476,8 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         page.locator("#collectionFilter").fill(dashboard["collection_id"])
         page.locator("#splitFilter").select_option("validation")
         assert page.locator("#episodeRows tr").count() == 3
-        failure_row = page.locator(
-            "#episodeRows tr", has_text=dashboard["so101_failure"]
-        )
-        incomplete_row = page.locator(
-            "#episodeRows tr", has_text=dashboard["so101_incomplete"]
-        )
+        failure_row = page.locator("#episodeRows tr", has_text=dashboard["so101_failure"])
+        incomplete_row = page.locator("#episodeRows tr", has_text=dashboard["so101_incomplete"])
         assert failure_row.get_by_text("FAIL", exact=True).count() == 1
         assert failure_row.get_by_text("grasp", exact=True).count() == 1
         assert incomplete_row.get_by_text("INCOMPLETE", exact=True).count() == 1
@@ -428,9 +498,7 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
             f"/reports/benchmarks/{dashboard['selection_id']}/index.html"
         )
         page.go_back(wait_until="networkidle")
-        assert page.get_by_placeholder("Search episode or task").input_value() == (
-            "episode_so101"
-        )
+        assert page.get_by_placeholder("Search episode or task").input_value() == ("episode_so101")
         assert page.locator("#collectionFilter").input_value() == dashboard["collection_id"]
         assert page.locator("#splitFilter").input_value() == "validation"
 
@@ -454,12 +522,26 @@ def test_campaign_dashboard_apis_and_sse(dashboard):
 
     with urlopen(f"{dashboard['url']}/api/benchmarks") as response:
         benchmarks = json.load(response)["benchmarks"]
-    assert dashboard["campaign_id"] not in {
-        row["benchmark_id"] for row in benchmarks
-    }
+    assert dashboard["campaign_id"] not in {row["benchmark_id"] for row in benchmarks}
 
     with urlopen(f"{dashboard['url']}/api/events") as response:
         assert response.headers["Content-Type"] == "text/event-stream"
         body = response.read().decode()
     assert "data:" in body
     assert dashboard["campaign_id"] in body
+
+    with urlopen(f"{dashboard['url']}/api/policy-rollouts") as response:
+        rollouts = json.load(response)["policy_rollouts"]
+    assert len(rollouts) == 1
+    assert rollouts[0]["status"] == "FAIL"
+    assert rollouts[0]["task_successes"] == 0
+
+    with urlopen(f"{dashboard['url']}/api/policy-rollouts/{dashboard['rollout_id']}") as response:
+        rollout = json.load(response)
+    front_url = rollout["episodes"][0]["videos"]["front"]["url"]
+    request = Request(f"{dashboard['url']}{front_url}", headers={"Range": "bytes=1-3"})
+    with urlopen(request) as response:
+        assert response.status == 206
+        assert response.headers["Accept-Ranges"] == "bytes"
+        assert response.headers["Content-Range"] == "bytes 1-3/5"
+        assert response.read() == b"ron"
