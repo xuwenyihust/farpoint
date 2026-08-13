@@ -61,13 +61,48 @@
     },
     "control": {
       "type": "object", "additionalProperties": false,
-      "required": ["physics_hz", "policy_hz", "max_policy_steps", "max_delta_calibrated", "stable_steps"],
+      "required": ["physics_hz", "policy_hz", "max_policy_steps", "stable_steps"],
+      "oneOf": [
+        {"required": ["max_delta_calibrated"], "not": {"required": ["action_safety_profile"]}},
+        {"required": ["action_safety_profile"], "not": {"required": ["max_delta_calibrated"]}}
+      ],
       "properties": {
         "physics_hz": {"const": 120},
         "policy_hz": {"const": 30},
         "max_policy_steps": {"type": "integer", "minimum": 1},
         "replan_interval_steps": {"type": "integer", "minimum": 1},
         "max_delta_calibrated": {"type": "number", "exclusiveMinimum": 0},
+        "action_safety_profile": {
+          "type": "object", "additionalProperties": false,
+          "required": ["schema_version", "profile_id", "joint_order", "source"],
+          "oneOf": [
+            {"required": ["arm_max_command_speed_deg_s", "gripper_max_command_slew_calibrated_per_step"]},
+            {"required": ["max_command_slew_calibrated_per_step"]}
+          ],
+          "properties": {
+            "schema_version": {"const": "farpoint.action-safety-profile.v1"},
+            "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+            "joint_order": {
+              "const": ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos", "wrist_flex.pos", "wrist_roll.pos", "gripper.pos"]
+            },
+            "arm_max_command_speed_deg_s": {"type": "number", "exclusiveMinimum": 0},
+            "gripper_max_command_slew_calibrated_per_step": {"type": "number", "exclusiveMinimum": 0},
+            "max_command_slew_calibrated_per_step": {
+              "type": "array", "minItems": 6, "maxItems": 6,
+              "items": {"type": "number", "exclusiveMinimum": 0}
+            },
+            "source": {
+              "type": "object", "additionalProperties": false,
+              "required": ["kind", "reference", "resolved_revision", "statistic"],
+              "properties": {
+                "kind": {"enum": ["open_source_hardware_default", "dataset_percentile"]},
+                "reference": {"type": "string", "minLength": 1},
+                "resolved_revision": {"type": "string", "minLength": 1},
+                "statistic": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        },
         "stable_steps": {"type": "integer", "minimum": 1}
       }
     },

@@ -58,6 +58,7 @@ from farpoint.policy_rollout import (  # noqa: E402
     evaluate_rollout_acceptance,
     json_default,
     load_rollout_spec,
+    resolve_action_safety_profile,
 )
 from farpoint.policy_training import canonical_sha256, file_sha256  # noqa: E402
 from farpoint.so101 import lerobot_to_radians, radians_to_lerobot  # noqa: E402
@@ -317,6 +318,7 @@ def _run_episode(env, scene_spec, spec, root):
     active = scene[active_name]
     obj = scene_spec["object"]
     control = spec["control"]
+    action_safety_profile = resolve_action_safety_profile(control)
     physics_steps_per_policy = control["physics_hz"] // control["policy_hz"]
     initial_z = float(obj["position_m"][2])
     ever_contact = False
@@ -330,6 +332,7 @@ def _run_episode(env, scene_spec, spec, root):
     nonfinite = 0
     policy_steps = 0
     task_success = False
+    previous_applied_action = None
     camera_ids = [feature.rsplit(".", 1)[-1] for feature in spec["environment"]["camera_features"]]
     writers = {
         camera_id: VideoWriter(episode_root / f"{camera_id}.mp4", control["policy_hz"])
@@ -349,9 +352,22 @@ def _run_episode(env, scene_spec, spec, root):
             if raw_action.shape != (6,) or not np.all(np.isfinite(raw_action)):
                 nonfinite += 1
                 raise RuntimeError(f"invalid policy action at step {step}: {raw_action}")
-            applied, safety = constrain_policy_action(
-                raw_action, state, max_delta=control["max_delta_calibrated"]
-            )
+            if action_safety_profile["limiter_reference"] == "current_position":
+                applied, safety = constrain_policy_action(
+                    raw_action,
+                    state,
+                    max_delta=action_safety_profile["max_command_slew_calibrated_per_step"][0],
+                )
+            else:
+                if previous_applied_action is None:
+                    previous_applied_action = state.copy()
+                applied, safety = constrain_policy_action(
+                    raw_action,
+                    state,
+                    action_safety_profile=action_safety_profile,
+                    previous_applied_action=previous_applied_action,
+                )
+                previous_applied_action = applied.copy()
             hard_range_violations += safety["hard_range_violation_count"]
             maximum_range_excess = max(
                 maximum_range_excess,
@@ -482,6 +498,7 @@ def _run_episode(env, scene_spec, spec, root):
         "hard_range_violation_count": hard_range_violations,
         "maximum_hard_range_excess_calibrated": maximum_range_excess,
         "delta_limited_count": delta_limited,
+        "action_safety_profile": action_safety_profile,
     }
     _write_json(episode_root / "result.json", result)
     return result
@@ -566,6 +583,7 @@ def main() -> int:
         "isaac_base_image_id": base_image_id,
         "spec_sha256": canonical_sha256(spec),
         "checkpoint": spec["checkpoint"],
+        "action_safety_profile": resolve_action_safety_profile(spec["control"]),
         "holdout_source": spec.get("holdout_source"),
         "data_policy": {
             "training_episodes": spec["checkpoint"]["dataset"]["train_episodes"],

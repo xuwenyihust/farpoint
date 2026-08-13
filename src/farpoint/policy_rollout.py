@@ -9,7 +9,13 @@ from typing import Any
 import numpy as np
 
 from farpoint.contracts import validate_contract
-from farpoint.so101 import LEROBOT_MAX, LEROBOT_MIN
+from farpoint.so101 import (
+    LEROBOT_JOINT_NAMES,
+    LEROBOT_MAX,
+    LEROBOT_MIN,
+    USD_MAX_DEGREES,
+    USD_MIN_DEGREES,
+)
 
 
 def json_default(value: Any) -> Any:
@@ -34,6 +40,7 @@ def load_rollout_spec(path: Path) -> dict[str, Any]:
         raise ValueError("minimum_task_successes exceeds the frozen scene count")
     if payload["control"]["physics_hz"] % payload["control"]["policy_hz"] != 0:
         raise ValueError("physics_hz must be divisible by policy_hz")
+    resolve_action_safety_profile(payload["control"])
     if payload["task"]["evaluation_class"].startswith("independent_holdout"):
         source = payload.get("holdout_source")
         if source is None:
@@ -60,11 +67,55 @@ def resolve_replan_interval(
     return resolved
 
 
+def resolve_action_safety_profile(control: dict[str, Any]) -> dict[str, Any]:
+    """Resolve legacy or v1 action safety configuration into a six-joint profile.
+
+    Legacy rollout specs intentionally retain their original target-versus-state
+    limiter semantics. New profiles limit command slew against the previously
+    applied command, which is the quantity comparable to a physical speed cap.
+    """
+    profile = control.get("action_safety_profile")
+    if profile is None:
+        maximum = float(control["max_delta_calibrated"])
+        return {
+            "schema_version": "farpoint.action-safety-profile.legacy-v0",
+            "profile_id": "legacy-current-state-delta",
+            "joint_order": list(LEROBOT_JOINT_NAMES),
+            "limiter_reference": "current_position",
+            "max_command_slew_calibrated_per_step": [maximum] * 6,
+        }
+
+    if profile["joint_order"] != list(LEROBOT_JOINT_NAMES):
+        raise ValueError("action safety profile joint_order does not match SO-101")
+    if "max_command_slew_calibrated_per_step" in profile:
+        maximum = np.asarray(profile["max_command_slew_calibrated_per_step"], dtype=np.float64)
+    else:
+        degrees_per_step = float(profile["arm_max_command_speed_deg_s"]) / float(
+            control["policy_hz"]
+        )
+        calibrated_per_degree = (LEROBOT_MAX - LEROBOT_MIN) / (USD_MAX_DEGREES - USD_MIN_DEGREES)
+        maximum = np.concatenate(
+            (
+                degrees_per_step * calibrated_per_degree[:5],
+                [float(profile["gripper_max_command_slew_calibrated_per_step"])],
+            )
+        )
+    if maximum.shape != (6,) or not np.all(np.isfinite(maximum)) or np.any(maximum <= 0):
+        raise ValueError("action safety command slew must be six finite positive values")
+    return {
+        **profile,
+        "limiter_reference": "previous_applied_action",
+        "max_command_slew_calibrated_per_step": maximum.tolist(),
+    }
+
+
 def constrain_policy_action(
     raw_action: Any,
     current_position: Any,
     *,
-    max_delta: float,
+    max_delta: float | None = None,
+    action_safety_profile: dict[str, Any] | None = None,
+    previous_applied_action: Any | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     raw = np.asarray(raw_action, dtype=np.float64)
     current = np.asarray(current_position, dtype=np.float64)
@@ -74,16 +125,39 @@ def constrain_policy_action(
         raise ValueError("SO-101 rollout action contains non-finite values")
     if not np.all(np.isfinite(current)):
         raise ValueError("SO-101 current position contains non-finite values")
+    if (max_delta is None) == (action_safety_profile is None):
+        raise ValueError("provide exactly one of max_delta or action_safety_profile")
     hard_mask = (raw < LEROBOT_MIN) | (raw > LEROBOT_MAX)
     hard_clipped = np.clip(raw, LEROBOT_MIN, LEROBOT_MAX)
-    delta = np.clip(hard_clipped - current, -max_delta, max_delta)
-    applied = current + delta
+    if action_safety_profile is None:
+        maximum = np.full(6, float(max_delta), dtype=np.float64)
+        reference = current
+        limiter_reference = "current_position"
+    else:
+        maximum = np.asarray(
+            action_safety_profile["max_command_slew_calibrated_per_step"], dtype=np.float64
+        )
+        if maximum.shape != (6,) or not np.all(np.isfinite(maximum)) or np.any(maximum <= 0):
+            raise ValueError("action safety command slew must be six finite positive values")
+        if previous_applied_action is None:
+            raise ValueError("command-slew profile requires previous_applied_action")
+        reference = np.asarray(previous_applied_action, dtype=np.float64)
+        if reference.shape != (6,) or not np.all(np.isfinite(reference)):
+            raise ValueError("previous applied action must contain six finite values")
+        limiter_reference = "previous_applied_action"
+    requested_delta = hard_clipped - reference
+    delta = np.clip(requested_delta, -maximum, maximum)
+    applied = np.clip(reference + delta, LEROBOT_MIN, LEROBOT_MAX)
+    limited_mask = np.abs(requested_delta) > maximum
     diagnostics = {
+        "limiter_reference": limiter_reference,
         "hard_range_violation_count": int(np.count_nonzero(hard_mask)),
         "maximum_hard_range_excess_calibrated": float(np.max(np.abs(raw - hard_clipped))),
-        "delta_limited_count": int(np.count_nonzero(np.abs(hard_clipped - current) > max_delta)),
+        "delta_limited_count": int(np.count_nonzero(limited_mask)),
+        "command_slew_limited_count": int(np.count_nonzero(limited_mask)),
         "maximum_raw_abs": float(np.max(np.abs(raw))),
         "maximum_applied_delta": float(np.max(np.abs(delta))),
+        "maximum_tracking_error_calibrated": float(np.max(np.abs(applied - current))),
     }
     return applied.astype(np.float32), diagnostics
 
@@ -95,9 +169,17 @@ def summarize_action_errors(rows: list[dict[str, Any]]) -> dict[str, Any]:
     predicted = np.asarray([row["predicted"] for row in rows], dtype=np.float64)
     applied = np.asarray([row["applied"] for row in rows], dtype=np.float64)
     expert = np.asarray([row["expert"] for row in rows], dtype=np.float64)
-    if predicted.shape[1:] != (6,) or applied.shape != predicted.shape or expert.shape != predicted.shape:
+    if (
+        predicted.shape[1:] != (6,)
+        or applied.shape != predicted.shape
+        or expert.shape != predicted.shape
+    ):
         raise ValueError("action error rows must contain shape-(6,) actions")
-    if not np.isfinite(predicted).all() or not np.isfinite(applied).all() or not np.isfinite(expert).all():
+    if (
+        not np.isfinite(predicted).all()
+        or not np.isfinite(applied).all()
+        or not np.isfinite(expert).all()
+    ):
         raise ValueError("action error rows contain non-finite values")
 
     def error_metrics(values: np.ndarray) -> dict[str, Any]:
@@ -124,20 +206,16 @@ def summarize_action_errors(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 row["prediction_safety"]["delta_limited_count"] for row in rows
             ),
             "maximum_hard_range_excess_calibrated": max(
-                row["prediction_safety"]["maximum_hard_range_excess_calibrated"]
-                for row in rows
+                row["prediction_safety"]["maximum_hard_range_excess_calibrated"] for row in rows
             ),
         },
         "expert_safety": {
             "hard_range_violation_count": sum(
                 row["expert_safety"]["hard_range_violation_count"] for row in rows
             ),
-            "delta_limited_count": sum(
-                row["expert_safety"]["delta_limited_count"] for row in rows
-            ),
+            "delta_limited_count": sum(row["expert_safety"]["delta_limited_count"] for row in rows),
             "maximum_hard_range_excess_calibrated": max(
-                row["expert_safety"]["maximum_hard_range_excess_calibrated"]
-                for row in rows
+                row["expert_safety"]["maximum_hard_range_excess_calibrated"] for row in rows
             ),
         },
     }
