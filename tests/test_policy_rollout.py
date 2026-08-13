@@ -12,12 +12,14 @@ from farpoint.policy_rollout import (
     evaluate_rollout_acceptance,
     initial_command_slew_reference,
     interpolate_command_endpoints,
+    resolve_physics_action_group,
     json_default,
     load_rollout_spec,
     resolve_action_safety_profile,
     resolve_replan_interval,
     summarize_action_errors,
 )
+from farpoint.so101 import lerobot_to_radians
 
 
 def test_json_default_converts_numpy_scalars_and_rejects_unknown_objects():
@@ -161,13 +163,14 @@ def test_state_restored_replay_continues_from_captured_handoff_command():
     measured = np.asarray([-20.0] * 6)
     captured = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0]
     assert initial_command_slew_reference(measured, None).tolist() == measured.tolist()
-    assert initial_command_slew_reference(
-        measured, {"applied_policy_action_calibrated": captured}
-    ).tolist() == captured
-    with pytest.raises(ValueError, match="six finite"):
+    assert (
         initial_command_slew_reference(
-            measured, {"applied_policy_action_calibrated": [1.0]}
-        )
+            measured, {"applied_policy_action_calibrated": captured}
+        ).tolist()
+        == captured
+    )
+    with pytest.raises(ValueError, match="six finite"):
+        initial_command_slew_reference(measured, {"applied_policy_action_calibrated": [1.0]})
 
 
 def test_command_slew_ignores_only_float_round_trip_noise():
@@ -205,6 +208,44 @@ def test_command_endpoints_are_linearly_interpolated_at_physics_rate():
     ]
     with pytest.raises(ValueError, match="positive integer"):
         interpolate_command_endpoints(previous, applied, 0)
+
+
+def test_exact_physics_action_group_bypasses_endpoint_interpolation():
+    previous = np.zeros(6)
+    applied = np.ones(6)
+    applied_radians = lerobot_to_radians(applied, clip=True)
+    exact = [
+        applied_radians.tolist(),
+        (applied_radians + 0.01).tolist(),
+        (applied_radians - 0.01).tolist(),
+        (applied_radians + 0.02).tolist(),
+    ]
+    targets, mode = resolve_physics_action_group(
+        previous,
+        applied,
+        {
+            "physics_action_source": "exact_trace",
+            "physics_actions_radians": exact,
+        },
+        4,
+    )
+    assert mode == "exact_trace"
+    assert targets.tolist() == exact
+
+    interpolated, mode = resolve_physics_action_group(previous, applied, {}, 4)
+    assert mode == "linear_endpoint"
+    assert interpolated[-1].tolist() == pytest.approx(applied_radians.tolist())
+
+    with pytest.raises(ValueError, match="does not start"):
+        resolve_physics_action_group(
+            previous,
+            applied,
+            {
+                "physics_action_source": "exact_trace",
+                "physics_actions_radians": [[0.5] * 6],
+            },
+            4,
+        )
 
 
 def test_viam_physical_speed_profile_resolves_for_30_hz_so101():

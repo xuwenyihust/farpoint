@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from farpoint.demonstration import recovery_demonstration
+from farpoint.demonstration import intervention_command_trace, recovery_demonstration
 from farpoint.policy_rollout import load_rollout_spec
 from farpoint.policy_training import file_sha256
 from farpoint.recovery_replay import write_recovery_replay_bundle
@@ -61,12 +61,57 @@ def _write_episode(root, episode_id):
         state_snapshot=snapshot,
         recovery_strategy_id="regrasp-v1",
     )
-    (root / "metadata.json").write_text(json.dumps(metadata))
-    (root / "handoff.json").write_text(json.dumps({"state_snapshot": snapshot}))
     rows = [
-        {"action_joint_positions": [-0.2, -0.6, -0.1, 1.5, -1.6, 1.7], "phase": "home"},
-        {"action_joint_positions": [-0.19, -0.59, -0.09, 1.49, -1.59, 1.69], "phase": "home"},
+        {
+            "control_step": 0,
+            "action_joint_positions": [-0.2, -0.6, -0.1, 1.5, -1.6, 1.7],
+            "phase": "home",
+        },
+        {
+            "control_step": 4,
+            "action_joint_positions": [-0.19, -0.59, -0.09, 1.49, -1.59, 1.69],
+            "phase": "home",
+        },
     ]
+    physics_rows = []
+    for control_step in range(8):
+        fraction = min(control_step, 4) / 4
+        action = [
+            float(first + fraction * (second - first))
+            for first, second in zip(
+                rows[0]["action_joint_positions"],
+                rows[1]["action_joint_positions"],
+            )
+        ]
+        physics_rows.append(
+            {
+                "control_step": control_step,
+                "action_joint_positions": action,
+                "phase": "home",
+            }
+        )
+    trace_path = root / "oracle-commands.jsonl"
+    trace_path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in physics_rows))
+    command_trace = intervention_command_trace(
+        path=trace_path.name,
+        sha256=file_sha256(trace_path),
+        control_hz=120,
+        sample_count=8,
+        first_control_step=0,
+        last_control_step=7,
+        joint_order=metadata["recording"]["action_features"],
+    )
+    metadata["demonstration"]["intervention"]["command_trace"] = command_trace
+    (root / "metadata.json").write_text(json.dumps(metadata))
+    (root / "handoff.json").write_text(
+        json.dumps(
+            {
+                "state_snapshot": snapshot,
+                "command_trace": command_trace,
+                "demonstration": metadata["demonstration"],
+            }
+        )
+    )
     (root / "observations.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
 
 
@@ -137,7 +182,18 @@ def test_recovery_replay_binds_live_snapshot_and_exported_actions(tmp_path):
     assert spec["recovery_replay_source"]["selection_sha256"] == file_sha256(selection_path)
     assert spec["scenes"][0]["initial_state"]["policy_step"] == 119
     assert len(replay["scenes"][0]["actions_calibrated"]) == 2
+    assert len(replay["scenes"][0]["physics_action_groups_radians"]) == 2
+    assert all(len(group) == 4 for group in replay["scenes"][0]["physics_action_groups_radians"])
+    assert replay["physics_replay"] == {
+        "mode": "exact_trace",
+        "unit": "radian",
+        "physics_hz": 120,
+        "policy_hz": 30,
+        "maximum_targets_per_policy_step": 4,
+    }
+    assert spec["recovery_replay_source"]["command_replay"] == ("physics_rate_trace_v1")
     assert replay["scenes"][0]["source_values_clipped_by_exporter"] == 0
+    assert replay["scenes"][0]["source_physics_values_clipped_by_exporter"] == 0
 
 
 def test_recovery_replay_rejects_non_train_episode(tmp_path):
@@ -159,7 +215,7 @@ def test_recovery_replay_rejects_non_train_episode(tmp_path):
     )
     root = Path(__file__).resolve().parents[1]
     runtime = tmp_path / "runtime.json"
-    runtime.write_text(json.dumps({"control": {}}))
+    runtime.write_text(json.dumps({"control": {"physics_hz": 120, "policy_hz": 30}}))
     try:
         write_recovery_replay_bundle(
             selection_path,
@@ -190,7 +246,7 @@ def test_recovery_replay_rejects_snapshot_hash_mismatch(tmp_path):
     selection_path = tmp_path / "selection.json"
     selection_path.write_text(json.dumps(selection))
     runtime_path = tmp_path / "runtime.json"
-    runtime_path.write_text(json.dumps({"control": {}}))
+    runtime_path.write_text(json.dumps({"control": {"physics_hz": 120, "policy_hz": 30}}))
     root = Path(__file__).resolve().parents[1]
     with pytest.raises(ValueError, match="snapshot hash mismatch"):
         write_recovery_replay_bundle(
@@ -200,6 +256,35 @@ def test_recovery_replay_rejects_snapshot_hash_mismatch(tmp_path):
             tmp_path / "out",
             scene_count=1,
             suite_id="invalid_snapshot",
+            action_safety_calibration=ACTION_SAFETY_CALIBRATION,
+        )
+
+
+def test_recovery_replay_rejects_command_trace_hash_mismatch(tmp_path):
+    episode = tmp_path / "episode"
+    _write_episode(episode, "episode")
+    (episode / "oracle-commands.jsonl").write_text("{}\n")
+    selection_path = tmp_path / "selection.json"
+    selection_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "collection_id": "recovery",
+                "episodes": [{"episode_dir": str(episode), "split": "train"}],
+            }
+        )
+    )
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text(json.dumps({"control": {"physics_hz": 120, "policy_hz": 30}}))
+    root = Path(__file__).resolve().parents[1]
+    with pytest.raises(ValueError, match="command trace hash mismatch"):
+        write_recovery_replay_bundle(
+            selection_path,
+            root / "configs/evaluations/so101_act_v0_1_0_holdout_template.json",
+            runtime_path,
+            tmp_path / "out",
+            scene_count=1,
+            suite_id="invalid_command_trace",
             action_safety_calibration=ACTION_SAFETY_CALIBRATION,
         )
 
@@ -218,7 +303,7 @@ def test_recovery_replay_rejects_safety_bound_below_reference(tmp_path):
         )
     )
     runtime_path = tmp_path / "runtime.json"
-    runtime_path.write_text(json.dumps({"control": {}}))
+    runtime_path.write_text(json.dumps({"control": {"physics_hz": 120, "policy_hz": 30}}))
     invalid = {**ACTION_SAFETY_CALIBRATION}
     invalid["allowed_maximum_delta_limited_actions_per_episode"] = 31
     root = Path(__file__).resolve().parents[1]

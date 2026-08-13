@@ -16,6 +16,8 @@ from farpoint.so101 import (
     LEROBOT_MIN,
     USD_MAX_DEGREES,
     USD_MIN_DEGREES,
+    lerobot_to_radians,
+    radians_to_lerobot,
 )
 
 
@@ -156,6 +158,38 @@ def interpolate_command_endpoints(
         raise ValueError("physics_substeps must be a positive integer")
     fractions = np.arange(1, physics_substeps + 1, dtype=np.float64) / physics_substeps
     return previous[None, :] + fractions[:, None] * (applied - previous)[None, :]
+
+
+def resolve_physics_action_group(
+    previous_action: Any,
+    applied_action: Any,
+    policy_execution: dict[str, Any],
+    physics_substeps: int,
+) -> tuple[np.ndarray, str]:
+    """Resolve physics targets in radians, preferring an exact audited trace."""
+    replay_targets = policy_execution.get("physics_actions_radians")
+    if replay_targets is None:
+        calibrated = interpolate_command_endpoints(
+            previous_action, applied_action, physics_substeps
+        )
+        return np.asarray(
+            [lerobot_to_radians(row, clip=True) for row in calibrated],
+            dtype=np.float64,
+        ), "linear_endpoint"
+    targets = np.asarray(replay_targets, dtype=np.float64)
+    applied = np.asarray(applied_action, dtype=np.float64)
+    if (
+        policy_execution.get("physics_action_source") != "exact_trace"
+        or targets.ndim != 2
+        or targets.shape[1:] != (6,)
+        or not 1 <= len(targets) <= physics_substeps
+        or not np.isfinite(targets).all()
+    ):
+        raise ValueError("invalid exact physics action replay group")
+    first_calibrated = radians_to_lerobot(targets[0], clip=True)
+    if applied.shape != (6,) or not np.allclose(first_calibrated, applied, rtol=0.0, atol=1e-4):
+        raise ValueError("exact physics action group does not start at policy action")
+    return targets, "exact_trace"
 
 
 def constrain_policy_action(
