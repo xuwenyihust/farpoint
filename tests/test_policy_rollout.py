@@ -12,6 +12,7 @@ from farpoint.policy_rollout import (
     evaluate_rollout_acceptance,
     json_default,
     load_rollout_spec,
+    resolve_replan_interval,
 )
 
 
@@ -135,6 +136,15 @@ def test_policy_action_applies_hard_and_delta_safety_bounds():
         constrain_policy_action([0, 0, 0, 0, np.nan, 0], current, max_delta=6.0)
 
 
+def test_replan_interval_defaults_to_checkpoint_and_validates_chunk_size():
+    assert resolve_replan_interval(None, checkpoint_steps=100, chunk_size=100) == 100
+    assert resolve_replan_interval(10, checkpoint_steps=100, chunk_size=100) == 10
+    with pytest.raises(ValueError, match="positive"):
+        resolve_replan_interval(0, checkpoint_steps=100, chunk_size=100)
+    with pytest.raises(ValueError, match="chunk_size"):
+        resolve_replan_interval(101, checkpoint_steps=100, chunk_size=100)
+
+
 def test_interface_smoke_acceptance_reports_task_success_without_requiring_it():
     spec = load_rollout_spec(CONFIG)
     results = [
@@ -195,6 +205,43 @@ def test_v010_holdout_builder_preserves_high_seeds_and_stratifies_smoke(tmp_path
     assert spec["scenes"][1]["seed"] == 2**63 + 10
     assert spec["holdout_source"]["evaluated_scene_count"] == 2
     assert spec["acceptance"]["required_completed_episodes"] == 2
+
+
+def test_v010_holdout_builder_selects_explicit_balanced_diagnostic_indexes(tmp_path):
+    campaign_root, template = _write_campaign_fixture(tmp_path)
+    spec = build_rollout_spec(
+        template,
+        campaign_root,
+        scene_indexes=(0, 1, 2, 10, 11, 12),
+    )
+    assert [scene["scene_id"] for scene in spec["scenes"]] == [
+        "holdout_00",
+        "holdout_01",
+        "holdout_02",
+        "holdout_10",
+        "holdout_11",
+        "holdout_12",
+    ]
+    assert {scene["object_variant_id"] for scene in spec["scenes"]} == {
+        "red_40mm_40g",
+        "blue_30mm_30g",
+    }
+    assert {scene["region_band"] for scene in spec["scenes"]} == {
+        "core",
+        "middle",
+        "outer",
+    }
+    assert spec["acceptance"]["required_completed_episodes"] == 6
+
+
+def test_v010_holdout_builder_rejects_invalid_explicit_indexes(tmp_path):
+    campaign_root, template = _write_campaign_fixture(tmp_path)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        build_rollout_spec(template, campaign_root, scene_limit=2, scene_indexes=(0, 10))
+    with pytest.raises(ValueError, match="unique"):
+        build_rollout_spec(template, campaign_root, scene_indexes=(0, 0))
+    with pytest.raises(ValueError, match="out-of-range"):
+        build_rollout_spec(template, campaign_root, scene_indexes=(20,))
 
 
 def test_v010_holdout_builder_rejects_collection_overlap(tmp_path):

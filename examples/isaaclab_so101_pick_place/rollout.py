@@ -189,7 +189,9 @@ def _jpeg_payload(image: np.ndarray) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
-def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str) -> np.ndarray:
+def _policy_action(
+    state: np.ndarray, images: dict[str, np.ndarray], task: str
+) -> tuple[np.ndarray, dict]:
     response = _policy_request(
         "/action",
         {
@@ -201,7 +203,7 @@ def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str) 
             "task": task,
         },
     )
-    return np.asarray(response["action"], dtype=np.float32)
+    return np.asarray(response["action"], dtype=np.float32), response.get("execution", {})
 
 
 def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
@@ -341,7 +343,9 @@ def _run_episode(env, scene_spec, spec, root):
                 writers[camera_id].write(image)
             joint_radians = _numpy(robot.data.joint_pos[0]).astype(np.float32)
             state = radians_to_lerobot(joint_radians, clip=True)
-            raw_action = _policy_action(state, images, spec["task"]["instruction"])
+            raw_action, policy_execution = _policy_action(
+                state, images, spec["task"]["instruction"]
+            )
             if raw_action.shape != (6,) or not np.all(np.isfinite(raw_action)):
                 nonfinite += 1
                 raise RuntimeError(f"invalid policy action at step {step}: {raw_action}")
@@ -388,6 +392,7 @@ def _run_episode(env, scene_spec, spec, root):
                 "applied_action_calibrated": applied.tolist(),
                 "target_radians": target_radians.tolist(),
                 "action_safety": safety,
+                "policy_execution": policy_execution,
                 "cube_pose_xyzw": cube_pose.tolist(),
                 "cube_velocity_mps": cube_velocity.tolist(),
                 "contact_forces_n": list(forces),
@@ -513,6 +518,12 @@ def main() -> int:
         raise RuntimeError("policy server LeRobot version mismatch")
     if policy_health.get("camera_features") != spec["environment"]["camera_features"]:
         raise RuntimeError("policy server camera feature contract mismatch")
+    requested_replan = spec["control"].get("replan_interval_steps")
+    if requested_replan is not None and (
+        (policy_health.get("action_execution") or {}).get("replan_interval_steps")
+        != requested_replan
+    ):
+        raise RuntimeError("policy server replan interval does not match rollout spec")
     from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
 
     env_cfg = SO101CubePickPlaceEnvCfg()

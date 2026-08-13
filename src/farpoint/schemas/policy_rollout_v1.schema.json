@@ -66,6 +66,7 @@
         "physics_hz": {"const": 120},
         "policy_hz": {"const": 30},
         "max_policy_steps": {"type": "integer", "minimum": 1},
+        "replan_interval_steps": {"type": "integer", "minimum": 1},
         "max_delta_calibrated": {"type": "number", "exclusiveMinimum": 0},
         "stable_steps": {"type": "integer", "minimum": 1}
       }

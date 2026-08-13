@@ -20,6 +20,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--campaign-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--scene-limit", type=int)
+    parser.add_argument(
+        "--scene-indexes",
+        help="comma-separated indexes into the immutable holdout scene order",
+    )
     return parser.parse_args()
 
 
@@ -54,7 +58,11 @@ def _scene_record(source: dict) -> dict:
 
 
 def build_rollout_spec(
-    template: dict, campaign_root: Path, *, scene_limit: int | None = None
+    template: dict,
+    campaign_root: Path,
+    *,
+    scene_limit: int | None = None,
+    scene_indexes: tuple[int, ...] | None = None,
 ) -> dict:
     if template.get("schema_version") != "farpoint.policy-rollout-template.v1":
         raise ValueError("unsupported rollout template schema")
@@ -102,6 +110,8 @@ def build_rollout_spec(
     if set(holdout_seeds) & excluded_seeds:
         raise ValueError("campaign holdout overlaps collection or replacement seeds")
 
+    if scene_limit is not None and scene_indexes is not None:
+        raise ValueError("scene_limit and scene_indexes are mutually exclusive")
     evaluated = source_scenes
     if scene_limit is not None:
         if not 1 <= scene_limit <= len(source_scenes):
@@ -112,6 +122,12 @@ def build_rollout_spec(
             math.floor(index * len(source_scenes) / scene_limit) for index in range(scene_limit)
         ]
         evaluated = [source_scenes[index] for index in indexes]
+    elif scene_indexes is not None:
+        if not scene_indexes or len(set(scene_indexes)) != len(scene_indexes):
+            raise ValueError("scene_indexes must be non-empty and unique")
+        if min(scene_indexes) < 0 or max(scene_indexes) >= len(source_scenes):
+            raise ValueError("scene_indexes contains an out-of-range index")
+        evaluated = [source_scenes[index] for index in scene_indexes]
     spec = copy.deepcopy(template)
     spec["schema_version"] = "farpoint.policy-rollout.v1"
     spec["holdout_source"] = {
@@ -121,8 +137,8 @@ def build_rollout_spec(
     }
     spec["scenes"] = [_scene_record(row) for row in evaluated]
     spec["acceptance"]["required_completed_episodes"] = len(evaluated)
-    if scene_limit is not None:
-        spec["suite_id"] = f"{spec['suite_id']}_smoke{scene_limit}"
+    if scene_limit is not None or scene_indexes is not None:
+        spec["suite_id"] = f"{spec['suite_id']}_smoke{len(evaluated)}"
         spec["task"]["evaluation_class"] = "independent_holdout_smoke"
     # Validate through the same path as runtime without retaining a temporary file.
     from farpoint.contracts import validate_contract
@@ -140,8 +156,17 @@ def main() -> int:
     args = parse_args()
     if args.output.exists():
         raise FileExistsError(f"rollout spec output already exists: {args.output}")
+    scene_indexes = None
+    if args.scene_indexes:
+        try:
+            scene_indexes = tuple(int(value) for value in args.scene_indexes.split(","))
+        except ValueError as error:
+            raise ValueError("scene_indexes must contain integers") from error
     spec = build_rollout_spec(
-        _read(args.template), args.campaign_root, scene_limit=args.scene_limit
+        _read(args.template),
+        args.campaign_root,
+        scene_limit=args.scene_limit,
+        scene_indexes=scene_indexes,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")

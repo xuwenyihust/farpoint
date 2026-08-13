@@ -16,6 +16,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from farpoint.policy_rollout import resolve_replan_interval
 from farpoint.policy_training import file_sha256
 
 
@@ -25,16 +26,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--expected-model-sha256", required=True)
+    parser.add_argument("--replan-interval-steps", type=int)
     return parser.parse_args()
 
 
-def load_policy(checkpoint: Path):
+def load_policy(checkpoint: Path, replan_interval_steps: int | None):
     from lerobot.configs.policies import PreTrainedConfig
     from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 
     config = PreTrainedConfig.from_pretrained(checkpoint, local_files_only=True)
     config.pretrained_path = str(checkpoint)
     config.device = "cuda"
+    checkpoint_steps = int(config.n_action_steps)
+    chunk_size = int(config.chunk_size)
+    config.n_action_steps = resolve_replan_interval(
+        replan_interval_steps,
+        checkpoint_steps=checkpoint_steps,
+        chunk_size=chunk_size,
+    )
     if hasattr(config, "pretrained_backbone_weights"):
         config.pretrained_backbone_weights = None
     policy_class = get_policy_class(config.type)
@@ -62,7 +71,11 @@ def load_policy(checkpoint: Path):
         )
     if not camera_features:
         raise RuntimeError("ACT checkpoint declares no camera input features")
-    return policy, preprocessor, postprocessor, camera_features
+    return policy, preprocessor, postprocessor, camera_features, {
+        "chunk_size": chunk_size,
+        "checkpoint_n_action_steps": checkpoint_steps,
+        "replan_interval_steps": int(config.n_action_steps),
+    }
 
 
 def reset_components(*components) -> None:
@@ -82,7 +95,9 @@ def main() -> int:
     import importlib.metadata
     from lerobot.utils.control_utils import predict_action
 
-    policy, preprocessor, postprocessor, camera_features = load_policy(args.checkpoint)
+    policy, preprocessor, postprocessor, camera_features, execution = load_policy(
+        args.checkpoint, args.replan_interval_steps
+    )
     reset_components(policy, preprocessor, postprocessor)
     identity = {
         "status": "ready",
@@ -91,6 +106,7 @@ def main() -> int:
         "policy_image_id": os.environ.get("FARPOINT_POLICY_IMAGE_ID", ""),
         "cuda_device": torch.cuda.get_device_name(0),
         "camera_features": camera_features,
+        "action_execution": execution,
     }
 
     class Handler(BaseHTTPRequestHandler):
@@ -144,6 +160,7 @@ def main() -> int:
                     self.response(400, {"error": "invalid_image_shape"})
                     return
                 observation[feature] = image
+            queue_depth_before = len(policy._action_queue)
             action = predict_action(
                 observation,
                 policy,
@@ -158,7 +175,17 @@ def main() -> int:
             if values.shape != (6,) or not np.all(np.isfinite(values)):
                 self.response(500, {"error": "invalid_policy_action"})
                 return
-            self.response(200, {"action": values.tolist()})
+            self.response(
+                200,
+                {
+                    "action": values.tolist(),
+                    "execution": {
+                        "inference_refreshed": queue_depth_before == 0,
+                        "queue_depth_before": queue_depth_before,
+                        "queue_depth_after": len(policy._action_queue),
+                    },
+                },
+            )
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(json.dumps(identity, sort_keys=True), flush=True)

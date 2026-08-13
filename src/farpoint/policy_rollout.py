@@ -43,6 +43,23 @@ def load_rollout_spec(path: Path) -> dict[str, Any]:
     return payload
 
 
+def resolve_replan_interval(
+    requested_steps: int | None,
+    *,
+    checkpoint_steps: int,
+    chunk_size: int,
+) -> int:
+    """Resolve a frozen rollout replan interval against the ACT checkpoint."""
+    if checkpoint_steps < 1 or chunk_size < 1 or checkpoint_steps > chunk_size:
+        raise ValueError("invalid checkpoint action execution configuration")
+    resolved = checkpoint_steps if requested_steps is None else requested_steps
+    if resolved < 1:
+        raise ValueError("replan_interval_steps must be positive")
+    if resolved > chunk_size:
+        raise ValueError("replan_interval_steps exceeds checkpoint chunk_size")
+    return resolved
+
+
 def constrain_policy_action(
     raw_action: Any,
     current_position: Any,

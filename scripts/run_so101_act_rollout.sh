@@ -21,10 +21,13 @@ CONTAINER_CHECKPOINT=/workspace/policy
 GIT_COMMIT="${FARPOINT_GIT_COMMIT:-}"
 ROLLOUT_ARGUMENTS=("$@")
 CONTAINER_OUTPUT_ROOT=""
+CONTAINER_SPEC=""
 
 for ((argument_index = 0; argument_index < ${#ROLLOUT_ARGUMENTS[@]}; argument_index++)); do
   if [[ "${ROLLOUT_ARGUMENTS[argument_index]}" == "--output-root" ]]; then
     CONTAINER_OUTPUT_ROOT="${ROLLOUT_ARGUMENTS[argument_index + 1]:-}"
+  elif [[ "${ROLLOUT_ARGUMENTS[argument_index]}" == "--spec" ]]; then
+    CONTAINER_SPEC="${ROLLOUT_ARGUMENTS[argument_index + 1]:-}"
   fi
 done
 
@@ -41,6 +44,27 @@ if [[ "${CONTAINER_OUTPUT_ROOT}" != /workspace/farpoint-data/* ]]; then
   exit 2
 fi
 HOST_OUTPUT_ROOT="${DATA_ROOT}/${CONTAINER_OUTPUT_ROOT#/workspace/farpoint-data/}"
+case "${CONTAINER_SPEC}" in
+  /workspace/project/*)
+    HOST_SPEC="${PROJECT_ROOT}/${CONTAINER_SPEC#/workspace/project/}"
+    ;;
+  /workspace/farpoint-data/*)
+    HOST_SPEC="${DATA_ROOT}/${CONTAINER_SPEC#/workspace/farpoint-data/}"
+    ;;
+  *)
+    echo "--spec must be below /workspace/project or /workspace/farpoint-data" >&2
+    exit 2
+    ;;
+esac
+if [[ ! -s "${HOST_SPEC}" ]]; then
+  echo "rollout spec does not exist: ${HOST_SPEC}" >&2
+  exit 2
+fi
+REPLAN_INTERVAL_STEPS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["control"].get("replan_interval_steps", ""))' "${HOST_SPEC}")"
+POLICY_REPLAN_ARGS=()
+if [[ -n "${REPLAN_INTERVAL_STEPS}" ]]; then
+  POLICY_REPLAN_ARGS+=(--replan-interval-steps "${REPLAN_INTERVAL_STEPS}")
+fi
 if [[ ! -f "${ASSET}" ]]; then
   python3 "${PROJECT_ROOT}/scripts/fetch_so101_assets.py" --destination "${ASSET}"
 fi
@@ -80,7 +104,8 @@ docker run -d --rm --gpus all --ipc=host --network host \
   python /workspace/project/scripts/serve_so101_act_policy.py \
     --checkpoint "${CONTAINER_CHECKPOINT}" \
     --expected-model-sha256 "${MODEL_SHA256}" \
-    --port "${POLICY_PORT}" >/dev/null
+    --port "${POLICY_PORT}" \
+    "${POLICY_REPLAN_ARGS[@]}" >/dev/null
 
 policy_ready=false
 for _ in $(seq 1 120); do
