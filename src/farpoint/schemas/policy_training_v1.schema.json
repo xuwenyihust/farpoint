@@ -18,13 +18,16 @@
         "resolved_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "codebase_version": {"const": "v3.0"},
         "splits": {
-          "type": "object", "additionalProperties": false,
-          "required": ["train", "validation", "test"],
-          "properties": {
-            "train": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
-            "validation": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
-            "test": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
-          }
+          "type": "object", "minProperties": 2,
+          "required": ["train", "validation"],
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"},
+          "additionalProperties": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
+        },
+        "metadata_splits": {
+          "type": "object", "minProperties": 2,
+          "required": ["train", "validation"],
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"},
+          "additionalProperties": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
         },
         "expected": {
           "type": "object", "additionalProperties": false,
@@ -34,13 +37,10 @@
             "total_frames": {"type": "integer", "minimum": 1},
             "fps": {"type": "integer", "minimum": 1},
             "selected_frames": {
-              "type": "object", "additionalProperties": false,
-              "required": ["train", "validation", "test"],
-              "properties": {
-                "train": {"type": "integer", "minimum": 1},
-                "validation": {"type": "integer", "minimum": 1},
-                "test": {"type": "integer", "minimum": 1}
-              }
+              "type": "object", "minProperties": 2,
+              "required": ["train", "validation"],
+              "propertyNames": {"pattern": "^[a-z][a-z0-9_-]*$"},
+              "additionalProperties": {"type": "integer", "minimum": 1}
             }
           }
         },
@@ -70,7 +70,14 @@
     "policy": {
       "type": "object", "additionalProperties": false,
       "required": ["type", "device"],
-      "properties": {"type": {"const": "act"}, "device": {"const": "cuda"}}
+      "properties": {
+        "type": {"const": "act"},
+        "device": {"const": "cuda"},
+        "vision_backbone": {"type": "string", "minLength": 1},
+        "pretrained_backbone_weights": {"type": "string", "minLength": 1},
+        "chunk_size": {"type": "integer", "minimum": 1},
+        "n_action_steps": {"type": "integer", "minimum": 1}
+      }
     },
     "training": {"$ref": "#/$defs/run"},
     "pilot": {"$ref": "#/$defs/run"},

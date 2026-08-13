@@ -23,6 +23,10 @@ PILOT_CONFIG = ROOT / "configs" / "training" / "so101_act_v0_0_3_pilot.json"
 BASELINE_20K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_0_3_baseline_20k.json"
 )
+V010_PILOT_CONFIG = ROOT / "configs" / "training" / "so101_act_v0_1_0_pilot.json"
+V010_BASELINE_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_0_baseline_20k.json"
+)
 
 
 def test_frozen_act_contract_is_valid_and_partitions_all_episodes():
@@ -57,6 +61,48 @@ def test_dataset_metadata_must_match_pinned_release():
     info["total_frames"] += 1
     with pytest.raises(ValueError, match="total_frames"):
         validate_dataset_info(spec, info)
+
+
+def test_v010_dual_camera_contract_has_no_logical_test_demonstrations(tmp_path):
+    spec = load_training_spec(V010_PILOT_CONFIG)
+    dataset = spec["dataset"]
+    assert dataset["splits"] == {"train": "0:180", "validation": "180:200"}
+    assert dataset["metadata_splits"]["test"] == "200:200"
+    assert parse_episode_slice(dataset["metadata_splits"]["test"], allow_empty=True) == []
+    assert dataset["expected"]["selected_frames"] == {
+        "train": 135147,
+        "validation": 14801,
+    }
+    assert "observation.images.wrist" in dataset["required_features"]
+
+    info = {
+        "codebase_version": dataset["codebase_version"],
+        "total_episodes": dataset["expected"]["total_episodes"],
+        "total_frames": dataset["expected"]["total_frames"],
+        "fps": dataset["expected"]["fps"],
+        "splits": dataset["metadata_splits"],
+        "features": dataset["required_features"],
+    }
+    validate_dataset_info(spec, info)
+    arguments = training_arguments(spec, tmp_path / "view", tmp_path / "out", "pilot")
+    assert "--policy.vision_backbone=resnet18" in arguments
+    assert "--policy.pretrained_backbone_weights=ResNet18_Weights.IMAGENET1K_V1" in arguments
+    assert "--policy.chunk_size=100" in arguments
+    assert "--policy.n_action_steps=100" in arguments
+    assert next(arg for arg in arguments if arg.startswith("--dataset.episodes=")).endswith(
+        ",179]"
+    )
+
+
+def test_v010_formal_contract_selects_validation_without_dataset_test_split():
+    spec = load_training_spec(V010_BASELINE_20K_CONFIG)
+    assert validation_profile(spec) == "training"
+    assert set(spec["dataset"]["splits"]) == {"train", "validation"}
+    assert spec["training"]["steps"] == 20000
+    runner = (ROOT / "scripts" / "run_so101_act_experiment.sh").read_text()
+    assert "CONFIG_NAME must be a basename" in runner
+    assert "--profile \"${PROFILE}\"" in runner
+    assert "evaluate_act_checkpoints.py" in runner
 
 
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):
