@@ -180,6 +180,8 @@ def test_recovery_replay_binds_live_snapshot_and_exported_actions(tmp_path):
     assert spec["acceptance"]["maximum_delta_limited_actions"] == 90
     assert spec["recovery_replay_source"]["action_safety_calibration"] == ACTION_SAFETY_CALIBRATION
     assert spec["recovery_replay_source"]["selection_sha256"] == file_sha256(selection_path)
+    assert spec["scenes"][0]["seed"] == episode_v4()["identity"]["attempt_seed"]
+    assert spec["scenes"][0]["seed"] != episode_v4()["identity"]["variation_seed"]
     assert spec["scenes"][0]["initial_state"]["policy_step"] == 119
     assert len(replay["scenes"][0]["actions_calibrated"]) == 2
     assert len(replay["scenes"][0]["physics_action_groups_radians"]) == 2

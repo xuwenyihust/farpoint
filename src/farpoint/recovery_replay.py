@@ -183,7 +183,12 @@ def build_recovery_replay(
         spec_scenes.append(
             {
                 "scene_id": scene_id,
-                "seed": int((metadata.get("identity") or {})["variation_seed"]),
+                # The collector seeds Isaac/PhysX with the attempt seed.  A
+                # variation seed identifies the frozen scene, but it is not
+                # the simulator reset seed and can initialize different
+                # solver state.  State-restored replay must reproduce the
+                # original reset before applying the handoff snapshot.
+                "seed": int((metadata.get("identity") or {})["attempt_seed"]),
                 "object_variant_id": (
                     ((metadata.get("scene") or {}).get("object_variant") or {}).get("resolved", {})
                 ).get("variant_id"),
