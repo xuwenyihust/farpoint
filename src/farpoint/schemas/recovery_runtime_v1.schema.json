@@ -10,13 +10,12 @@
     "runtime_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
     "source_policy": {
       "type": "object", "additionalProperties": false,
-      "required": ["policy_type", "checkpoint_step", "model_sha256", "training_run_id", "rollout_git_commit"],
+      "required": ["policy_type", "checkpoint_step", "model_sha256", "training_run_id"],
       "properties": {
         "policy_type": {"const": "act"},
         "checkpoint_step": {"type": "integer", "minimum": 1},
         "model_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "training_run_id": {"type": "string", "minLength": 1},
-        "rollout_git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+        "training_run_id": {"type": "string", "minLength": 1}
       }
     },
     "control": {

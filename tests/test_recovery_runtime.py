@@ -18,7 +18,6 @@ def runtime_spec():
             "checkpoint_step": 20_000,
             "model_sha256": "1" * 64,
             "training_run_id": "act-test",
-            "rollout_git_commit": "2" * 40,
         },
         "control": {
             "physics_hz": 120,

@@ -451,6 +451,13 @@ def _run_recovery_handoff(
     """Execute ACT to a measured pre-lift trigger without resetting the scene."""
     binding = scene_binding(runtime, trial["variation_id"])
     policy = runtime["source_policy"]
+    runtime_git_commit = os.environ.get("FARPOINT_GIT_COMMIT", "")
+    if len(runtime_git_commit) != 40:
+        raise RuntimeError("recovery runtime requires an exact 40-character git commit")
+    policy_provenance = {
+        **policy,
+        "rollout_git_commit": runtime_git_commit,
+    }
     health = _policy_request("/health")
     if health.get("status") != "ready":
         raise RuntimeError("recovery source policy server is not ready")
@@ -562,7 +569,7 @@ def _run_recovery_handoff(
         )
     demonstration = recovery_demonstration(
         oracle_profile_id=oracle_profile_id,
-        source_policy=policy,
+        source_policy=policy_provenance,
         trigger_id=runtime["trigger"]["trigger_id"],
         failure_class=trigger["failure_class"],
         control_step=int(trigger["policy_step"]),

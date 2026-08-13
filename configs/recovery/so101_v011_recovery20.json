@@ -15,8 +15,7 @@
     "policy_type": "act",
     "checkpoint_step": 20000,
     "model_sha256": "8618539fe7bf763759b2ca21bffb7c5330470fbe1d8c28f580877782736cea08",
-    "training_run_id": "act-v010-baseline-20k-20260813-e9e2db3",
-    "rollout_git_commit": "56d8a7174e7ba3162be6190e1d043d56d0b1aa5b"
+    "training_run_id": "act-v010-baseline-20k-20260813-e9e2db3"
   },
   "control": {
     "physics_hz": 120,
