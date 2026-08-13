@@ -1,13 +1,18 @@
 import json
 
+import numpy as np
 import pytest
 
 from farpoint.recovery_runtime import (
     RecoveryTriggerDetector,
     load_recovery_runtime,
     recovery_descent_duration_seconds,
+    recovery_oracle_command_continuity_enabled,
+    recovery_oracle_slew_limits,
     scene_binding,
+    slew_recovery_oracle_target,
 )
+from farpoint.so101 import lerobot_to_radians, radians_to_lerobot
 
 
 def runtime_spec():
@@ -77,6 +82,8 @@ def test_runtime_contract_and_binding(tmp_path):
     assert scene_binding(loaded, "variation-0")["source_partition"] == "train"
     assert recovery_descent_duration_seconds(loaded) == pytest.approx(4.0)
     assert recovery_descent_duration_seconds(None) == pytest.approx(2.3333333333)
+    assert not recovery_oracle_command_continuity_enabled(loaded)
+    assert not recovery_oracle_command_continuity_enabled(None)
     with pytest.raises(ValueError, match="no unique binding"):
         scene_binding(loaded, "missing")
 
@@ -159,3 +166,44 @@ def test_trigger_detects_stall_and_deadline():
             break
     assert trigger["failure_class"] == "progress_stall"
     assert trigger["reason"] == "insufficient_gripper_object_progress"
+
+
+def test_recovery_oracle_target_is_slew_bounded_at_control_rate():
+    spec = runtime_spec()
+    spec["oracle_handoff_profile"]["command_continuity"] = "action_safety_profile_control_rate_v1"
+    assert recovery_oracle_command_continuity_enabled(spec)
+    limits = recovery_oracle_slew_limits(spec)
+    assert limits.tolist() == pytest.approx(
+        [
+            1.5151515151515151 / 4,
+            1.6666666666666667 / 4,
+            1.7543859649122806 / 4,
+            1.7543859649122806 / 4,
+            1.0416666666666667 / 4,
+            5.5 / 4,
+        ]
+    )
+    previous = lerobot_to_radians([0.0] * 6)
+    requested = lerobot_to_radians([50.0, -50.0, 20.0, -20.0, 10.0, 100.0])
+    applied, audit = slew_recovery_oracle_target(previous, requested, limits)
+    applied_calibrated = radians_to_lerobot(applied)
+    assert applied_calibrated.tolist() == pytest.approx(
+        [limits[0], -limits[1], limits[2], -limits[3], limits[4], limits[5]],
+        abs=1e-5,
+    )
+    assert audit["limited_joint_count"] == 6
+    assert audit["limiter_reference"] == "previous_oracle_target"
+
+    current = previous
+    for _ in range(4):
+        current, _audit = slew_recovery_oracle_target(current, requested, limits)
+    assert np.abs(radians_to_lerobot(current) - radians_to_lerobot(previous)).tolist() == (
+        pytest.approx((limits * 4).tolist(), abs=1e-5)
+    )
+
+
+def test_recovery_oracle_slew_rejects_non_integral_control_ratio():
+    spec = runtime_spec()
+    spec["control"]["physics_hz"] = 100
+    with pytest.raises(ValueError, match="integer positive ratio"):
+        recovery_oracle_slew_limits(spec)

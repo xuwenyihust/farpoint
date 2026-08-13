@@ -6,6 +6,7 @@ from copy import deepcopy
 import hashlib
 import json
 import math
+from pathlib import PurePosixPath
 from typing import Any
 
 
@@ -45,6 +46,54 @@ def state_snapshot_sha256(snapshot: dict[str, Any]) -> str:
     _finite_json_value(snapshot)
     encoded = json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def intervention_command_trace(
+    *,
+    path: str,
+    sha256: str,
+    control_hz: int,
+    sample_count: int,
+    first_control_step: int,
+    last_control_step: int,
+    joint_order: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
+    """Describe the exact physics-rate targets sent after an intervention."""
+    trace_path = PurePosixPath(path)
+    if trace_path.is_absolute() or ".." in trace_path.parts or str(trace_path) in {"", "."}:
+        raise ValueError("command trace path must be a relative artifact path")
+    if len(sha256) != 64:
+        raise ValueError("command trace sha256 must be a lowercase SHA256")
+    try:
+        int(sha256, 16)
+    except ValueError as error:
+        raise ValueError("command trace sha256 must be a lowercase SHA256") from error
+    if sha256 != sha256.lower():
+        raise ValueError("command trace sha256 must be a lowercase SHA256")
+    if not isinstance(control_hz, int) or isinstance(control_hz, bool) or control_hz <= 0:
+        raise ValueError("command trace control_hz must be a positive integer")
+    if not isinstance(sample_count, int) or isinstance(sample_count, bool) or sample_count <= 0:
+        raise ValueError("command trace sample_count must be a positive integer")
+    if first_control_step < 0 or last_control_step < first_control_step:
+        raise ValueError("command trace control-step bounds are invalid")
+    if last_control_step - first_control_step + 1 != sample_count:
+        raise ValueError("command trace must contain one sample per physics control step")
+    names = list(joint_order)
+    if not names or len(names) != len(set(names)) or any(not name for name in names):
+        raise ValueError("command trace joint_order must contain unique non-empty names")
+    return {
+        "schema_version": "farpoint.command-trace.v1",
+        "path": str(trace_path),
+        "sha256": sha256,
+        "control_hz": control_hz,
+        "sampling_stride": 1,
+        "sample_count": sample_count,
+        "first_control_step": first_control_step,
+        "last_control_step": last_control_step,
+        "joint_order": names,
+        "unit": "radian",
+        "action_semantics": "actual_joint_position_target_sent_before_physics_step",
+    }
 
 
 def nominal_demonstration(*, oracle_profile_id: str) -> dict[str, Any]:
