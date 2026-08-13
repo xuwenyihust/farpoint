@@ -34,6 +34,12 @@ def load_rollout_spec(path: Path) -> dict[str, Any]:
         raise ValueError("minimum_task_successes exceeds the frozen scene count")
     if payload["control"]["physics_hz"] % payload["control"]["policy_hz"] != 0:
         raise ValueError("physics_hz must be divisible by policy_hz")
+    if payload["task"]["evaluation_class"].startswith("independent_holdout"):
+        source = payload.get("holdout_source")
+        if source is None:
+            raise ValueError("independent holdout rollout requires holdout_source")
+        if source["evaluated_scene_count"] != len(scene_ids):
+            raise ValueError("evaluated holdout scene count does not match scenes")
     return payload
 
 
@@ -57,6 +63,7 @@ def constrain_policy_action(
     applied = current + delta
     diagnostics = {
         "hard_range_violation_count": int(np.count_nonzero(hard_mask)),
+        "maximum_hard_range_excess_calibrated": float(np.max(np.abs(raw - hard_clipped))),
         "delta_limited_count": int(np.count_nonzero(np.abs(hard_clipped - current) > max_delta)),
         "maximum_raw_abs": float(np.max(np.abs(raw))),
         "maximum_applied_delta": float(np.max(np.abs(delta))),
@@ -79,14 +86,42 @@ def evaluate_rollout_acceptance(
     range_violations = sum(
         int(result.get("hard_range_violation_count", 0)) for result in episode_results
     )
+    maximum_range_excess = max(
+        (
+            float(result.get("maximum_hard_range_excess_calibrated", 0.0))
+            for result in episode_results
+        ),
+        default=0.0,
+    )
+    delta_limited = sum(int(result.get("delta_limited_count", 0)) for result in episode_results)
     if completed != acceptance["required_completed_episodes"]:
         errors.append("completed episode count does not meet the smoke contract")
     if successes < acceptance["minimum_task_successes"]:
         errors.append("task success count is below the frozen minimum")
     if nonfinite > acceptance["maximum_nonfinite_actions"]:
         errors.append("non-finite action count exceeds the frozen maximum")
-    if range_violations > acceptance["maximum_hard_range_violations"]:
-        errors.append("hard-range action violations exceed the frozen maximum")
+    maximum_allowed_excess = acceptance.get("maximum_hard_range_excess_calibrated")
+    if maximum_allowed_excess is None:
+        if range_violations > acceptance["maximum_hard_range_violations"]:
+            errors.append("hard-range action violations exceed the frozen maximum")
+    elif maximum_range_excess > maximum_allowed_excess:
+        errors.append("hard-range action excess exceeds the frozen safety envelope")
+    stage_names = (
+        "ever_cube_contact",
+        "ever_bilateral_contact",
+        "ever_lifted",
+        "ever_entered_target",
+    )
+    stage_progress = {
+        name: sum(
+            bool((result.get("stage_evidence") or {}).get(name)) for result in episode_results
+        )
+        for name in stage_names
+    }
+    terminal_reasons: dict[str, int] = {}
+    for result in episode_results:
+        reason = str(result.get("terminal_reason", "unknown"))
+        terminal_reasons[reason] = terminal_reasons.get(reason, 0) + 1
     return {
         "status": "PASS" if not errors else "FAIL",
         "acceptance_errors": errors,
@@ -95,4 +130,8 @@ def evaluate_rollout_acceptance(
         "task_success_rate": successes / len(expected_ids),
         "nonfinite_action_count": nonfinite,
         "hard_range_violation_count": range_violations,
+        "maximum_hard_range_excess_calibrated": maximum_range_excess,
+        "delta_limited_count": delta_limited,
+        "stage_progress": stage_progress,
+        "terminal_reason_counts": dict(sorted(terminal_reasons.items())),
     }

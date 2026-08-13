@@ -45,7 +45,24 @@ def load_policy(checkpoint: Path):
     preprocessor, postprocessor = make_pre_post_processors(
         policy_cfg=config, pretrained_path=str(checkpoint)
     )
-    return policy, preprocessor, postprocessor
+    declared_camera_features = {
+        name for name in config.input_features if name.startswith("observation.images.")
+    }
+    camera_features = [
+        feature
+        for feature in (
+            "observation.images.front",
+            "observation.images.wrist",
+        )
+        if feature in declared_camera_features
+    ]
+    if set(camera_features) != declared_camera_features:
+        raise RuntimeError(
+            f"ACT checkpoint declares unsupported camera features: {declared_camera_features}"
+        )
+    if not camera_features:
+        raise RuntimeError("ACT checkpoint declares no camera input features")
+    return policy, preprocessor, postprocessor, camera_features
 
 
 def reset_components(*components) -> None:
@@ -65,7 +82,7 @@ def main() -> int:
     import importlib.metadata
     from lerobot.utils.control_utils import predict_action
 
-    policy, preprocessor, postprocessor = load_policy(args.checkpoint)
+    policy, preprocessor, postprocessor, camera_features = load_policy(args.checkpoint)
     reset_components(policy, preprocessor, postprocessor)
     identity = {
         "status": "ready",
@@ -73,6 +90,7 @@ def main() -> int:
         "lerobot_version": importlib.metadata.version("lerobot"),
         "policy_image_id": os.environ.get("FARPOINT_POLICY_IMAGE_ID", ""),
         "cuda_device": torch.cuda.get_device_name(0),
+        "camera_features": camera_features,
     }
 
     class Handler(BaseHTTPRequestHandler):
@@ -110,16 +128,24 @@ def main() -> int:
             if state.shape != (6,) or not np.all(np.isfinite(state)):
                 self.response(400, {"error": "invalid_state"})
                 return
-            image_bytes = base64.b64decode(payload["front_jpeg"], validate=True)
-            front = np.asarray(Image.open(io.BytesIO(image_bytes)).convert("RGB"), dtype=np.uint8)
-            if front.shape != (480, 640, 3):
-                self.response(400, {"error": "invalid_image_shape"})
+            encoded_images = payload.get("images_jpeg")
+            if encoded_images is None and "front_jpeg" in payload:
+                encoded_images = {"observation.images.front": payload["front_jpeg"]}
+            if not isinstance(encoded_images, dict) or set(encoded_images) != set(camera_features):
+                self.response(400, {"error": "camera_feature_mismatch"})
                 return
+            observation = {"observation.state": state}
+            for feature in camera_features:
+                image_bytes = base64.b64decode(encoded_images[feature], validate=True)
+                image = np.asarray(
+                    Image.open(io.BytesIO(image_bytes)).convert("RGB"), dtype=np.uint8
+                )
+                if image.shape != (480, 640, 3):
+                    self.response(400, {"error": "invalid_image_shape"})
+                    return
+                observation[feature] = image
             action = predict_action(
-                {
-                    "observation.state": state,
-                    "observation.images.front": front,
-                },
+                observation,
                 policy,
                 torch.device("cuda"),
                 preprocessor,

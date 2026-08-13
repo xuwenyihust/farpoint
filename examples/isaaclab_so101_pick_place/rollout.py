@@ -62,6 +62,10 @@ from farpoint.policy_rollout import (  # noqa: E402
 from farpoint.policy_training import canonical_sha256, file_sha256  # noqa: E402
 from farpoint.so101 import lerobot_to_radians, radians_to_lerobot  # noqa: E402
 from farpoint.control import so101_reset_support_is_stable  # noqa: E402
+from farpoint.camera_profiles import (  # noqa: E402
+    camera_cfg_drift_errors,
+    load_camera_profile,
+)
 
 
 SO101_HOME_JOINTS = np.asarray(
@@ -97,15 +101,16 @@ def _aim_front_camera(scene, device) -> None:
 
 
 def _move_object(obj, position, device, orientation_xyzw=(0.0, 0.0, 0.0, 1.0)):
-    pose = torch.tensor(
-        [[*position, *orientation_xyzw]], dtype=torch.float32, device=device
-    )
+    pose = torch.tensor([[*position, *orientation_xyzw]], dtype=torch.float32, device=device)
     obj.write_root_pose_to_sim(pose)
     obj.write_root_velocity_to_sim(torch.zeros((1, 6), dtype=torch.float32, device=device))
 
 
-def _image(scene) -> np.ndarray:
-    return np.asarray(_numpy(scene["front_camera"].data.output["rgb"][0, ..., :3]), dtype=np.uint8)
+def _image(scene, camera_id: str) -> np.ndarray:
+    return np.asarray(
+        _numpy(scene[f"{camera_id}_camera"].data.output["rgb"][0, ..., :3]),
+        dtype=np.uint8,
+    )
 
 
 def _variant_name(scene_spec: dict) -> str:
@@ -119,9 +124,7 @@ def _cube_contact_forces(scene) -> tuple[float, float]:
     values = []
     for name in ("contact_jaw", "contact_gripper"):
         sensor = scene[name]
-        force = float(
-            torch.linalg.vector_norm(sensor.data.force_matrix_w, dim=-1).max().item()
-        )
+        force = float(torch.linalg.vector_norm(sensor.data.force_matrix_w, dim=-1).max().item())
         values.append(force)
     return values[0], values[1]
 
@@ -130,10 +133,26 @@ class VideoWriter:
     def __init__(self, path: Path, fps: int):
         self.process = subprocess.Popen(
             [
-                "ffmpeg", "-loglevel", "error", "-y",
-                "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "640x480",
-                "-r", str(fps), "-i", "-", "-an", "-c:v", "libx264",
-                "-pix_fmt", "yuv420p", str(path),
+                "ffmpeg",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-s",
+                "640x480",
+                "-r",
+                str(fps),
+                "-i",
+                "-",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                str(path),
             ],
             stdin=subprocess.PIPE,
         )
@@ -164,14 +183,21 @@ def _policy_request(path: str, payload: dict | None = None) -> dict:
         return json.loads(response.read())
 
 
-def _policy_action(state: np.ndarray, front: np.ndarray, task: str) -> np.ndarray:
+def _jpeg_payload(image: np.ndarray) -> str:
     buffer = io.BytesIO()
-    Image.fromarray(front, mode="RGB").save(buffer, format="JPEG", quality=95)
+    Image.fromarray(image, mode="RGB").save(buffer, format="JPEG", quality=95)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str) -> np.ndarray:
     response = _policy_request(
         "/action",
         {
             "state": state.tolist(),
-            "front_jpeg": base64.b64encode(buffer.getvalue()).decode("ascii"),
+            "images_jpeg": {
+                f"observation.images.{camera_id}": _jpeg_payload(image)
+                for camera_id, image in images.items()
+            },
             "task": task,
         },
     )
@@ -182,12 +208,13 @@ def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
     device = env.device
     scene = env.scene
     robot = scene["robot"]
-    seed = int(scene_spec["seed"])
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    env.reset(seed=seed)
+    variation_seed = int(scene_spec["seed"])
+    environment_seed = variation_seed % (2**32)
+    random.seed(environment_seed)
+    np.random.seed(environment_seed)
+    torch.manual_seed(environment_seed)
+    torch.cuda.manual_seed_all(environment_seed)
+    env.reset(seed=environment_seed)
     active_name = _variant_name(scene_spec)
     env.farpoint_active_cube = active_name
     inactive_names = [
@@ -234,11 +261,47 @@ def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
     if home_error > 1e-5:
         raise RuntimeError(f"arm HOME restoration failed: {home_error}")
     return active_name, {
+        "variation_seed": variation_seed,
+        "environment_seed": environment_seed,
         "requested_mass_kg": float(obj["mass_kg"]),
         "actual_mass_kg": actual_mass,
         "measured_position_m": measured_position.tolist(),
         "measured_velocity_mps": measured_velocity.tolist(),
         "maximum_home_error_rad": home_error,
+    }
+
+
+def _probe_video(path: Path) -> dict:
+    completed = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-count_frames",
+            "-show_entries",
+            "stream=width,height,avg_frame_rate,nb_read_frames",
+            "-of",
+            "json",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    streams = json.loads(completed.stdout).get("streams", [])
+    if len(streams) != 1:
+        raise RuntimeError(f"expected one video stream in {path}")
+    stream = streams[0]
+    return {
+        "path": str(path),
+        "sha256": file_sha256(path),
+        "size_bytes": path.stat().st_size,
+        "width": int(stream["width"]),
+        "height": int(stream["height"]),
+        "avg_frame_rate": stream["avg_frame_rate"],
+        "decoded_frames": int(stream["nb_read_frames"]),
     }
 
 
@@ -260,19 +323,25 @@ def _run_episode(env, scene_spec, spec, root):
     ever_in_target = False
     stable_steps = 0
     hard_range_violations = 0
+    maximum_range_excess = 0.0
     delta_limited = 0
     nonfinite = 0
     policy_steps = 0
     task_success = False
-    writer = VideoWriter(episode_root / "front.mp4", control["policy_hz"])
+    camera_ids = [feature.rsplit(".", 1)[-1] for feature in spec["environment"]["camera_features"]]
+    writers = {
+        camera_id: VideoWriter(episode_root / f"{camera_id}.mp4", control["policy_hz"])
+        for camera_id in camera_ids
+    }
     trace_file = (episode_root / "actions.jsonl").open("w", encoding="utf-8")
     try:
         for step in range(control["max_policy_steps"]):
-            front = _image(scene)
-            writer.write(front)
+            images = {camera_id: _image(scene, camera_id) for camera_id in camera_ids}
+            for camera_id, image in images.items():
+                writers[camera_id].write(image)
             joint_radians = _numpy(robot.data.joint_pos[0]).astype(np.float32)
             state = radians_to_lerobot(joint_radians, clip=True)
-            raw_action = _policy_action(state, front, spec["task"]["instruction"])
+            raw_action = _policy_action(state, images, spec["task"]["instruction"])
             if raw_action.shape != (6,) or not np.all(np.isfinite(raw_action)):
                 nonfinite += 1
                 raise RuntimeError(f"invalid policy action at step {step}: {raw_action}")
@@ -280,6 +349,10 @@ def _run_episode(env, scene_spec, spec, root):
                 raw_action, state, max_delta=control["max_delta_calibrated"]
             )
             hard_range_violations += safety["hard_range_violation_count"]
+            maximum_range_excess = max(
+                maximum_range_excess,
+                safety["maximum_hard_range_excess_calibrated"],
+            )
             delta_limited += safety["delta_limited_count"]
             target_radians = lerobot_to_radians(applied, clip=True)
             target = torch.tensor([target_radians], dtype=torch.float32, device=env.device)
@@ -322,9 +395,7 @@ def _run_episode(env, scene_spec, spec, root):
                 "gripper_released": released,
                 "cube_stable": stable,
             }
-            trace_file.write(
-                json.dumps(trace_row, default=json_default, sort_keys=True) + "\n"
-            )
+            trace_file.write(json.dumps(trace_row, default=json_default, sort_keys=True) + "\n")
             policy_steps += 1
             if policy_steps % control["policy_hz"] == 0:
                 trace_file.flush()
@@ -345,15 +416,26 @@ def _run_episode(env, scene_spec, spec, root):
         }
         _write_json(episode_root / "error.json", failure)
         print(
-            "SO101_ACT_ROLLOUT_ERROR "
-            + json.dumps(failure, default=json_default, sort_keys=True),
+            "SO101_ACT_ROLLOUT_ERROR " + json.dumps(failure, default=json_default, sort_keys=True),
             flush=True,
         )
         traceback.print_exc()
         raise
     finally:
         trace_file.close()
-        writer.close()
+        for writer in writers.values():
+            writer.close()
+    video_evidence = {
+        camera_id: _probe_video(episode_root / f"{camera_id}.mp4") for camera_id in camera_ids
+    }
+    for camera_id, evidence in video_evidence.items():
+        if (
+            evidence["decoded_frames"] != policy_steps
+            or evidence["width"] != 640
+            or evidence["height"] != 480
+            or evidence["avg_frame_rate"] != f"{control['policy_hz']}/1"
+        ):
+            raise RuntimeError(f"invalid {camera_id} video evidence: {evidence}")
     if task_success:
         terminal_reason = "success"
     elif not ever_contact:
@@ -370,7 +452,18 @@ def _run_episode(env, scene_spec, spec, root):
         "task_success": task_success,
         "terminal_reason": terminal_reason,
         "policy_steps": policy_steps,
-        "video": str((episode_root / "front.mp4").relative_to(root)),
+        "videos": {
+            camera_id: {
+                **evidence,
+                "path": str(Path(evidence["path"]).relative_to(root)),
+            }
+            for camera_id, evidence in video_evidence.items()
+        },
+        "camera_sync": {
+            "timestamp_source": "simulation_control_tick",
+            "frames_per_camera": policy_steps,
+            "camera_ids": camera_ids,
+        },
         "trace": str((episode_root / "actions.jsonl").relative_to(root)),
         "reset_audit": reset_audit,
         "stage_evidence": {
@@ -382,6 +475,7 @@ def _run_episode(env, scene_spec, spec, root):
         },
         "nonfinite_action_count": nonfinite,
         "hard_range_violation_count": hard_range_violations,
+        "maximum_hard_range_excess_calibrated": maximum_range_excess,
         "delta_limited_count": delta_limited,
     }
     _write_json(episode_root / "result.json", result)
@@ -417,12 +511,25 @@ def main() -> int:
         raise RuntimeError("policy server image identity mismatch")
     if policy_health.get("lerobot_version") != spec["environment"]["lerobot_version"]:
         raise RuntimeError("policy server LeRobot version mismatch")
+    if policy_health.get("camera_features") != spec["environment"]["camera_features"]:
+        raise RuntimeError("policy server camera feature contract mismatch")
     from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
 
     env_cfg = SO101CubePickPlaceEnvCfg()
     env_cfg.seed = 0
-    env_cfg.scene.wrist_camera = None
-    env_cfg.observations.policy.wrist_rgb = None
+    if "observation.images.wrist" not in spec["environment"]["camera_features"]:
+        env_cfg.scene.wrist_camera = None
+        env_cfg.observations.policy.wrist_rgb = None
+    camera_profile_id = spec["environment"].get("camera_profile_id")
+    if camera_profile_id is not None:
+        camera_profile = load_camera_profile(
+            PROJECT_ROOT / "configs" / "cameras" / "so101_front_wrist_v1.json"
+        )
+        if camera_profile["profile_id"] != camera_profile_id:
+            raise RuntimeError("camera profile identity does not match rollout spec")
+        camera_errors = camera_cfg_drift_errors(camera_profile, env_cfg.scene)
+        if camera_errors:
+            raise RuntimeError("camera profile drift: " + "; ".join(camera_errors))
     env = gym.make(spec["environment"]["gym_id"], cfg=env_cfg).unwrapped
     results = []
     try:
@@ -448,19 +555,26 @@ def main() -> int:
         "isaac_base_image_id": base_image_id,
         "spec_sha256": canonical_sha256(spec),
         "checkpoint": spec["checkpoint"],
+        "holdout_source": spec.get("holdout_source"),
         "data_policy": {
             "training_episodes": spec["checkpoint"]["dataset"]["train_episodes"],
             "validation_episodes": spec["checkpoint"]["dataset"]["validation_episodes"],
             "test_episodes_consumed": False,
-            "excluded_test_episodes": spec["checkpoint"]["dataset"]["excluded_test_episodes"],
         },
         "acceptance": acceptance,
         "episodes": results,
         "interpretation": (
-            "Interface smoke: task success is reported but not required. "
-            "This suite validates closed-loop observation, action scaling, control, and evidence."
+            "Independent simulator holdout: task success, stage progress, and action safety "
+            "measure closed-loop policy behavior; PASS means the frozen evaluation completed "
+            "without evidence-integrity or action-safety violations."
+            if spec["task"]["evaluation_class"].startswith("independent_holdout")
+            else "Interface smoke: task success is reported but not required. This suite "
+            "validates closed-loop observation, action scaling, control, and evidence."
         ),
     }
+    excluded_test = spec["checkpoint"]["dataset"].get("excluded_test_episodes")
+    if excluded_test is not None:
+        report["data_policy"]["excluded_test_episodes"] = excluded_test
     _write_json(args_cli.output_root / "report.json", report)
     print(json.dumps(report, default=json_default, indent=2), flush=True)
     return 0 if report["status"] == "PASS" else 2
