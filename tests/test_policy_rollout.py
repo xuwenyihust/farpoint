@@ -13,6 +13,7 @@ from farpoint.policy_rollout import (
     json_default,
     load_rollout_spec,
     resolve_replan_interval,
+    summarize_action_errors,
 )
 
 
@@ -143,6 +144,47 @@ def test_replan_interval_defaults_to_checkpoint_and_validates_chunk_size():
         resolve_replan_interval(0, checkpoint_steps=100, chunk_size=100)
     with pytest.raises(ValueError, match="chunk_size"):
         resolve_replan_interval(101, checkpoint_steps=100, chunk_size=100)
+
+
+def test_teacher_action_error_summary_separates_model_and_limiter_error():
+    rows = [
+        {
+            "predicted": [110, 0, 0, 0, 0, 0],
+            "applied": [6, 0, 0, 0, 0, 0],
+            "expert": [5, 0, 0, 0, 0, 0],
+            "prediction_safety": {
+                "hard_range_violation_count": 1,
+                "delta_limited_count": 1,
+                "maximum_hard_range_excess_calibrated": 10.0,
+            },
+            "expert_safety": {
+                "hard_range_violation_count": 0,
+                "delta_limited_count": 0,
+                "maximum_hard_range_excess_calibrated": 0.0,
+            },
+        },
+        {
+            "predicted": [5, 0, 0, 0, 0, 0],
+            "applied": [5, 0, 0, 0, 0, 0],
+            "expert": [5, 0, 0, 0, 0, 0],
+            "prediction_safety": {
+                "hard_range_violation_count": 0,
+                "delta_limited_count": 0,
+                "maximum_hard_range_excess_calibrated": 0.0,
+            },
+            "expert_safety": {
+                "hard_range_violation_count": 0,
+                "delta_limited_count": 0,
+                "maximum_hard_range_excess_calibrated": 0.0,
+            },
+        },
+    ]
+    summary = summarize_action_errors(rows)
+    assert summary["sample_count"] == 2
+    assert summary["raw_prediction_error"]["mean_l2"] == pytest.approx(52.5)
+    assert summary["applied_prediction_error"]["mean_l2"] == pytest.approx(0.5)
+    assert summary["prediction_safety"]["hard_range_violation_count"] == 1
+    assert summary["expert_safety"]["delta_limited_count"] == 0
 
 
 def test_interface_smoke_acceptance_reports_task_success_without_requiring_it():

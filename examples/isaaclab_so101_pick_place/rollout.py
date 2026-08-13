@@ -311,7 +311,7 @@ def _run_episode(env, scene_spec, spec, root):
     episode_root = root / "episodes" / scene_spec["scene_id"]
     episode_root.mkdir(parents=True)
     active_name, reset_audit = _reset_scene(env, scene_spec)
-    _policy_request("/reset", {})
+    _policy_request("/reset", {"scene_id": scene_spec["scene_id"]})
     scene = env.scene
     robot = scene["robot"]
     active = scene[active_name]

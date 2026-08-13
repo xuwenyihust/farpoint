@@ -88,6 +88,61 @@ def constrain_policy_action(
     return applied.astype(np.float32), diagnostics
 
 
+def summarize_action_errors(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize raw/applied one-step errors and safety interventions."""
+    if not rows:
+        raise ValueError("action error rows must not be empty")
+    predicted = np.asarray([row["predicted"] for row in rows], dtype=np.float64)
+    applied = np.asarray([row["applied"] for row in rows], dtype=np.float64)
+    expert = np.asarray([row["expert"] for row in rows], dtype=np.float64)
+    if predicted.shape[1:] != (6,) or applied.shape != predicted.shape or expert.shape != predicted.shape:
+        raise ValueError("action error rows must contain shape-(6,) actions")
+    if not np.isfinite(predicted).all() or not np.isfinite(applied).all() or not np.isfinite(expert).all():
+        raise ValueError("action error rows contain non-finite values")
+
+    def error_metrics(values: np.ndarray) -> dict[str, Any]:
+        absolute = np.abs(values - expert)
+        l2 = np.linalg.norm(values - expert, axis=1)
+        return {
+            "mae_per_joint": np.mean(absolute, axis=0).tolist(),
+            "rmse_per_joint": np.sqrt(np.mean((values - expert) ** 2, axis=0)).tolist(),
+            "mean_l2": float(np.mean(l2)),
+            "p50_l2": float(np.percentile(l2, 50)),
+            "p95_l2": float(np.percentile(l2, 95)),
+            "maximum_l2": float(np.max(l2)),
+        }
+
+    return {
+        "sample_count": len(rows),
+        "raw_prediction_error": error_metrics(predicted),
+        "applied_prediction_error": error_metrics(applied),
+        "prediction_safety": {
+            "hard_range_violation_count": sum(
+                row["prediction_safety"]["hard_range_violation_count"] for row in rows
+            ),
+            "delta_limited_count": sum(
+                row["prediction_safety"]["delta_limited_count"] for row in rows
+            ),
+            "maximum_hard_range_excess_calibrated": max(
+                row["prediction_safety"]["maximum_hard_range_excess_calibrated"]
+                for row in rows
+            ),
+        },
+        "expert_safety": {
+            "hard_range_violation_count": sum(
+                row["expert_safety"]["hard_range_violation_count"] for row in rows
+            ),
+            "delta_limited_count": sum(
+                row["expert_safety"]["delta_limited_count"] for row in rows
+            ),
+            "maximum_hard_range_excess_calibrated": max(
+                row["expert_safety"]["maximum_hard_range_excess_calibrated"]
+                for row in rows
+            ),
+        },
+    }
+
+
 def evaluate_rollout_acceptance(
     spec: dict[str, Any], episode_results: list[dict[str, Any]]
 ) -> dict[str, Any]:

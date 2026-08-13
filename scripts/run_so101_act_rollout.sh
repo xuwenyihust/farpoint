@@ -65,6 +65,22 @@ POLICY_REPLAN_ARGS=()
 if [[ -n "${REPLAN_INTERVAL_STEPS}" ]]; then
   POLICY_REPLAN_ARGS+=(--replan-interval-steps "${REPLAN_INTERVAL_STEPS}")
 fi
+REPLAY_MANIFEST="${FARPOINT_ACTION_REPLAY_MANIFEST:-}"
+POLICY_REPLAY_ARGS=()
+POLICY_REPLAY_MOUNT=()
+if [[ -n "${REPLAY_MANIFEST}" ]]; then
+  case "${REPLAY_MANIFEST}" in
+    "${DATA_ROOT}"/*) ;;
+    *) echo "FARPOINT_ACTION_REPLAY_MANIFEST must be below FARPOINT_DATA_ROOT" >&2; exit 2 ;;
+  esac
+  if [[ ! -s "${REPLAY_MANIFEST}" ]]; then
+    echo "expert action replay manifest does not exist: ${REPLAY_MANIFEST}" >&2
+    exit 2
+  fi
+  CONTAINER_REPLAY_MANIFEST="/workspace/farpoint-data/${REPLAY_MANIFEST#${DATA_ROOT}/}"
+  POLICY_REPLAY_ARGS+=(--replay-manifest "${CONTAINER_REPLAY_MANIFEST}")
+  POLICY_REPLAY_MOUNT+=(--volume "${DATA_ROOT}:/workspace/farpoint-data:ro")
+fi
 if [[ ! -f "${ASSET}" ]]; then
   python3 "${PROJECT_ROOT}/scripts/fetch_so101_assets.py" --destination "${ASSET}"
 fi
@@ -88,24 +104,37 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker run -d --rm --gpus all --ipc=host --network host \
-  --name "${POLICY_CONTAINER}" \
-  --user "$(id -u):$(id -g)" \
-  --workdir /workspace/project \
-  --env HOME=/workspace/cache/home \
-  --env HF_HOME=/workspace/cache/huggingface \
-  --env PYTHONPATH=/workspace/project/src \
-  --env PYTHONUNBUFFERED=1 \
-  --env FARPOINT_POLICY_IMAGE_ID="${POLICY_IMAGE_ID}" \
-  --volume "${PROJECT_ROOT}:/workspace/project:ro" \
-  --volume "${CHECKPOINT}:${CONTAINER_CHECKPOINT}:ro" \
-  --volume "${POLICY_CACHE}:/workspace/cache:rw" \
-  "${POLICY_IMAGE}" \
-  python /workspace/project/scripts/serve_so101_act_policy.py \
-    --checkpoint "${CONTAINER_CHECKPOINT}" \
-    --expected-model-sha256 "${MODEL_SHA256}" \
-    --port "${POLICY_PORT}" \
-    "${POLICY_REPLAN_ARGS[@]}" >/dev/null
+policy_docker_args=(
+  -d --rm --gpus all --ipc=host --network host
+  --name "${POLICY_CONTAINER}"
+  --user "$(id -u):$(id -g)"
+  --workdir /workspace/project
+  --env HOME=/workspace/cache/home
+  --env HF_HOME=/workspace/cache/huggingface
+  --env PYTHONPATH=/workspace/project/src
+  --env PYTHONUNBUFFERED=1
+  --env FARPOINT_POLICY_IMAGE_ID="${POLICY_IMAGE_ID}"
+  --volume "${PROJECT_ROOT}:/workspace/project:ro"
+  --volume "${CHECKPOINT}:${CONTAINER_CHECKPOINT}:ro"
+  --volume "${POLICY_CACHE}:/workspace/cache:rw"
+)
+if (( ${#POLICY_REPLAY_MOUNT[@]} )); then
+  policy_docker_args+=("${POLICY_REPLAY_MOUNT[@]}")
+fi
+policy_docker_args+=(
+  "${POLICY_IMAGE}"
+  python /workspace/project/scripts/serve_so101_act_policy.py
+  --checkpoint "${CONTAINER_CHECKPOINT}"
+  --expected-model-sha256 "${MODEL_SHA256}"
+  --port "${POLICY_PORT}"
+)
+if (( ${#POLICY_REPLAN_ARGS[@]} )); then
+  policy_docker_args+=("${POLICY_REPLAN_ARGS[@]}")
+fi
+if (( ${#POLICY_REPLAY_ARGS[@]} )); then
+  policy_docker_args+=("${POLICY_REPLAY_ARGS[@]}")
+fi
+docker run "${policy_docker_args[@]}" >/dev/null
 
 policy_ready=false
 for _ in $(seq 1 120); do
