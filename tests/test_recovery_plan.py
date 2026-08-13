@@ -106,6 +106,8 @@ def test_initialize_recovery_campaign_is_immutable(tmp_path):
     initialized = initialize_recovery_campaign(tmp_path, plan, runtime, git_commit="a" * 40)
     assert initialized["segment"]["plan_sha256"] == plan["plan_sha256"]
     assert load_recovery_runtime(tmp_path / "segments/segment-000/recovery-runtime.json") == runtime
+    evidence = json.loads((tmp_path / "evidence-index.json").read_text())
+    assert evidence["segments"][0]["episodes_root"] == "episodes"
     try:
         initialize_recovery_campaign(tmp_path, plan, runtime, git_commit="a" * 40)
     except FileExistsError:

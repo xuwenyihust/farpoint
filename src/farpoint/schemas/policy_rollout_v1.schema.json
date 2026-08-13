@@ -14,7 +14,7 @@
       "properties": {
         "task_id": {"const": "so101_cube_pick_place"},
         "instruction": {"type": "string", "minLength": 1},
-        "evaluation_class": {"enum": ["interface_smoke", "independent_holdout_smoke", "independent_holdout"]}
+        "evaluation_class": {"enum": ["interface_smoke", "independent_holdout_smoke", "independent_holdout", "recovery_expert_replay"]}
       }
     },
     "checkpoint": {
@@ -114,7 +114,18 @@
         "minimum_task_successes": {"type": "integer", "minimum": 0},
         "maximum_nonfinite_actions": {"type": "integer", "minimum": 0},
         "maximum_hard_range_violations": {"type": "integer", "minimum": 0},
-        "maximum_hard_range_excess_calibrated": {"type": "number", "minimum": 0}
+        "maximum_hard_range_excess_calibrated": {"type": "number", "minimum": 0},
+        "maximum_delta_limited_actions": {"type": "integer", "minimum": 0}
+      }
+    },
+    "recovery_replay_source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["campaign_id", "selection_sha256", "evaluated_episode_count", "state_restore"],
+      "properties": {
+        "campaign_id": {"type": "string", "minLength": 1},
+        "selection_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "evaluated_episode_count": {"type": "integer", "minimum": 1},
+        "state_restore": {"const": "handoff_snapshot_v1"}
       }
     },
     "holdout_source": {
@@ -152,6 +163,22 @@
               "orientation_xyzw": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
               "rgba": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
               "mass_kg": {"type": "number", "exclusiveMinimum": 0}
+            }
+          },
+          "initial_state": {
+            "type": "object", "additionalProperties": false,
+            "required": ["snapshot_sha256", "policy_step", "joint_positions_rad", "joint_velocities_rad_s", "joint_position_target_rad", "object_pose_xyzw", "object_linear_velocity_mps", "object_angular_velocity_rad_s", "contact_forces_n", "applied_policy_action_calibrated"],
+            "properties": {
+              "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "policy_step": {"type": "integer", "minimum": 0},
+              "joint_positions_rad": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "number"}},
+              "joint_velocities_rad_s": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "number"}},
+              "joint_position_target_rad": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "number"}},
+              "object_pose_xyzw": {"type": "array", "minItems": 7, "maxItems": 7, "items": {"type": "number"}},
+              "object_linear_velocity_mps": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "object_angular_velocity_rad_s": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "contact_forces_n": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+              "applied_policy_action_calibrated": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "number"}}
             }
           }
         }

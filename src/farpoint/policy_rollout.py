@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from farpoint.contracts import validate_contract
+from farpoint.demonstration import state_snapshot_sha256
 from farpoint.so101 import (
     LEROBOT_JOINT_NAMES,
     LEROBOT_MAX,
@@ -47,6 +48,17 @@ def load_rollout_spec(path: Path) -> dict[str, Any]:
             raise ValueError("independent holdout rollout requires holdout_source")
         if source["evaluated_scene_count"] != len(scene_ids):
             raise ValueError("evaluated holdout scene count does not match scenes")
+    if payload["task"]["evaluation_class"] == "recovery_expert_replay":
+        source = payload.get("recovery_replay_source")
+        if source is None or source["evaluated_episode_count"] != len(scene_ids):
+            raise ValueError("recovery replay source does not match scenes")
+        for scene in payload["scenes"]:
+            initial = scene.get("initial_state")
+            if initial is None:
+                raise ValueError("recovery replay scene requires initial_state")
+            snapshot = {key: value for key, value in initial.items() if key != "snapshot_sha256"}
+            if state_snapshot_sha256(snapshot) != initial["snapshot_sha256"]:
+                raise ValueError("recovery replay state snapshot hash mismatch")
     return payload
 
 
@@ -256,6 +268,9 @@ def evaluate_rollout_acceptance(
             errors.append("hard-range action violations exceed the frozen maximum")
     elif maximum_range_excess > maximum_allowed_excess:
         errors.append("hard-range action excess exceeds the frozen safety envelope")
+    maximum_delta_limited = acceptance.get("maximum_delta_limited_actions")
+    if maximum_delta_limited is not None and delta_limited > maximum_delta_limited:
+        errors.append("delta-limited action count exceeds the frozen maximum")
     stage_names = (
         "ever_cube_contact",
         "ever_bilateral_contact",

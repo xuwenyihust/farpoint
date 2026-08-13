@@ -67,6 +67,7 @@ from farpoint.camera_profiles import (  # noqa: E402
     camera_cfg_drift_errors,
     load_camera_profile,
 )
+from farpoint.demonstration import state_snapshot_sha256  # noqa: E402
 
 
 SO101_HOME_JOINTS = np.asarray(
@@ -256,20 +257,112 @@ def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
             f"cube reset support unstable: position={measured_position.tolist()} "
             f"velocity={measured_velocity.tolist()}"
         )
-    robot.write_joint_state_to_sim(initial_joints, torch.zeros_like(initial_joints))
-    robot.set_joint_position_target(initial_joints)
+    initial_state = scene_spec.get("initial_state")
+    if initial_state is None:
+        robot.write_joint_state_to_sim(initial_joints, torch.zeros_like(initial_joints))
+        robot.set_joint_position_target(initial_joints)
+    else:
+        snapshot = {key: value for key, value in initial_state.items() if key != "snapshot_sha256"}
+        if state_snapshot_sha256(snapshot) != initial_state["snapshot_sha256"]:
+            raise RuntimeError("recovery replay state snapshot hash mismatch")
+        joint_positions = torch.tensor(
+            [initial_state["joint_positions_rad"]], dtype=torch.float32, device=device
+        )
+        joint_velocities = torch.tensor(
+            [initial_state["joint_velocities_rad_s"]], dtype=torch.float32, device=device
+        )
+        joint_targets = torch.tensor(
+            [initial_state["joint_position_target_rad"]], dtype=torch.float32, device=device
+        )
+        robot.write_joint_state_to_sim(joint_positions, joint_velocities)
+        robot.set_joint_position_target(joint_targets)
+        _move_object(
+            active,
+            initial_state["object_pose_xyzw"][:3],
+            device,
+            initial_state["object_pose_xyzw"][3:],
+        )
+        object_velocity = torch.tensor(
+            [
+                [
+                    *initial_state["object_linear_velocity_mps"],
+                    *initial_state["object_angular_velocity_rad_s"],
+                ]
+            ],
+            dtype=torch.float32,
+            device=device,
+        )
+        active.write_root_velocity_to_sim(object_velocity)
     env.sim.forward()
     scene.update(0.0)
-    home_error = float(np.max(np.abs(_numpy(robot.data.joint_pos[0]) - SO101_HOME_JOINTS)))
+    expected_joints = (
+        SO101_HOME_JOINTS
+        if initial_state is None
+        else np.asarray(initial_state["joint_positions_rad"], dtype=np.float32)
+    )
+    home_error = float(np.max(np.abs(_numpy(robot.data.joint_pos[0]) - expected_joints)))
     if home_error > 1e-5:
-        raise RuntimeError(f"arm HOME restoration failed: {home_error}")
+        raise RuntimeError(f"arm state restoration failed: {home_error}")
+    restored_object_position = _numpy(active.data.root_pos_w[0])
+    restored_object_velocity = _numpy(active.data.root_lin_vel_w[0])
+    restored_object_angular_velocity = _numpy(active.data.root_ang_vel_w[0])
+    object_position_error = 0.0
+    object_linear_velocity_error = 0.0
+    object_angular_velocity_error = 0.0
+    if initial_state is not None:
+        object_position_error = float(
+            np.max(
+                np.abs(
+                    restored_object_position
+                    - np.asarray(initial_state["object_pose_xyzw"][:3], dtype=np.float32)
+                )
+            )
+        )
+        object_linear_velocity_error = float(
+            np.max(
+                np.abs(
+                    restored_object_velocity
+                    - np.asarray(initial_state["object_linear_velocity_mps"], dtype=np.float32)
+                )
+            )
+        )
+        object_angular_velocity_error = float(
+            np.max(
+                np.abs(
+                    restored_object_angular_velocity
+                    - np.asarray(initial_state["object_angular_velocity_rad_s"], dtype=np.float32)
+                )
+            )
+        )
+        if (
+            max(
+                object_position_error,
+                object_linear_velocity_error,
+                object_angular_velocity_error,
+            )
+            > 1e-5
+        ):
+            raise RuntimeError(
+                "object state restoration failed: "
+                f"position={object_position_error}, "
+                f"linear_velocity={object_linear_velocity_error}, "
+                f"angular_velocity={object_angular_velocity_error}"
+            )
     return active_name, {
+        "restore_mode": "normal_reset" if initial_state is None else "handoff_snapshot_v1",
+        "snapshot_sha256": None if initial_state is None else initial_state["snapshot_sha256"],
         "variation_seed": variation_seed,
         "environment_seed": environment_seed,
         "requested_mass_kg": float(obj["mass_kg"]),
         "actual_mass_kg": actual_mass,
         "measured_position_m": measured_position.tolist(),
         "measured_velocity_mps": measured_velocity.tolist(),
+        "restored_object_position_m": restored_object_position.tolist(),
+        "restored_object_velocity_mps": restored_object_velocity.tolist(),
+        "restored_object_angular_velocity_rad_s": restored_object_angular_velocity.tolist(),
+        "maximum_object_position_error_m": object_position_error,
+        "maximum_object_linear_velocity_error_mps": object_linear_velocity_error,
+        "maximum_object_angular_velocity_error_rad_s": object_angular_velocity_error,
         "maximum_home_error_rad": home_error,
     }
 
@@ -585,6 +678,7 @@ def main() -> int:
         "checkpoint": spec["checkpoint"],
         "action_safety_profile": resolve_action_safety_profile(spec["control"]),
         "holdout_source": spec.get("holdout_source"),
+        "recovery_replay_source": spec.get("recovery_replay_source"),
         "data_policy": {
             "training_episodes": spec["checkpoint"]["dataset"]["train_episodes"],
             "validation_episodes": spec["checkpoint"]["dataset"]["validation_episodes"],
@@ -597,6 +691,10 @@ def main() -> int:
             "measure closed-loop policy behavior; PASS means the frozen evaluation completed "
             "without evidence-integrity or action-safety violations."
             if spec["task"]["evaluation_class"].startswith("independent_holdout")
+            else "Recovery expert replay: each exported Oracle action stream is replayed "
+            "from its hashed live handoff state; PASS requires physical task success and "
+            "the frozen safety/evidence gates."
+            if spec["task"]["evaluation_class"] == "recovery_expert_replay"
             else "Interface smoke: task success is reported but not required. This suite "
             "validates closed-loop observation, action scaling, control, and evidence."
         ),
