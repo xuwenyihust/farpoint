@@ -76,6 +76,7 @@ def main() -> int:
     parser.add_argument("--segment-id", required=True)
     parser.add_argument("--git-commit", required=True)
     parser.add_argument("--oracle-profile", action="append", required=True)
+    parser.add_argument("--quality-exclusions", type=Path)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
 
@@ -95,7 +96,15 @@ def main() -> int:
         raise ValueError("parent manifest is not the latest indexed manifest")
     if canonical_sha256(latest["plan"]) != canonical_sha256(parent_plan):
         raise ValueError("parent plan is not the latest indexed plan")
-    requests = build_continuation_requests(campaign, evidence)
+    requests = build_continuation_requests(
+        campaign,
+        evidence,
+        quality_exclusions=(
+            _read(args.quality_exclusions)
+            if args.quality_exclusions is not None
+            else None
+        ),
+    )
     plan = build_v010_replacement_plan(
         config,
         base,

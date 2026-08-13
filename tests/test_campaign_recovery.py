@@ -5,6 +5,7 @@ from farpoint.campaign_recovery import (
     build_campaign_export_selection,
     build_continuation_requests,
     build_replacement_requests,
+    create_campaign_quality_exclusions,
     create_continuation_segment,
     diagnostic_clusters,
     evaluate_self_healing_campaign,
@@ -131,6 +132,19 @@ def _fail_next(manifest, plan, reason="bilateral_contact_lost:static_hold"):
         dataset_valid=True,
         failure_category="oracle",
         failure_reason=reason,
+    )
+    return attempt
+
+
+def _success_next(manifest, plan, *, episode_id):
+    attempt = next_attempt(manifest, plan)
+    record_attempt(
+        manifest,
+        plan,
+        attempt,
+        episode_id=episode_id,
+        success=True,
+        dataset_valid=True,
     )
     return attempt
 
@@ -553,3 +567,182 @@ def test_policy_requires_exactly_three_attempts():
         assert "exactly three attempts" in str(error)
     else:
         raise AssertionError("policy unexpectedly accepted four attempts")
+
+
+def test_quality_exclusion_reopens_selected_quota_without_mutating_parent(tmp_path):
+    campaign = _campaign(count=1)
+    parent_plan = _plan(campaign, count=1)
+    parent_manifest = create_manifest(
+        parent_plan, collection_id="segment-000", git_commit="abcdef1"
+    )
+    parent_attempt = _success_next(
+        parent_manifest, parent_plan, episode_id="episode-parent-quality-fail"
+    )
+    parent_manifest["execution_status"] = "ABORTED"
+    parent_manifest["quality_status"] = "NOT_EVALUATED"
+    parent_segment = _segment(campaign, parent_plan)
+    evidence = [
+        {
+            "segment": parent_segment,
+            "plan": parent_plan,
+            "manifest": parent_manifest,
+            "episodes_root": str(tmp_path / "parent"),
+        }
+    ]
+    parent_hash = canonical_sha256(parent_manifest)
+    exclusions = create_campaign_quality_exclusions(
+        campaign,
+        evidence,
+        [
+            {
+                "segment_id": "segment-000",
+                "attempt_id": parent_attempt["attempt_id"],
+                "reason_code": "recovery_action_slew_gate_failed",
+                "evidence_sha256": "b" * 64,
+            }
+        ],
+        exclusion_id="recovery-v011-slew-exclusions",
+    )
+
+    requests = build_continuation_requests(
+        campaign, evidence, quality_exclusions=exclusions
+    )
+
+    assert canonical_sha256(parent_manifest) == parent_hash
+    assert len(requests) == 1
+    assert requests[0]["request_kind"] == "carryover"
+    assert requests[0]["source_variation_id"] == parent_attempt["variation_id"]
+    assert requests[0]["prior_attempt_count"] == 1
+    assert requests[0]["remaining_attempt_count"] == 2
+
+
+def test_quality_excluded_parent_is_replaced_by_continuation_selection(tmp_path):
+    campaign = _campaign(count=1)
+    parent_plan = _plan(campaign, count=1)
+    parent_manifest = create_manifest(
+        parent_plan, collection_id="segment-000", git_commit="abcdef1"
+    )
+    parent_attempt = _success_next(
+        parent_manifest, parent_plan, episode_id="episode-parent-quality-fail"
+    )
+    parent_manifest["execution_status"] = "ABORTED"
+    parent_manifest["quality_status"] = "NOT_EVALUATED"
+    parent_segment = _segment(campaign, parent_plan)
+    parent_evidence = {
+        "segment": parent_segment,
+        "plan": parent_plan,
+        "manifest": parent_manifest,
+        "episodes_root": str(tmp_path / "parent"),
+    }
+    exclusions = create_campaign_quality_exclusions(
+        campaign,
+        [parent_evidence],
+        [
+            {
+                "segment_id": "segment-000",
+                "attempt_id": parent_attempt["attempt_id"],
+                "reason_code": "recovery_action_slew_gate_failed",
+                "evidence_sha256": "b" * 64,
+            }
+        ],
+        exclusion_id="recovery-v011-slew-exclusions",
+    )
+    request = build_continuation_requests(
+        campaign, [parent_evidence], quality_exclusions=exclusions
+    )[0]
+    continuation_plan = _plan(campaign, count=1)
+    trial = continuation_plan["trials"][0]
+    trial["seed"] = request["variation_seed"]
+    trial["prior_attempt_count"] = request["prior_attempt_count"]
+    trial["continuation_provenance"] = {
+        "request_kind": request["request_kind"]
+    }
+    continuation_plan["collection"]["maximum_attempts"] = 2
+    continuation_plan["plan_sha256"] = canonical_sha256(
+        continuation_plan, omit=("plan_sha256",)
+    )
+    continuation_segment = create_continuation_segment(
+        campaign,
+        parent_segment,
+        parent_manifest,
+        segment_id="segment-001",
+        git_commit="abcdef2",
+        plan_sha256=continuation_plan["plan_sha256"],
+        oracle_profile_allowlist=["profile-v2"],
+    )
+    continuation_manifest = create_manifest(
+        continuation_plan, collection_id="segment-001", git_commit="abcdef2"
+    )
+    continuation_attempt = _success_next(
+        continuation_manifest,
+        continuation_plan,
+        episode_id="episode-continuation-quality-pass",
+    )
+    continuation_evidence = {
+        "segment": continuation_segment,
+        "plan": continuation_plan,
+        "manifest": continuation_manifest,
+        "episodes_root": str(tmp_path / "continuation"),
+    }
+    all_evidence = [parent_evidence, continuation_evidence]
+
+    selection = build_campaign_export_selection(
+        campaign,
+        all_evidence,
+        dataset_id="farpoint-so101",
+        quality_exclusions=exclusions,
+    )
+    report = evaluate_self_healing_campaign(
+        campaign,
+        all_evidence,
+        _policy(),
+        live_status={"heartbeat_unix": 1000.0, "started_unix": 900.0},
+        free_disk_bytes=600 * 1024**3,
+        quality_exclusions=exclusions,
+        now_unix=1001.0,
+    )
+
+    assert [row["attempt_id"] for row in selection["episodes"]] == [
+        continuation_attempt["attempt_id"]
+    ]
+    assert selection["quality_exclusions_sha256"] == exclusions[
+        "quality_exclusions_sha256"
+    ]
+    assert report["decision"] == "COMPLETE"
+    assert report["progress"]["successful_quotas"] == 1
+    assert report["progress"]["quality_excluded_successes"] == 1
+
+
+def test_quality_exclusions_fail_closed_on_tampered_manifest_binding():
+    campaign = _campaign(count=1)
+    plan = _plan(campaign, count=1)
+    manifest = create_manifest(plan, collection_id="segment-000", git_commit="abcdef1")
+    attempt = _success_next(manifest, plan, episode_id="episode-success")
+    segment = _segment(campaign, plan)
+    evidence = [{"segment": segment, "plan": plan, "manifest": manifest}]
+    exclusions = create_campaign_quality_exclusions(
+        campaign,
+        evidence,
+        [
+            {
+                "segment_id": "segment-000",
+                "attempt_id": attempt["attempt_id"],
+                "reason_code": "recovery_action_slew_gate_failed",
+                "evidence_sha256": "b" * 64,
+            }
+        ],
+        exclusion_id="recovery-v011-slew-exclusions",
+    )
+    exclusions["entries"][0]["manifest_sha256"] = "c" * 64
+    exclusions["quality_exclusions_sha256"] = canonical_sha256(
+        exclusions, omit=("quality_exclusions_sha256",)
+    )
+
+    try:
+        build_continuation_requests(
+            campaign, evidence, quality_exclusions=exclusions
+        )
+    except ValueError as error:
+        assert "manifest hash mismatch" in str(error)
+    else:
+        raise AssertionError("tampered quality exclusion was accepted")
