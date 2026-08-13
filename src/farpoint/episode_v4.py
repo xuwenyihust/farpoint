@@ -8,6 +8,7 @@ from typing import Any
 
 from farpoint.campaign import validate_campaign_semantics, validate_segment_semantics
 from farpoint.contracts import validate_contract, validate_episode_semantics
+from farpoint.demonstration import nominal_demonstration
 from farpoint.scene_entities import (
     bind_scene_entities,
     support_surface_entity,
@@ -54,9 +55,7 @@ def _variant_resolved_state(
 
 def _canonical_cube_yaw_degrees(orientation_xyzw: list[float]) -> float:
     x, y, z, w = (float(value) for value in orientation_xyzw)
-    yaw = math.degrees(
-        math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
-    )
+    yaw = math.degrees(math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
     return yaw % 90.0
 
 
@@ -82,6 +81,7 @@ def build_so101_episode_v4(
     failure_category: str | None,
     failure_reason: str | None,
     physics_audit: dict[str, Any],
+    demonstration: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Bind immutable campaign/segment provenance to one measured episode."""
     if not is_v010_episode_plan(plan):
@@ -90,8 +90,7 @@ def build_so101_episode_v4(
     segment_errors = validate_segment_semantics(segment)
     if campaign_errors or segment_errors:
         raise ValueError(
-            "invalid episode v4 campaign context: "
-            + "; ".join([*campaign_errors, *segment_errors])
+            "invalid episode v4 campaign context: " + "; ".join([*campaign_errors, *segment_errors])
         )
     if campaign["campaign_id"] != segment["campaign_id"]:
         raise ValueError("campaign and segment ids do not match")
@@ -149,6 +148,11 @@ def build_so101_episode_v4(
     variation_requested = deepcopy(trial["variation_requested"])
     variation_requested["entities"] = requested_entities
     variation_resolved["entities"] = resolved_entities
+    demonstration_record = (
+        deepcopy(demonstration)
+        if demonstration is not None
+        else nominal_demonstration(oracle_profile_id=plan["oracle_profile_id"])
+    )
     metadata = {
         "schema_version": "farpoint.episode.v4",
         "identity": {
@@ -179,6 +183,7 @@ def build_so101_episode_v4(
             "acceptance_region_id": "placement_region",
         },
         "embodiment": deepcopy(embodiment),
+        "demonstration": demonstration_record,
         "scene": {
             "coordinate_frame": "isaac_world",
             "entities": [object_entity, target_entity, table_entity],

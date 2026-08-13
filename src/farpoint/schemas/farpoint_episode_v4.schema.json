@@ -45,6 +45,7 @@
       }
     },
     "embodiment": {"type": "object", "minProperties": 1},
+    "demonstration": {"$ref": "#/$defs/demonstration"},
     "scene": {
       "type": "object", "additionalProperties": false,
       "required": ["coordinate_frame", "entities", "object_archetype", "object_variant", "feasible_region", "materials", "lighting_profile_id"],
@@ -122,6 +123,86 @@
   },
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "demonstration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "type", "controller"],
+      "properties": {
+        "schema_version": {"const": "farpoint.demonstration.v1"},
+        "type": {"enum": ["nominal", "recovery", "human_intervention", "teleoperation", "policy_assisted"]},
+        "controller": {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": {"enum": ["oracle", "human", "policy", "hybrid"]},
+            "profile_id": {"type": "string", "minLength": 1}
+          }
+        },
+        "source_policy": {
+          "type": "object", "additionalProperties": false,
+          "required": ["policy_type", "checkpoint_step", "model_sha256", "training_run_id", "rollout_git_commit"],
+          "properties": {
+            "policy_type": {"type": "string", "minLength": 1},
+            "checkpoint_step": {"type": "integer", "minimum": 1},
+            "model_sha256": {"$ref": "#/$defs/sha256"},
+            "training_run_id": {"type": "string", "minLength": 1},
+            "rollout_git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+          }
+        },
+        "intervention": {"$ref": "#/$defs/intervention"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "recovery"}}, "required": ["type"]},
+          "then": {
+            "required": ["source_policy", "intervention"],
+            "properties": {
+              "controller": {
+                "properties": {"type": {"const": "oracle"}},
+                "required": ["type", "profile_id"]
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "nominal"}}, "required": ["type"]},
+          "then": {
+            "not": {"anyOf": [{"required": ["source_policy"]}, {"required": ["intervention"]}]}
+          }
+        }
+      ]
+    },
+    "intervention": {
+      "type": "object", "additionalProperties": false,
+      "required": ["trigger", "handoff", "recovery_strategy_id"],
+      "properties": {
+        "trigger": {
+          "type": "object", "additionalProperties": false,
+          "required": ["trigger_id", "failure_class", "control_step", "stage", "evidence"],
+          "properties": {
+            "trigger_id": {"type": "string", "minLength": 1},
+            "failure_class": {"enum": ["grasp_alignment", "contact_without_lift", "dropped_object", "transport_drift", "place_alignment", "release_instability", "action_saturation", "progress_stall"]},
+            "control_step": {"type": "integer", "minimum": 0},
+            "stage": {"type": "string", "minLength": 1},
+            "evidence": {"type": "object", "minProperties": 1}
+          }
+        },
+        "handoff": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "source_rollout_id", "source_scene_id", "source_control_step", "recovery_start_frame", "physics_state_continuous", "reset_performed", "state_snapshot_sha256"],
+          "properties": {
+            "mode": {"const": "live_continuous_state"},
+            "source_rollout_id": {"type": "string", "minLength": 1},
+            "source_scene_id": {"type": "string", "minLength": 1},
+            "source_control_step": {"type": "integer", "minimum": 0},
+            "recovery_start_frame": {"const": 0},
+            "physics_state_continuous": {"const": true},
+            "reset_performed": {"const": false},
+            "state_snapshot_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "recovery_strategy_id": {"type": "string", "minLength": 1}
+      }
+    },
     "versionedConfig": {
       "type": "object", "additionalProperties": false,
       "required": ["requested", "resolved", "units", "config_version", "config_sha256"],
