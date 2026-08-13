@@ -133,6 +133,29 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
                     )
                 if handoff.get("source_scene_id") == identity.get("episode_id"):
                     errors.append("recovery source scene must not reuse the recovery episode id")
+                command_trace = intervention.get("command_trace")
+                if isinstance(command_trace, dict):
+                    if command_trace.get("control_hz") != recording.get("control_hz"):
+                        errors.append(
+                            "recovery command trace control_hz does not match recording.control_hz"
+                        )
+                    if command_trace.get("joint_order") != recording.get("action_features"):
+                        errors.append(
+                            "recovery command trace joint_order does not match recording.action_features"
+                        )
+                    first = command_trace.get("first_control_step")
+                    last = command_trace.get("last_control_step")
+                    count = command_trace.get("sample_count")
+                    if (
+                        not isinstance(first, int)
+                        or not isinstance(last, int)
+                        or not isinstance(count, int)
+                        or first != 0
+                        or last - first + 1 != count
+                    ):
+                        errors.append(
+                            "recovery command trace must cover consecutive physics control steps from zero"
+                        )
         if set(variation.get("varied_axes") or ()) & set(variation.get("frozen_axes") or ()):
             errors.append("variation axes cannot be both varied and frozen")
         entities = scene.get("entities") or []

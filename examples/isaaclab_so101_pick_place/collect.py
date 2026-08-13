@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
+import hashlib
 import io
 import json
 import os
@@ -173,7 +174,10 @@ from farpoint_so101_env.mdp import (  # noqa: E402
     SO101_GRIPPER_STATIC_FRICTION,
 )
 from farpoint.contracts import validate_contract, validate_episode_semantics  # noqa: E402
-from farpoint.demonstration import recovery_demonstration  # noqa: E402
+from farpoint.demonstration import (  # noqa: E402
+    intervention_command_trace,
+    recovery_demonstration,
+)
 from farpoint.camera_profiles import (  # noqa: E402
     build_camera_records,
     camera_cfg_drift_errors,
@@ -2085,6 +2089,7 @@ def run_attempt(
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
     rows = []
+    physics_command_rows = []
     for control_step in range(schedule.steps_for_seconds(120.0)):
         phase = machine.phase
         phase_motion_complete = True
@@ -3045,6 +3050,18 @@ def run_attempt(
             if not grasp_decision.rebase_joint_command:
                 commanded_joints = bounded.copy()
 
+        if recovery_snapshot is not None:
+            physics_command_rows.append(
+                {
+                    "control_step": control_step,
+                    "timestamp_seconds": control_step / schedule.control_hz,
+                    "phase": phase.value,
+                    "grasp_phase": grasp_decision.phase.value,
+                    "action_joint_positions": _numpy(action[0]).tolist(),
+                    "command_safety": copy.deepcopy(recovery_oracle_safety),
+                }
+            )
+
         stable_grasp_contact = (
             grasp_decision.phase
             in {GraspPhase.PROOF_LIFT, GraspPhase.VALIDATED}
@@ -3276,6 +3293,31 @@ def run_attempt(
             f"body_poses={json.dumps(body_poses, sort_keys=True)}",
             flush=True,
         )
+    if recovery_snapshot is not None:
+        if demonstration is None or not physics_command_rows:
+            raise RuntimeError("recovery command trace was not captured")
+        trace_path = root / "oracle-commands.jsonl"
+        trace_bytes = "".join(
+            json.dumps(row, sort_keys=True) + "\n" for row in physics_command_rows
+        ).encode("utf-8")
+        trace_path.write_bytes(trace_bytes)
+        trace = intervention_command_trace(
+            path=trace_path.name,
+            sha256=hashlib.sha256(trace_bytes).hexdigest(),
+            control_hz=int(schedule.control_hz),
+            sample_count=len(physics_command_rows),
+            first_control_step=int(physics_command_rows[0]["control_step"]),
+            last_control_step=int(physics_command_rows[-1]["control_step"]),
+            joint_order=LEROBOT_JOINT_NAMES,
+        )
+        demonstration["intervention"]["command_trace"] = trace
+        handoff_path = root / "handoff.json"
+        handoff = _read_json(handoff_path)
+        handoff["demonstration"] = copy.deepcopy(demonstration)
+        handoff["command_trace"] = copy.deepcopy(trace)
+        _write_json(handoff_path, handoff)
+        run_state["recovery"]["command_trace"] = copy.deepcopy(trace)
+        _write_json(root / "run-state.json", run_state)
     scene_object = {
         "shape": object_spec["shape"],
         "asset_id": object_spec["asset_id"],
