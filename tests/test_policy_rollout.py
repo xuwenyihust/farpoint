@@ -128,6 +128,7 @@ def test_policy_action_applies_hard_and_delta_safety_bounds():
     applied, diagnostics = constrain_policy_action(raw, current, max_delta=6.0)
     assert applied.tolist() == [6.0, -6.0, 5.0, 4.0, 3.0, 6.0]
     assert diagnostics["hard_range_violation_count"] == 2
+    assert diagnostics["maximum_hard_range_excess_calibrated"] == 20.0
     assert diagnostics["delta_limited_count"] == 3
     assert diagnostics["maximum_applied_delta"] == 6.0
     with pytest.raises(ValueError, match="non-finite"):
@@ -154,6 +155,31 @@ def test_interface_smoke_acceptance_reports_task_success_without_requiring_it():
     failed = evaluate_rollout_acceptance(spec, results)
     assert failed["status"] == "FAIL"
     assert "hard-range" in failed["acceptance_errors"][0]
+
+
+def test_holdout_acceptance_gates_violation_magnitude_not_clipped_count(tmp_path):
+    campaign_root, template = _write_campaign_fixture(tmp_path)
+    spec = build_rollout_spec(template, campaign_root, scene_limit=2)
+    results = [
+        {
+            "scene_id": scene["scene_id"],
+            "execution_status": "FINISHED",
+            "task_success": False,
+            "terminal_reason": "lift_without_target_entry",
+            "nonfinite_action_count": 0,
+            "hard_range_violation_count": 100,
+            "maximum_hard_range_excess_calibrated": 5.5,
+        }
+        for scene in spec["scenes"]
+    ]
+    accepted = evaluate_rollout_acceptance(spec, results)
+    assert accepted["status"] == "PASS"
+    assert accepted["hard_range_violation_count"] == 200
+    assert accepted["maximum_hard_range_excess_calibrated"] == 5.5
+    results[0]["maximum_hard_range_excess_calibrated"] = 6.01
+    failed = evaluate_rollout_acceptance(spec, results)
+    assert failed["status"] == "FAIL"
+    assert "safety envelope" in failed["acceptance_errors"][0]
 
 
 def test_v010_holdout_builder_preserves_high_seeds_and_stratifies_smoke(tmp_path):

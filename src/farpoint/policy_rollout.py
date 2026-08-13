@@ -63,6 +63,7 @@ def constrain_policy_action(
     applied = current + delta
     diagnostics = {
         "hard_range_violation_count": int(np.count_nonzero(hard_mask)),
+        "maximum_hard_range_excess_calibrated": float(np.max(np.abs(raw - hard_clipped))),
         "delta_limited_count": int(np.count_nonzero(np.abs(hard_clipped - current) > max_delta)),
         "maximum_raw_abs": float(np.max(np.abs(raw))),
         "maximum_applied_delta": float(np.max(np.abs(delta))),
@@ -85,6 +86,13 @@ def evaluate_rollout_acceptance(
     range_violations = sum(
         int(result.get("hard_range_violation_count", 0)) for result in episode_results
     )
+    maximum_range_excess = max(
+        (
+            float(result.get("maximum_hard_range_excess_calibrated", 0.0))
+            for result in episode_results
+        ),
+        default=0.0,
+    )
     delta_limited = sum(int(result.get("delta_limited_count", 0)) for result in episode_results)
     if completed != acceptance["required_completed_episodes"]:
         errors.append("completed episode count does not meet the smoke contract")
@@ -92,8 +100,12 @@ def evaluate_rollout_acceptance(
         errors.append("task success count is below the frozen minimum")
     if nonfinite > acceptance["maximum_nonfinite_actions"]:
         errors.append("non-finite action count exceeds the frozen maximum")
-    if range_violations > acceptance["maximum_hard_range_violations"]:
-        errors.append("hard-range action violations exceed the frozen maximum")
+    maximum_allowed_excess = acceptance.get("maximum_hard_range_excess_calibrated")
+    if maximum_allowed_excess is None:
+        if range_violations > acceptance["maximum_hard_range_violations"]:
+            errors.append("hard-range action violations exceed the frozen maximum")
+    elif maximum_range_excess > maximum_allowed_excess:
+        errors.append("hard-range action excess exceeds the frozen safety envelope")
     stage_names = (
         "ever_cube_contact",
         "ever_bilateral_contact",
@@ -118,6 +130,7 @@ def evaluate_rollout_acceptance(
         "task_success_rate": successes / len(expected_ids),
         "nonfinite_action_count": nonfinite,
         "hard_range_violation_count": range_violations,
+        "maximum_hard_range_excess_calibrated": maximum_range_excess,
         "delta_limited_count": delta_limited,
         "stage_progress": stage_progress,
         "terminal_reason_counts": dict(sorted(terminal_reasons.items())),

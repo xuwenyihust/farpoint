@@ -77,7 +77,8 @@
         "required_completed_episodes": {"type": "integer", "minimum": 1},
         "minimum_task_successes": {"type": "integer", "minimum": 0},
         "maximum_nonfinite_actions": {"type": "integer", "minimum": 0},
-        "maximum_hard_range_violations": {"type": "integer", "minimum": 0}
+        "maximum_hard_range_violations": {"type": "integer", "minimum": 0},
+        "maximum_hard_range_excess_calibrated": {"type": "number", "minimum": 0}
       }
     },
     "holdout_source": {

@@ -323,6 +323,7 @@ def _run_episode(env, scene_spec, spec, root):
     ever_in_target = False
     stable_steps = 0
     hard_range_violations = 0
+    maximum_range_excess = 0.0
     delta_limited = 0
     nonfinite = 0
     policy_steps = 0
@@ -348,6 +349,10 @@ def _run_episode(env, scene_spec, spec, root):
                 raw_action, state, max_delta=control["max_delta_calibrated"]
             )
             hard_range_violations += safety["hard_range_violation_count"]
+            maximum_range_excess = max(
+                maximum_range_excess,
+                safety["maximum_hard_range_excess_calibrated"],
+            )
             delta_limited += safety["delta_limited_count"]
             target_radians = lerobot_to_radians(applied, clip=True)
             target = torch.tensor([target_radians], dtype=torch.float32, device=env.device)
@@ -470,6 +475,7 @@ def _run_episode(env, scene_spec, spec, root):
         },
         "nonfinite_action_count": nonfinite,
         "hard_range_violation_count": hard_range_violations,
+        "maximum_hard_range_excess_calibrated": maximum_range_excess,
         "delta_limited_count": delta_limited,
     }
     _write_json(episode_root / "result.json", result)

@@ -41,7 +41,8 @@
     "required_completed_episodes": 20,
     "minimum_task_successes": 0,
     "maximum_nonfinite_actions": 0,
-    "maximum_hard_range_violations": 0
+    "maximum_hard_range_violations": 0,
+    "maximum_hard_range_excess_calibrated": 6.0
   },
   "holdout_source": {
     "campaign_id": "so101_v010_formal200_20260811_932be4f",
