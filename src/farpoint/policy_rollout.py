@@ -142,6 +142,22 @@ def initial_command_slew_reference(
     return value.copy()
 
 
+def interpolate_command_endpoints(
+    previous_action: Any, applied_action: Any, physics_substeps: int
+) -> np.ndarray:
+    """Resolve actuator targets between two policy-rate command endpoints."""
+    previous = np.asarray(previous_action, dtype=np.float64)
+    applied = np.asarray(applied_action, dtype=np.float64)
+    if previous.shape != (6,) or applied.shape != (6,):
+        raise ValueError("command endpoints must have shape (6,)")
+    if not np.all(np.isfinite(previous)) or not np.all(np.isfinite(applied)):
+        raise ValueError("command endpoints must be finite")
+    if not isinstance(physics_substeps, int) or physics_substeps < 1:
+        raise ValueError("physics_substeps must be a positive integer")
+    fractions = np.arange(1, physics_substeps + 1, dtype=np.float64) / physics_substeps
+    return previous[None, :] + fractions[:, None] * (applied - previous)[None, :]
+
+
 def constrain_policy_action(
     raw_action: Any,
     current_position: Any,

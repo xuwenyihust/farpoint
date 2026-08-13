@@ -11,6 +11,7 @@ from farpoint.policy_rollout import (
     constrain_policy_action,
     evaluate_rollout_acceptance,
     initial_command_slew_reference,
+    interpolate_command_endpoints,
     json_default,
     load_rollout_spec,
     resolve_action_safety_profile,
@@ -190,6 +191,20 @@ def test_command_slew_ignores_only_float_round_trip_noise():
     )
     assert limited.tolist() == [1.0] * 6
     assert diagnostics["delta_limited_count"] == 6
+
+
+def test_command_endpoints_are_linearly_interpolated_at_physics_rate():
+    previous = np.zeros(6)
+    applied = np.asarray([4.0, -4.0, 8.0, -8.0, 12.0, -12.0])
+    targets = interpolate_command_endpoints(previous, applied, 4)
+    assert targets.tolist() == [
+        [1.0, -1.0, 2.0, -2.0, 3.0, -3.0],
+        [2.0, -2.0, 4.0, -4.0, 6.0, -6.0],
+        [3.0, -3.0, 6.0, -6.0, 9.0, -9.0],
+        [4.0, -4.0, 8.0, -8.0, 12.0, -12.0],
+    ]
+    with pytest.raises(ValueError, match="positive integer"):
+        interpolate_command_endpoints(previous, applied, 0)
 
 
 def test_viam_physical_speed_profile_resolves_for_30_hz_so101():

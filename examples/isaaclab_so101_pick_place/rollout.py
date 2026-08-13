@@ -57,6 +57,7 @@ from farpoint.policy_rollout import (  # noqa: E402
     constrain_policy_action,
     evaluate_rollout_acceptance,
     initial_command_slew_reference,
+    interpolate_command_endpoints,
     json_default,
     load_rollout_spec,
     resolve_action_safety_profile,
@@ -452,17 +453,26 @@ def _run_episode(env, scene_spec, spec, root):
                     state,
                     max_delta=action_safety_profile["max_command_slew_calibrated_per_step"][0],
                 )
+                substep_actions = np.repeat(
+                    applied[None, :], physics_steps_per_policy, axis=0
+                )
+                safety["physics_target_interpolation"] = "zero_order_hold"
             else:
                 if previous_applied_action is None:
                     previous_applied_action = initial_command_slew_reference(
                         state, scene_spec.get("initial_state")
                     )
+                command_start = previous_applied_action.copy()
                 applied, safety = constrain_policy_action(
                     raw_action,
                     state,
                     action_safety_profile=action_safety_profile,
                     previous_applied_action=previous_applied_action,
                 )
+                substep_actions = interpolate_command_endpoints(
+                    command_start, applied, physics_steps_per_policy
+                )
+                safety["physics_target_interpolation"] = "linear_endpoint"
                 previous_applied_action = applied.copy()
             hard_range_violations += safety["hard_range_violation_count"]
             maximum_range_excess = max(
@@ -471,8 +481,11 @@ def _run_episode(env, scene_spec, spec, root):
             )
             delta_limited += safety["delta_limited_count"]
             target_radians = lerobot_to_radians(applied, clip=True)
-            target = torch.tensor([target_radians], dtype=torch.float32, device=env.device)
-            for _ in range(physics_steps_per_policy):
+            for substep_action in substep_actions:
+                substep_radians = lerobot_to_radians(substep_action, clip=True)
+                target = torch.tensor(
+                    [substep_radians], dtype=torch.float32, device=env.device
+                )
                 env.step(target)
             forces = _cube_contact_forces(scene)
             cube_pose = _numpy(active.data.root_pose_w[0])
