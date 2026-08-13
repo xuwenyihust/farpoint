@@ -139,7 +139,7 @@ def build_so101_gate_report(
     )
     if attempt_seed_count != attempted_count:
         evidence_errors.append("attempt_seeds_not_unique")
-    if variation_seed_count != attempted_count:
+    if variation_seed_count != len(attempted_variation_ids):
         evidence_errors.append("variation_seeds_not_unique")
     maximum_attempts = int(manifest["maximum_attempts"])
     required_successes = int(manifest["required_successes"])
