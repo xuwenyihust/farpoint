@@ -48,6 +48,9 @@ docker_args=(
   -v "${DATA_ROOT}:/workspace/farpoint-data:rw"
   -v "${ASSET}:${CONTAINER_ASSET}:ro"
 )
+if [[ -n "${FARPOINT_ACT_POLICY_URL:-}" ]]; then
+  docker_args+=(-e FARPOINT_ACT_POLICY_URL="${FARPOINT_ACT_POLICY_URL}")
+fi
 if [[ "${MODE}" == "viewer" ]]; then
   docker_args+=(-e DISPLAY="${DISPLAY:-:0}" -v /tmp/.X11-unix:/tmp/.X11-unix:rw)
 fi

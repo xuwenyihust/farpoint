@@ -1,0 +1,49 @@
+{
+  "schema_version": "farpoint.recovery-plan-config.v1",
+  "config_version": "0.1.1-recovery.1",
+  "selection_seed": 20260814,
+  "target_successes": 20,
+  "objects": ["red-40mm-40g", "blue-30mm-30g"],
+  "yaw_region_pairs": {
+    "yaw00_18": ["core", "middle"],
+    "yaw18_36": ["core", "outer"],
+    "yaw36_54": ["core", "middle"],
+    "yaw54_72": ["middle", "outer"],
+    "yaw72_90": ["middle", "middle"]
+  },
+  "source_policy": {
+    "policy_type": "act",
+    "checkpoint_step": 20000,
+    "model_sha256": "8618539fe7bf763759b2ca21bffb7c5330470fbe1d8c28f580877782736cea08",
+    "training_run_id": "act-v010-baseline-20k-20260813-e9e2db3",
+    "rollout_git_commit": "56d8a7174e7ba3162be6190e1d043d56d0b1aa5b"
+  },
+  "control": {
+    "physics_hz": 120,
+    "policy_hz": 30,
+    "replan_interval_steps": 10,
+    "action_safety_profile": {
+      "schema_version": "farpoint.action-safety-profile.v1",
+      "profile_id": "so101-viam-50deg-s-v1",
+      "joint_order": ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos", "wrist_flex.pos", "wrist_roll.pos", "gripper.pos"],
+      "arm_max_command_speed_deg_s": 50.0,
+      "gripper_max_command_slew_calibrated_per_step": 5.5,
+      "source": {
+        "kind": "open_source_hardware_default",
+        "reference": "https://github.com/viam-devrel/so-101",
+        "resolved_revision": "main",
+        "statistic": "configured max joint command speed"
+      }
+    }
+  },
+  "trigger": {
+    "trigger_id": "act-pre-lift-deviation-v1",
+    "strategy_id": "regrasp_from_live_state_v1",
+    "minimum_policy_steps": 120,
+    "maximum_policy_steps_before_handoff": 240,
+    "stall_window_steps": 30,
+    "minimum_progress_m": 0.002,
+    "consecutive_safety_event_steps": 20,
+    "require_not_lifted": true
+  }
+}
