@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from farpoint.policy_training import file_sha256
+from farpoint.so101 import radians_to_lerobot
 
 
 class ExpertActionReplay:
@@ -72,8 +73,8 @@ class ExpertActionReplay:
         if not actions:
             raise RuntimeError(f"expert replay scene has no actions: {self.scene_id}")
         source_step = min(self.step, len(actions) - 1)
-        action = np.asarray(actions[source_step], dtype=np.float32)
         exhausted = self.step >= len(actions)
+        action = np.asarray(actions[source_step], dtype=np.float32)
         self.step += 1
         execution: dict[str, Any] = {
             "source": "dataset_replay",
@@ -88,6 +89,14 @@ class ExpertActionReplay:
                 if exhausted
                 else groups[source_step]
             )
+            if exhausted:
+                # A source policy action denotes the first target in its
+                # physics group.  After exhaustion we instead hold the last
+                # target, so return the calibrated form of that held target
+                # to keep the policy and physics commands identical.
+                action = radians_to_lerobot(
+                    np.asarray(groups[-1][-1], dtype=np.float64), clip=True
+                ).astype(np.float32)
             execution.update(
                 {
                     "physics_action_source": "exact_trace",

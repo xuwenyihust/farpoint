@@ -1,8 +1,10 @@
 import json
 
+import numpy as np
 import pytest
 
 from farpoint.action_replay import ExpertActionReplay
+from farpoint.so101 import radians_to_lerobot
 
 
 def _manifest(*, exact=True):
@@ -23,7 +25,7 @@ def _manifest(*, exact=True):
         }
         scene["physics_action_groups_radians"] = [
             [[1.0] * 6, [1.25] * 6, [1.5] * 6, [1.75] * 6],
-            [[2.0] * 6],
+            [[2.0] * 6, [2.1] * 6],
         ]
     return payload
 
@@ -38,10 +40,13 @@ def test_exact_action_replay_serves_each_physics_target_group(tmp_path):
     assert len(execution["physics_actions_radians"]) == 4
     action, execution = replay.next_action()
     assert action.tolist() == [2.0] * 6
-    assert execution["physics_actions_radians"] == [[2.0] * 6]
-    _, execution = replay.next_action()
+    assert execution["physics_actions_radians"] == [[2.0] * 6, [2.1] * 6]
+    action, execution = replay.next_action()
     assert execution["source_exhausted"] is True
-    assert execution["physics_actions_radians"] == [[2.0] * 6] * 4
+    assert action == pytest.approx(
+        radians_to_lerobot(np.asarray([2.1] * 6), clip=True)
+    )
+    assert execution["physics_actions_radians"] == [[2.1] * 6] * 4
 
 
 def test_legacy_action_replay_retains_policy_rate_endpoint_mode(tmp_path):
