@@ -34,6 +34,12 @@ def load_rollout_spec(path: Path) -> dict[str, Any]:
         raise ValueError("minimum_task_successes exceeds the frozen scene count")
     if payload["control"]["physics_hz"] % payload["control"]["policy_hz"] != 0:
         raise ValueError("physics_hz must be divisible by policy_hz")
+    if payload["task"]["evaluation_class"].startswith("independent_holdout"):
+        source = payload.get("holdout_source")
+        if source is None:
+            raise ValueError("independent holdout rollout requires holdout_source")
+        if source["evaluated_scene_count"] != len(scene_ids):
+            raise ValueError("evaluated holdout scene count does not match scenes")
     return payload
 
 
@@ -79,6 +85,7 @@ def evaluate_rollout_acceptance(
     range_violations = sum(
         int(result.get("hard_range_violation_count", 0)) for result in episode_results
     )
+    delta_limited = sum(int(result.get("delta_limited_count", 0)) for result in episode_results)
     if completed != acceptance["required_completed_episodes"]:
         errors.append("completed episode count does not meet the smoke contract")
     if successes < acceptance["minimum_task_successes"]:
@@ -87,6 +94,22 @@ def evaluate_rollout_acceptance(
         errors.append("non-finite action count exceeds the frozen maximum")
     if range_violations > acceptance["maximum_hard_range_violations"]:
         errors.append("hard-range action violations exceed the frozen maximum")
+    stage_names = (
+        "ever_cube_contact",
+        "ever_bilateral_contact",
+        "ever_lifted",
+        "ever_entered_target",
+    )
+    stage_progress = {
+        name: sum(
+            bool((result.get("stage_evidence") or {}).get(name)) for result in episode_results
+        )
+        for name in stage_names
+    }
+    terminal_reasons: dict[str, int] = {}
+    for result in episode_results:
+        reason = str(result.get("terminal_reason", "unknown"))
+        terminal_reasons[reason] = terminal_reasons.get(reason, 0) + 1
     return {
         "status": "PASS" if not errors else "FAIL",
         "acceptance_errors": errors,
@@ -95,4 +118,7 @@ def evaluate_rollout_acceptance(
         "task_success_rate": successes / len(expected_ids),
         "nonfinite_action_count": nonfinite,
         "hard_range_violation_count": range_violations,
+        "delta_limited_count": delta_limited,
+        "stage_progress": stage_progress,
+        "terminal_reason_counts": dict(sorted(terminal_reasons.items())),
     }

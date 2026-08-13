@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Materialize a policy-rollout spec from an immutable campaign holdout."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import json
+import math
+import sys
+from pathlib import Path
+
+from farpoint.policy_rollout import load_rollout_spec
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--template", type=Path, required=True)
+    parser.add_argument("--campaign-root", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--scene-limit", type=int)
+    return parser.parse_args()
+
+
+def _read(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _identity_sha256(payload: dict, field: str) -> str:
+    identity_payload = {key: value for key, value in payload.items() if key != field}
+    encoded = json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _scene_record(source: dict) -> dict:
+    obj = source["resolved"]
+    return {
+        "scene_id": source["scene_id"],
+        "seed": int(source["seed"]),
+        "object_variant_id": source["object_variant_id"],
+        "region_band": source["region_band"],
+        "yaw_stratum_id": source["yaw_stratum_id"],
+        "yaw_degrees": float(source["object_yaw_degrees"]),
+        "object": {
+            "shape": obj["shape"],
+            "dimensions_m": obj["dimensions_m"],
+            "position_m": obj["position_m"],
+            "orientation_xyzw": obj["orientation_xyzw"],
+            "rgba": obj["rgba"],
+            "mass_kg": obj["mass_kg"],
+        },
+    }
+
+
+def build_rollout_spec(
+    template: dict, campaign_root: Path, *, scene_limit: int | None = None
+) -> dict:
+    if template.get("schema_version") != "farpoint.policy-rollout-template.v1":
+        raise ValueError("unsupported rollout template schema")
+    source = template["holdout_source"]
+    campaign = _read(campaign_root / "campaign.json")
+    if campaign.get("campaign_id") != source["campaign_id"]:
+        raise ValueError("campaign identity does not match rollout template")
+    if campaign.get("campaign_sha256") != source["campaign_sha256"]:
+        raise ValueError("campaign SHA256 does not match rollout template")
+    if _identity_sha256(campaign, "campaign_sha256") != source["campaign_sha256"]:
+        raise ValueError("campaign content does not match its frozen SHA256")
+
+    plan_paths = sorted((campaign_root / "segments").glob("*/plan.json"))
+    if not plan_paths:
+        raise ValueError("campaign contains no segment plans")
+    source_plan = None
+    excluded_seeds: set[int] = set()
+    for path in plan_paths:
+        plan = _read(path)
+        plan_sha256 = plan.get("plan_sha256")
+        if _identity_sha256(plan, "plan_sha256") != plan_sha256:
+            raise ValueError(f"segment plan content does not match its SHA256: {path}")
+        if plan.get("plan_sha256") == source["plan_sha256"]:
+            source_plan = plan
+        excluded_seeds.update(int(row["seed"]) for row in plan.get("trials", []))
+    for path in sorted((campaign_root / "segments").glob("*/manifest.json")):
+        manifest = _read(path)
+        trial_seed_by_id = {
+            str(row["trial_id"]): int(row["seed"])
+            for row in _read(path.with_name("plan.json")).get("trials", [])
+        }
+        for attempt in manifest.get("attempts", []):
+            trial_id = str(attempt.get("trial_id", ""))
+            if trial_id in trial_seed_by_id:
+                excluded_seeds.add(trial_seed_by_id[trial_id])
+    if source_plan is None:
+        raise ValueError("frozen holdout source plan is absent from campaign")
+    holdout = source_plan.get("rollout_holdout") or {}
+    source_scenes = holdout.get("scenes") or []
+    if len(source_scenes) != source["scene_count"]:
+        raise ValueError("campaign holdout scene count does not match template")
+    holdout_seeds = [int(row["seed"]) for row in source_scenes]
+    if len(set(holdout_seeds)) != len(holdout_seeds):
+        raise ValueError("campaign holdout contains duplicate variation seeds")
+    if set(holdout_seeds) & excluded_seeds:
+        raise ValueError("campaign holdout overlaps collection or replacement seeds")
+
+    evaluated = source_scenes
+    if scene_limit is not None:
+        if not 1 <= scene_limit <= len(source_scenes):
+            raise ValueError("scene_limit must select part of the frozen holdout")
+        # Spread smoke scenes across the immutable suite so a two-scene smoke
+        # covers both object variants instead of selecting two adjacent rows.
+        indexes = [
+            math.floor(index * len(source_scenes) / scene_limit) for index in range(scene_limit)
+        ]
+        evaluated = [source_scenes[index] for index in indexes]
+    spec = copy.deepcopy(template)
+    spec["schema_version"] = "farpoint.policy-rollout.v1"
+    spec["holdout_source"] = {
+        **source,
+        "evaluated_scene_count": len(evaluated),
+        "segment_count": len(plan_paths),
+    }
+    spec["scenes"] = [_scene_record(row) for row in evaluated]
+    spec["acceptance"]["required_completed_episodes"] = len(evaluated)
+    if scene_limit is not None:
+        spec["suite_id"] = f"{spec['suite_id']}_smoke{scene_limit}"
+        spec["task"]["evaluation_class"] = "independent_holdout_smoke"
+    # Validate through the same path as runtime without retaining a temporary file.
+    from farpoint.contracts import validate_contract
+
+    errors = validate_contract(spec)
+    if errors:
+        raise ValueError("invalid generated rollout contract:\n" + "\n".join(errors))
+    scene_ids = [row["scene_id"] for row in spec["scenes"]]
+    if len(scene_ids) != len(set(scene_ids)):
+        raise ValueError("generated rollout scene IDs are not unique")
+    return spec
+
+
+def main() -> int:
+    args = parse_args()
+    if args.output.exists():
+        raise FileExistsError(f"rollout spec output already exists: {args.output}")
+    spec = build_rollout_spec(
+        _read(args.template), args.campaign_root, scene_limit=args.scene_limit
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = args.output.with_suffix(args.output.suffix + ".tmp")
+    temporary.write_text(json.dumps(spec, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(args.output)
+    # Re-open through the runtime loader to catch semantic contract drift.
+    load_rollout_spec(args.output)
+    print(json.dumps({"output": str(args.output), "scene_count": len(spec["scenes"])}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
