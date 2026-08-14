@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from pathlib import Path
 
 from farpoint.campaign import validate_campaign_semantics
@@ -185,14 +186,17 @@ def test_v012_multistage_recovery80_has_exact_marginals_and_runtime_v2(tmp_path)
             "red-40mm-40g": 10,
             "blue-30mm-30g": 10,
         }
-        assert {
+        observed_regions = {
             key: sum(row["region_band"] == key for row in rows)
             for key in ("core", "middle", "outer")
-        } == {
-            "core": 5,
-            "middle": 10,
-            "outer": 5,
         }
+        expected_regions = {
+            key: multistage_config()["quota_policy"]["regions_by_trigger_class"][
+                trigger_class
+            ].get(key, 0)
+            for key in ("core", "middle", "outer")
+        }
+        assert observed_regions == expected_regions
         assert sum(row["split"] == "validation" for row in rows) == 2
     assert runtime["schema_version"] == "farpoint.recovery-runtime.v2"
     assert runtime["task_context"]["target"] == multistage_source_plan()["target"]
@@ -216,6 +220,39 @@ def test_v012_pilot16_covers_every_trigger_object_region_and_yaw():
     assert set(plan["coverage"]["objects"]) == set(multistage_config()["objects"])
     assert set(plan["coverage"]["regions"]) == {"core", "middle", "outer"}
     assert set(plan["coverage"]["yaw_strata"]) == set(multistage_config()["yaw_strata"])
+    for trigger_class in multistage_config()["trigger_classes"]:
+        rows = [
+            row
+            for row in plan["trials"]
+            if row["recovery_trigger_class"] == trigger_class
+        ]
+        allowed = set(
+            multistage_config()["quota_policy"]["region_slots_by_trigger_class"][
+                trigger_class
+            ]
+        )
+        assert {row["region_band"] for row in rows} <= allowed
+        assert Counter(row["region_band"] for row in rows) == Counter(
+            multistage_config()["quota_policy"]["region_slots_by_trigger_class"][
+                trigger_class
+            ]
+        )
+
+
+def test_v012_rejects_incomplete_per_trigger_region_slot_policy():
+    broken = multistage_config()
+    del broken["quota_policy"]["region_slots_by_trigger_class"]["approach_miss"]
+    try:
+        build_recovery_plan(
+            multistage_source_plan(),
+            broken,
+            campaign_id="recovery-invalid-slots",
+            scene_count=16,
+        )
+    except ValueError as error:
+        assert "per-trigger region slots" in str(error)
+    else:
+        raise AssertionError("incomplete per-trigger region slots must be rejected")
 
 
 def test_v012_continuation_preserves_trigger_class_and_validation_split(tmp_path):

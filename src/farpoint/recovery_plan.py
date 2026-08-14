@@ -50,30 +50,58 @@ def _assign_campaign_quota_ordinals(
         counts[quota] += 1
 
 
+def _v012_region_slot_count(config: dict[str, Any]) -> int:
+    trigger_classes = tuple(config.get("trigger_classes") or ())
+    policy = config.get("quota_policy") or {}
+    common = tuple(policy.get("region_slots") or ())
+    by_class = policy.get("region_slots_by_trigger_class") or {}
+    if by_class and set(by_class) != set(trigger_classes):
+        raise ValueError("per-trigger region slots must match trigger classes exactly")
+    counts = {
+        len(tuple(by_class.get(trigger_class) or common))
+        for trigger_class in trigger_classes
+    }
+    if len(counts) != 1:
+        raise ValueError("every trigger class must declare the same region slot count")
+    count = next(iter(counts), 0)
+    if count <= 0:
+        raise ValueError("multi-stage recovery region slots must not be empty")
+    return count
+
+
 def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, str]]:
     """Expand a config-owned marginal policy into deterministic recovery slots."""
     trigger_classes = tuple(config.get("trigger_classes") or ())
     objects = tuple(config.get("objects") or ())
     yaw_strata = tuple(config.get("yaw_strata") or ())
     policy = config.get("quota_policy") or {}
-    region_slots = tuple(policy.get("region_slots") or ())
+    common_region_slots = tuple(policy.get("region_slots") or ())
+    region_slots_by_class = policy.get("region_slots_by_trigger_class") or {}
+    region_slot_count = _v012_region_slot_count(config)
+    resolved_region_slots = {
+        trigger_class: tuple(
+            region_slots_by_class.get(trigger_class) or common_region_slots
+        )
+        for trigger_class in trigger_classes
+    }
     validation_slots = {
         tuple(int(value) for value in pair) for pair in (policy.get("validation_slots") or ())
     }
     pilot_per_class = int(policy.get("pilot_per_trigger_class", 0))
-    full_count = len(trigger_classes) * len(yaw_strata) * len(region_slots)
+    full_count = len(trigger_classes) * len(yaw_strata) * region_slot_count
     pilot_count = len(trigger_classes) * pilot_per_class
     if scene_count not in (pilot_count, full_count):
         raise ValueError(f"multi-stage recovery scene_count must be {pilot_count} or {full_count}")
     if not trigger_classes or set(trigger_classes) != set(config.get("trigger_profiles") or {}):
         raise ValueError("trigger classes and profiles must match exactly")
-    if len(objects) < 2 or not yaw_strata or not region_slots:
+    if len(objects) < 2 or not yaw_strata or not region_slot_count:
         raise ValueError("multi-stage recovery quota axes must not be empty")
     if any(len(pair) != 2 for pair in validation_slots):
         raise ValueError("validation slots must be yaw/region-slot pairs")
     requests: list[dict[str, str]] = []
     for class_index, trigger_class in enumerate(trigger_classes):
         class_requests = []
+        region_slots = resolved_region_slots[trigger_class]
         for yaw_index, yaw_id in enumerate(yaw_strata):
             for slot_index, region in enumerate(region_slots):
                 object_id = objects[(yaw_index + slot_index + class_index) % len(objects)]
@@ -98,6 +126,14 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
     if scene_count == full_count:
         declared_objects = policy.get("objects") or {}
         declared_regions = policy.get("regions") or {}
+        declared_aggregate_regions = policy.get("aggregate_regions") or {}
+        declared_regions_by_class = policy.get("regions_by_trigger_class") or {}
+        if declared_regions_by_class and set(declared_regions_by_class) != set(
+            trigger_classes
+        ):
+            raise ValueError(
+                "declared per-trigger region quotas must match trigger classes exactly"
+            )
         declared_splits = policy.get("splits") or {}
         declared_yaw_each = int(policy.get("yaw_strata_each", -1))
         declared_per_class = int(policy.get("per_trigger_class", -1))
@@ -113,12 +149,19 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
                 raise ValueError("declared per-trigger recovery quota does not match slots")
             if observed["objects"] != Counter(declared_objects):
                 raise ValueError("declared object recovery quotas do not match slots")
-            if observed["regions"] != Counter(declared_regions):
+            expected_regions = declared_regions_by_class.get(
+                trigger_class, declared_regions
+            )
+            if observed["regions"] != Counter(expected_regions):
                 raise ValueError("declared region recovery quotas do not match slots")
             if observed["splits"] != Counter(declared_splits):
                 raise ValueError("declared split recovery quotas do not match slots")
             if set(observed["yaw"].values()) != {declared_yaw_each}:
                 raise ValueError("declared yaw recovery quotas do not match slots")
+        if declared_regions_by_class and Counter(
+            row["region_band"] for row in requests
+        ) != Counter(declared_aggregate_regions):
+            raise ValueError("declared aggregate region recovery quotas do not match slots")
     return requests
 
 
@@ -182,7 +225,7 @@ def build_recovery_plan(
         expected = (
             len(config.get("trigger_classes") or ())
             * len(config.get("yaw_strata") or ())
-            * len((config.get("quota_policy") or {}).get("region_slots") or ())
+            * _v012_region_slot_count(config)
         )
         if config.get("target_successes") != expected:
             raise ValueError("multi-stage recovery target does not match its quota slots")
@@ -389,7 +432,7 @@ def build_recovery_continuation_plan(
         expected = (
             len(config.get("trigger_classes") or ())
             * len(config.get("yaw_strata") or ())
-            * len((config.get("quota_policy") or {}).get("region_slots") or ())
+            * _v012_region_slot_count(config)
         )
         if config.get("target_successes") != expected:
             raise ValueError("multi-stage recovery target does not match its quota slots")

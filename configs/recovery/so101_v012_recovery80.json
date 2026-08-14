@@ -1,6 +1,6 @@
 {
   "schema_version": "farpoint.recovery-plan-config.v2",
-  "config_version": "0.1.2-recovery.2",
+  "config_version": "0.1.2-recovery.3",
   "selection_seed": 20260814,
   "lineage_id": "farpoint-so101-v012-recovery",
   "watchdog_profile_id": "so101-v012-recovery-watchdog-v1",
@@ -16,10 +16,21 @@
   "quota_policy": {
     "per_trigger_class": 20,
     "objects": {"red-40mm-40g": 10, "blue-30mm-30g": 10},
-    "regions": {"core": 5, "middle": 10, "outer": 5},
+    "aggregate_regions": {"core": 20, "middle": 40, "outer": 20},
+    "regions_by_trigger_class": {
+      "approach_miss": {"middle": 10, "outer": 10},
+      "contact_without_lift": {"middle": 10, "outer": 10},
+      "transport_drift": {"core": 10, "middle": 10},
+      "place_release_failure": {"core": 10, "middle": 10}
+    },
     "yaw_strata_each": 4,
     "splits": {"train": 18, "validation": 2},
-    "region_slots": ["core", "middle", "middle", "outer"],
+    "region_slots_by_trigger_class": {
+      "approach_miss": ["middle", "outer", "outer", "middle"],
+      "contact_without_lift": ["middle", "outer", "outer", "middle"],
+      "transport_drift": ["core", "middle", "middle", "core"],
+      "place_release_failure": ["core", "middle", "middle", "core"]
+    },
     "validation_slots": [[0, 0], [4, 3]],
     "pilot_per_trigger_class": 4
   },
