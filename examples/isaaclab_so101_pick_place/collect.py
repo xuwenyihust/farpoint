@@ -239,6 +239,7 @@ from farpoint.recovery_runtime import (  # noqa: E402
     load_recovery_runtime,
     recovery_descent_duration_seconds,
     recovery_oracle_command_continuity_enabled,
+    recovery_oracle_entry_phase,
     recovery_oracle_slew_limits,
     recovery_trigger_for_scene,
     scene_binding,
@@ -604,6 +605,8 @@ def _run_recovery_handoff(
         raise RuntimeError(
             "recovery handoff was not admitted before the bounded stage deadline"
         )
+    trigger["oracle_entry_phase"] = recovery_oracle_entry_phase(trigger)
+    snapshot["trigger"] = copy.deepcopy(trigger)
     demonstration = recovery_demonstration(
         oracle_profile_id=oracle_profile_id,
         source_policy=policy_provenance,
@@ -2054,13 +2057,14 @@ def run_attempt(
     # fingers while still sliding out of the aperture. Require the same 2 N,
     # three-tick confirmation used by CLOSE before entering bilateral settle.
     schedule = CONTROL_RECORDING_SCHEDULE
+    recovery_entry_phase = (
+        OraclePhase(recovery_snapshot["trigger"]["oracle_entry_phase"])
+        if recovery_snapshot is not None
+        and recovery_runtime.get("schema_version") == "farpoint.recovery-runtime.v2"
+        else (OraclePhase.PREGRASP if recovery_runtime is not None else OraclePhase.HOME)
+    )
     machine = OracleStateMachine(
-        phase=(
-            OraclePhase.PREGRASP
-            if recovery_runtime is not None
-            and recovery_runtime.get("schema_version") == "farpoint.recovery-runtime.v2"
-            else OraclePhase.HOME
-        ),
+        phase=recovery_entry_phase,
         phase_timeout_steps=schedule.steps_for_seconds(40.0),
         required_contact_steps=1,
         required_stable_steps=schedule.steps_for_seconds(0.5),
@@ -2129,6 +2133,31 @@ def run_attempt(
     capture_object_minus_grasp = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
+    if recovery_entry_phase in {
+        OraclePhase.PREPLACE,
+        OraclePhase.OPEN,
+        OraclePhase.SETTLE,
+    }:
+        current_joints = _numpy(robot.data.joint_pos[0]).astype(np.float32)
+        gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index])
+        live_object_position = _numpy(scene[active_name].data.root_pos_w[0])
+        grasp_hold_pose = gripper_pose[:3].copy()
+        grasp_hold_nominal_pose = grasp_hold_pose.copy()
+        grasp_hold_nominal_y = float(grasp_hold_pose[1])
+        grasp_hold_posture = current_joints[3:5].copy()
+        grasp_offset = grasp_hold_pose - live_object_position
+        grasp_jaw_hold = float(current_joints[5])
+        grasp_jaw_reference = grasp_jaw_hold
+        grasp_relative_reference = point_in_local_frame(
+            gripper_pose, live_object_position
+        )
+        previous_object_in_gripper = grasp_relative_reference.copy()
+        capture_object_minus_grasp = live_object_position - grasp_hold_pose
+        cube_was_lifted = bool(
+            recovery_snapshot["trigger"].get(
+                "ever_lifted", recovery_snapshot["trigger"].get("cube_lifted", False)
+            )
+        )
     rows = []
     physics_command_rows = []
     for control_step in range(schedule.steps_for_seconds(120.0)):

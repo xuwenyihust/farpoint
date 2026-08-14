@@ -73,6 +73,35 @@ def recovery_trigger_for_scene(spec: dict[str, Any], variation_id: str) -> dict[
     return deepcopy(spec["trigger_profiles"][binding["trigger_class"]])
 
 
+def recovery_oracle_entry_phase(trigger: dict[str, Any]) -> str:
+    """Choose the Oracle phase that preserves the measured recovery stage.
+
+    Early-stage failures need a fresh grasp.  A policy that is already carrying
+    the object must not be sent through PREGRASP again: cube contact is expected
+    in that state and the approach collision gate would reject it immediately.
+    Place/release recovery can continue even later when the cube is already on
+    the target.
+    """
+    failure_class = trigger.get("failure_class")
+    if failure_class in {"approach_miss", "contact_without_lift"}:
+        return "pregrasp"
+    has_contact = bool(trigger.get("has_contact", False))
+    ever_lifted = bool(trigger.get("ever_lifted", trigger.get("cube_lifted", False)))
+    if failure_class == "transport_drift":
+        return "preplace" if has_contact and ever_lifted else "pregrasp"
+    if failure_class == "place_release_failure":
+        if bool(trigger.get("cube_in_target", False)):
+            if bool(trigger.get("gripper_released", False)):
+                return "settle"
+            # The cube may already be resting stably on the pad after contact
+            # has separated while the jaw is still commanded closed. Opening
+            # and settling is the correct continuation; regrasping would undo
+            # a valid placement.
+            return "open"
+        return "preplace" if has_contact and ever_lifted else "pregrasp"
+    return "pregrasp"
+
+
 def recovery_descent_duration_seconds(spec: dict[str, Any] | None) -> float:
     """Resolve the versioned Oracle insertion duration for a live handoff."""
     if spec is None:

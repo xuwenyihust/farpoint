@@ -7,6 +7,7 @@ from farpoint.recovery_runtime import (
     RecoveryTriggerDetector,
     load_recovery_runtime,
     recovery_descent_duration_seconds,
+    recovery_oracle_entry_phase,
     recovery_oracle_command_continuity_enabled,
     recovery_oracle_slew_limits,
     recovery_trigger_for_scene,
@@ -278,3 +279,55 @@ def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
     path.write_text(json.dumps(spec))
     with pytest.raises(ValueError, match="unknown trigger classes"):
         load_recovery_runtime(path)
+
+
+@pytest.mark.parametrize(
+    ("trigger", "expected"),
+    [
+        ({"failure_class": "approach_miss"}, "pregrasp"),
+        ({"failure_class": "contact_without_lift", "has_contact": True}, "pregrasp"),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": True,
+                "ever_lifted": True,
+            },
+            "preplace",
+        ),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": False,
+                "ever_lifted": True,
+            },
+            "pregrasp",
+        ),
+        (
+            {
+                "failure_class": "place_release_failure",
+                "cube_in_target": True,
+                "has_contact": False,
+                "gripper_released": False,
+            },
+            "open",
+        ),
+        (
+            {
+                "failure_class": "place_release_failure",
+                "cube_in_target": True,
+                "gripper_released": True,
+            },
+            "settle",
+        ),
+        (
+            {
+                "failure_class": "place_release_failure",
+                "has_contact": True,
+                "ever_lifted": True,
+            },
+            "preplace",
+        ),
+    ],
+)
+def test_recovery_oracle_entry_phase_preserves_live_stage(trigger, expected):
+    assert recovery_oracle_entry_phase(trigger) == expected

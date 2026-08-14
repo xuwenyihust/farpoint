@@ -664,9 +664,13 @@ four trigger classes before a formal campaign may start.
 
 Recovery runtime v2 assigns one trigger class to each immutable scene. ACT runs
 closed loop until measured state admits that class; the collector then hashes
-the complete physics snapshot and hands the unchanged scene to the Oracle. A
-scene that never reaches its assigned stage is a failed attempt, not a relabeled
-recovery. Continuations preserve the trigger class, quota, split, parent
+the complete physics snapshot and hands the unchanged scene to the Oracle.
+Approach/grasp failures enter the Oracle at PREGRASP, an already-carried object
+continues at PREPLACE, and an object already on the pad continues at OPEN or
+SETTLE. This stage-aware entry prevents a valid transport grasp from being
+misclassified as a PREGRASP collision. A scene that never reaches its assigned
+stage is a failed attempt, not a relabeled recovery. Continuations preserve the
+trigger class, quota, split, parent
 manifest hash, and three-attempt budget. Runtime v1 remains readable for the
 published v0.1.1 pre-lift episodes.
 

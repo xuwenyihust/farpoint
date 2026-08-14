@@ -62,11 +62,11 @@
       "target_distance_threshold_m": 0.05
     },
     "contact_without_lift": {
-      "trigger_id": "act-contact-without-lift-v2",
+      "trigger_id": "act-contact-without-lift-v3",
       "failure_class": "contact_without_lift",
       "stage": "grasp",
       "minimum_policy_steps": 120,
-      "maximum_policy_steps_before_handoff": 360,
+      "maximum_policy_steps_before_handoff": 700,
       "window_steps": 30,
       "minimum_progress_m": 0.001,
       "consecutive_safety_event_steps": 20,
@@ -75,11 +75,11 @@
       "target_distance_threshold_m": 0.05
     },
     "transport_drift": {
-      "trigger_id": "act-transport-drift-v2",
+      "trigger_id": "act-transport-drift-v3",
       "failure_class": "transport_drift",
       "stage": "transport",
       "minimum_policy_steps": 240,
-      "maximum_policy_steps_before_handoff": 700,
+      "maximum_policy_steps_before_handoff": 1050,
       "window_steps": 30,
       "minimum_progress_m": 0.002,
       "consecutive_safety_event_steps": 20,
@@ -88,11 +88,11 @@
       "target_distance_threshold_m": 0.05
     },
     "place_release_failure": {
-      "trigger_id": "act-place-release-failure-v2",
+      "trigger_id": "act-place-release-failure-v3",
       "failure_class": "place_release_failure",
       "stage": "place_release",
       "minimum_policy_steps": 500,
-      "maximum_policy_steps_before_handoff": 1050,
+      "maximum_policy_steps_before_handoff": 1200,
       "window_steps": 30,
       "minimum_progress_m": 0.001,
       "consecutive_safety_event_steps": 20,
@@ -102,8 +102,8 @@
     }
   },
   "oracle_handoff_profile": {
-    "profile_id": "so101-recovery-multistage-regrasp-v2",
-    "strategy_id": "regrasp_from_live_state_v2",
+    "profile_id": "so101-recovery-stage-aware-v2",
+    "strategy_id": "stage_aware_live_state_v2",
     "descent_duration_seconds": 4.0,
     "command_continuity": "action_safety_profile_control_rate_v1"
   }
