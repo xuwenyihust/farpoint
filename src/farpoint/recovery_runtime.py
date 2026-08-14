@@ -83,12 +83,30 @@ def recovery_oracle_entry_phase(trigger: dict[str, Any]) -> str:
     the target.
     """
     failure_class = trigger.get("failure_class")
-    if failure_class in {"approach_miss", "contact_without_lift"}:
+    if failure_class == "approach_miss":
         return "pregrasp"
     has_contact = bool(trigger.get("has_contact", False))
     ever_lifted = bool(trigger.get("ever_lifted", trigger.get("cube_lifted", False)))
+    forces = np.asarray(trigger.get("contact_forces_n", (0.0, 0.0)), dtype=np.float64)
+    bilateral_contact = bool(forces.shape == (2,) and np.min(forces) >= 0.1)
+    lift_height_m = float(trigger.get("lift_height_m", 0.0))
+    securely_carried = (
+        has_contact
+        and bilateral_contact
+        and bool(trigger.get("cube_lifted", False))
+        and lift_height_m >= 0.010
+    )
+    if failure_class == "contact_without_lift":
+        # A live fingertip contact is legitimate recovery state, but PREGRASP
+        # deliberately rejects any contact during its collision-safe route.
+        # Open and retreat through HOME before attempting a fresh grasp.
+        return "home" if has_contact else "pregrasp"
     if failure_class == "transport_drift":
-        return "preplace" if has_contact and ever_lifted else "pregrasp"
+        # ``ever_lifted`` alone also describes a cube that has already fallen
+        # back to the table.  Continue transport only from a currently secure,
+        # bilateral grasp with useful clearance; otherwise retreat and regrasp
+        # without resetting the live scene.
+        return "preplace" if securely_carried and ever_lifted else "home"
     if failure_class == "place_release_failure":
         if bool(trigger.get("cube_in_target", False)):
             if bool(trigger.get("gripper_released", False)):
@@ -98,7 +116,7 @@ def recovery_oracle_entry_phase(trigger: dict[str, Any]) -> str:
             # and settling is the correct continuation; regrasping would undo
             # a valid placement.
             return "open"
-        return "preplace" if has_contact and ever_lifted else "pregrasp"
+        return "preplace" if securely_carried and ever_lifted else "home"
     return "pregrasp"
 
 
@@ -257,6 +275,7 @@ class RecoveryTriggerDetector:
             "cube_in_target": bool(cube_in_target),
             "gripper_released": bool(gripper_released),
             "cube_stable": bool(cube_stable),
+            "lift_height_m": float(obj[2] - self._initial_object_position[2]),
             "consecutive_safety_event_steps": self._consecutive_safety,
         }
         if target_distance is not None:

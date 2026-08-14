@@ -285,12 +285,22 @@ def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
     ("trigger", "expected"),
     [
         ({"failure_class": "approach_miss"}, "pregrasp"),
-        ({"failure_class": "contact_without_lift", "has_contact": True}, "pregrasp"),
+        (
+            {
+                "failure_class": "contact_without_lift",
+                "has_contact": True,
+                "contact_forces_n": [0.0, 3.0],
+            },
+            "home",
+        ),
         (
             {
                 "failure_class": "transport_drift",
                 "has_contact": True,
                 "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.02,
+                "contact_forces_n": [2.0, 3.0],
             },
             "preplace",
         ),
@@ -300,7 +310,7 @@ def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
                 "has_contact": False,
                 "ever_lifted": True,
             },
-            "pregrasp",
+            "home",
         ),
         (
             {
@@ -324,10 +334,54 @@ def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
                 "failure_class": "place_release_failure",
                 "has_contact": True,
                 "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.02,
+                "contact_forces_n": [2.0, 3.0],
             },
             "preplace",
+        ),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": True,
+                "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.005,
+                "contact_forces_n": [2.0, 3.0],
+            },
+            "home",
+        ),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": True,
+                "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.02,
+                "contact_forces_n": [0.0, 3.0],
+            },
+            "home",
         ),
     ],
 )
 def test_recovery_oracle_entry_phase_preserves_live_stage(trigger, expected):
     assert recovery_oracle_entry_phase(trigger) == expected
+
+
+def test_multistage_trigger_records_current_lift_height():
+    profile = multistage_runtime_spec()["trigger_profiles"]["transport_drift"]
+    detector = RecoveryTriggerDetector(profile)
+    trigger = None
+    for step in range(profile["minimum_policy_steps"]):
+        trigger = detector.observe(
+            policy_step=step,
+            gripper_position_m=[0.0, 0.0, 0.1],
+            object_position_m=[0.1, 0.0, 0.02 if step == 0 else 0.035],
+            cube_lifted=step > 0,
+            hard_range_violation_count=1,
+            command_slew_limited_count=0,
+            contact_forces_n=[2.0, 2.0],
+            target_position_m=[0.2, 0.1, 0.03],
+        )
+    assert trigger is not None
+    assert trigger["lift_height_m"] == pytest.approx(0.015)

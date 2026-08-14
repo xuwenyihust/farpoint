@@ -1,6 +1,6 @@
 {
   "schema_version": "farpoint.recovery-plan-config.v2",
-  "config_version": "0.1.2-recovery.1",
+  "config_version": "0.1.2-recovery.2",
   "selection_seed": 20260814,
   "lineage_id": "farpoint-so101-v012-recovery",
   "watchdog_profile_id": "so101-v012-recovery-watchdog-v1",
@@ -102,8 +102,8 @@
     }
   },
   "oracle_handoff_profile": {
-    "profile_id": "so101-recovery-stage-aware-v2",
-    "strategy_id": "stage_aware_live_state_v2",
+    "profile_id": "so101-recovery-stage-aware-v3",
+    "strategy_id": "stage_aware_live_state_v3",
     "descent_duration_seconds": 4.0,
     "command_continuity": "action_safety_profile_control_rate_v1"
   }
