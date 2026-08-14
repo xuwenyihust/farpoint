@@ -1,0 +1,46 @@
+{
+  "schema_version": "farpoint.policy-training.v1",
+  "experiment_id": "so101_act_v0_1_1_recovery20_20k",
+  "dataset": {
+    "repo_id": "wenyixu101/farpoint-so101",
+    "revision": "v0.1.1",
+    "resolved_commit": "ff1a812584b677b02998a722ac2a446ce1003e55",
+    "codebase_version": "v3.0",
+    "splits": {"train": "0:200", "validation": "200:220"},
+    "metadata_splits": {"train": "0:200", "validation": "200:220", "test": "220:220"},
+    "expected": {
+      "total_episodes": 220,
+      "total_frames": 166605,
+      "fps": 30,
+      "selected_frames": {"train": 151804, "validation": 14801}
+    },
+    "video_backend": "pyav",
+    "required_features": {
+      "observation.state": {"dtype": "float32", "shape": [6]},
+      "observation.images.front": {"dtype": "video", "shape": [480, 640, 3]},
+      "observation.images.wrist": {"dtype": "video", "shape": [480, 640, 3]},
+      "action": {"dtype": "float32", "shape": [6]}
+    }
+  },
+  "environment": {"lerobot_version": "0.4.4", "requires_cuda": true, "architecture": "aarch64"},
+  "policy": {
+    "type": "act", "device": "cuda", "vision_backbone": "resnet18",
+    "pretrained_backbone_weights": "ResNet18_Weights.IMAGENET1K_V1",
+    "chunk_size": 100, "n_action_steps": 100
+  },
+  "training": {
+    "seed": 1010, "batch_size": 8, "steps": 20000, "num_workers": 4,
+    "save_checkpoint": true, "save_freq": 5000, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 100
+  },
+  "validation": {
+    "profile": "training", "split": "validation", "sample_count": 128,
+    "batch_size": 8, "num_workers": 2, "seed": 1010,
+    "minimum_relative_improvement": 0.05
+  },
+  "smoke": {
+    "seed": 1010, "batch_size": 2, "steps": 1, "num_workers": 0,
+    "save_checkpoint": false, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 1
+  }
+}
