@@ -431,3 +431,72 @@ def test_campaign_dashboard_ignores_unbound_complete_report(tmp_path):
     )["aggregate"]
     assert aggregate["successful_episodes"] == 0
     assert aggregate["success_count_source"] == "segment_manifests"
+
+
+def test_campaign_detail_prefers_bound_complete_root_for_duplicate_id(tmp_path):
+    campaign = _campaign("duplicate-campaign", campaign_kind="formal")
+    abandoned = tmp_path / "abandoned"
+    running = tmp_path / "running"
+    complete = tmp_path / "complete"
+    for root in (abandoned, running, complete):
+        root.mkdir()
+        (root / "campaign.json").write_text(json.dumps(campaign))
+    (running / "status.json").write_text(
+        json.dumps(
+            {
+                "execution_status": "RUNNING",
+                "quality_status": "NOT_EVALUATED",
+                "updated_unix": 200.0,
+            }
+        )
+    )
+    (complete / "status.json").write_text(
+        json.dumps(
+            {
+                "execution_status": "FINISHED",
+                "quality_status": "PASS",
+                "updated_unix": 100.0,
+            }
+        )
+    )
+    (complete / "campaign-report.json").write_text(
+        json.dumps(
+            {
+                "campaign_id": campaign["campaign_id"],
+                "campaign_sha256": campaign["campaign_sha256"],
+                "decision": "COMPLETE",
+                "errors": [],
+            }
+        )
+    )
+
+    detail = CampaignDashboardIndex([tmp_path]).campaign_detail(
+        campaign["campaign_id"]
+    )
+    assert detail["status"]["execution_status"] == "FINISHED"
+    assert detail["status"]["updated_unix"] == 100.0
+
+
+def test_campaign_detail_rejects_equally_ranked_duplicate_roots(tmp_path):
+    campaign = _campaign("ambiguous-campaign", campaign_kind="formal")
+    for name in ("first", "second"):
+        root = tmp_path / name
+        root.mkdir()
+        (root / "campaign.json").write_text(json.dumps(campaign))
+        (root / "status.json").write_text(
+            json.dumps(
+                {
+                    "execution_status": "FINISHED",
+                    "quality_status": "PASS",
+                    "updated_unix": 100.0,
+                }
+            )
+        )
+
+    index = CampaignDashboardIndex([tmp_path])
+    try:
+        index.campaign_detail(campaign["campaign_id"])
+    except FileNotFoundError:
+        pass
+    else:
+        raise AssertionError("equally ranked duplicate roots must fail closed")

@@ -259,6 +259,33 @@ def _campaign_directories(roots: Iterable[Path]) -> tuple[Path, ...]:
     return tuple(sorted(found))
 
 
+def _campaign_root_rank(root: Path, campaign: dict[str, Any]) -> tuple[int, int, float]:
+    """Rank duplicate immutable roots without silently choosing by path name."""
+    status = {}
+    report = {}
+    try:
+        if (root / "status.json").is_file():
+            status = _read_json(root / "status.json")
+        if (root / "campaign-report.json").is_file():
+            report = _read_json(root / "campaign-report.json")
+    except (OSError, ValueError):
+        return (0, 0, -math.inf)
+    complete_report = int(
+        report.get("decision") == "COMPLETE"
+        and not (report.get("errors") or [])
+        and report.get("campaign_id") == campaign.get("campaign_id")
+        and report.get("campaign_sha256") == campaign.get("campaign_sha256")
+    )
+    terminal_pass = int(
+        status.get("execution_status") == "FINISHED"
+        and status.get("quality_status") == "PASS"
+    )
+    updated = status.get("updated_unix")
+    if not isinstance(updated, (int, float)) or not math.isfinite(float(updated)):
+        updated = -math.inf
+    return (complete_report, terminal_pass, float(updated))
+
+
 def _campaign_segment_progress(root: Path, campaign: dict[str, Any]) -> dict[str, Any] | None:
     """Aggregate immutable segment manifests by exact campaign quota identity."""
     index_path = root / "evidence-index.json"
@@ -455,13 +482,26 @@ class CampaignDashboardIndex:
         ]
 
     def campaign_root(self, campaign_id: str) -> Path:
-        matches = [
-            root for root in _campaign_directories(self.roots)
-            if (_read_json(root / "campaign.json").get("campaign_id") or root.name) == campaign_id
-        ]
-        if len(matches) != 1:
+        matches = []
+        for root in _campaign_directories(self.roots):
+            try:
+                campaign = _read_json(root / "campaign.json")
+            except (OSError, ValueError):
+                continue
+            if (campaign.get("campaign_id") or root.name) == campaign_id:
+                matches.append((root, campaign))
+        if not matches:
             raise FileNotFoundError(campaign_id)
-        return matches[0]
+        if len(matches) == 1:
+            return matches[0][0]
+        ranked = sorted(
+            ((_campaign_root_rank(root, campaign), root) for root, campaign in matches),
+            key=lambda row: row[0],
+            reverse=True,
+        )
+        if ranked[0][0] == ranked[1][0]:
+            raise FileNotFoundError(campaign_id)
+        return ranked[0][1]
 
     def campaign_detail(self, campaign_id: str) -> dict[str, Any]:
         root = self.campaign_root(campaign_id)
