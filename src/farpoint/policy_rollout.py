@@ -16,6 +16,8 @@ from farpoint.so101 import (
     LEROBOT_MIN,
     USD_MAX_DEGREES,
     USD_MIN_DEGREES,
+    lerobot_to_radians,
+    radians_to_lerobot,
 )
 
 
@@ -52,13 +54,19 @@ def load_rollout_spec(path: Path) -> dict[str, Any]:
         source = payload.get("recovery_replay_source")
         if source is None or source["evaluated_episode_count"] != len(scene_ids):
             raise ValueError("recovery replay source does not match scenes")
+        state_restore = source["state_restore"]
         for scene in payload["scenes"]:
             initial = scene.get("initial_state")
-            if initial is None:
-                raise ValueError("recovery replay scene requires initial_state")
-            snapshot = {key: value for key, value in initial.items() if key != "snapshot_sha256"}
-            if state_snapshot_sha256(snapshot) != initial["snapshot_sha256"]:
-                raise ValueError("recovery replay state snapshot hash mismatch")
+            if state_restore == "handoff_snapshot_v1":
+                if initial is None:
+                    raise ValueError("recovery replay scene requires initial_state")
+                snapshot = {
+                    key: value for key, value in initial.items() if key != "snapshot_sha256"
+                }
+                if state_snapshot_sha256(snapshot) != initial["snapshot_sha256"]:
+                    raise ValueError("recovery replay state snapshot hash mismatch")
+            elif initial is not None:
+                raise ValueError("full-history recovery replay must start from reset")
     return payload
 
 
@@ -121,6 +129,75 @@ def resolve_action_safety_profile(control: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def initial_command_slew_reference(
+    measured_state: Any, initial_state: dict[str, Any] | None
+) -> np.ndarray:
+    """Resolve the command preceding the first rollout action.
+
+    A normal reset has no prior policy command, so the measured state is the
+    only safe reference. A state-restored replay must instead continue from the
+    exact command captured at handoff; using the lagging measured joints would
+    introduce an artificial first-step limiter intervention.
+    """
+    reference = (
+        measured_state
+        if initial_state is None
+        else initial_state.get("applied_policy_action_calibrated")
+    )
+    value = np.asarray(reference, dtype=np.float64)
+    if value.shape != (6,) or not np.all(np.isfinite(value)):
+        raise ValueError("initial action slew reference must be six finite values")
+    return value.copy()
+
+
+def interpolate_command_endpoints(
+    previous_action: Any, applied_action: Any, physics_substeps: int
+) -> np.ndarray:
+    """Resolve actuator targets between two policy-rate command endpoints."""
+    previous = np.asarray(previous_action, dtype=np.float64)
+    applied = np.asarray(applied_action, dtype=np.float64)
+    if previous.shape != (6,) or applied.shape != (6,):
+        raise ValueError("command endpoints must have shape (6,)")
+    if not np.all(np.isfinite(previous)) or not np.all(np.isfinite(applied)):
+        raise ValueError("command endpoints must be finite")
+    if not isinstance(physics_substeps, int) or physics_substeps < 1:
+        raise ValueError("physics_substeps must be a positive integer")
+    fractions = np.arange(1, physics_substeps + 1, dtype=np.float64) / physics_substeps
+    return previous[None, :] + fractions[:, None] * (applied - previous)[None, :]
+
+
+def resolve_physics_action_group(
+    previous_action: Any,
+    applied_action: Any,
+    policy_execution: dict[str, Any],
+    physics_substeps: int,
+) -> tuple[np.ndarray, str]:
+    """Resolve physics targets in radians, preferring an exact audited trace."""
+    replay_targets = policy_execution.get("physics_actions_radians")
+    if replay_targets is None:
+        calibrated = interpolate_command_endpoints(
+            previous_action, applied_action, physics_substeps
+        )
+        return np.asarray(
+            [lerobot_to_radians(row, clip=True) for row in calibrated],
+            dtype=np.float64,
+        ), "linear_endpoint"
+    targets = np.asarray(replay_targets, dtype=np.float64)
+    applied = np.asarray(applied_action, dtype=np.float64)
+    if (
+        policy_execution.get("physics_action_source") != "exact_trace"
+        or targets.ndim != 2
+        or targets.shape[1:] != (6,)
+        or not 1 <= len(targets) <= physics_substeps
+        or not np.isfinite(targets).all()
+    ):
+        raise ValueError("invalid exact physics action replay group")
+    first_calibrated = radians_to_lerobot(targets[0], clip=True)
+    if applied.shape != (6,) or not np.allclose(first_calibrated, applied, rtol=0.0, atol=1e-4):
+        raise ValueError("exact physics action group does not start at policy action")
+    return targets, "exact_trace"
+
+
 def constrain_policy_action(
     raw_action: Any,
     current_position: Any,
@@ -158,15 +235,21 @@ def constrain_policy_action(
             raise ValueError("previous applied action must contain six finite values")
         limiter_reference = "previous_applied_action"
     requested_delta = hard_clipped - reference
-    delta = np.clip(requested_delta, -maximum, maximum)
+    numerical_tolerance = 1e-4 if action_safety_profile is not None else 0.0
+    limited_mask = np.abs(requested_delta) > maximum + numerical_tolerance
+    delta = np.where(
+        limited_mask,
+        np.clip(requested_delta, -maximum, maximum),
+        requested_delta,
+    )
     applied = np.clip(reference + delta, LEROBOT_MIN, LEROBOT_MAX)
-    limited_mask = np.abs(requested_delta) > maximum
     diagnostics = {
         "limiter_reference": limiter_reference,
         "hard_range_violation_count": int(np.count_nonzero(hard_mask)),
         "maximum_hard_range_excess_calibrated": float(np.max(np.abs(raw - hard_clipped))),
         "delta_limited_count": int(np.count_nonzero(limited_mask)),
         "command_slew_limited_count": int(np.count_nonzero(limited_mask)),
+        "command_slew_numerical_tolerance_calibrated": numerical_tolerance,
         "maximum_raw_abs": float(np.max(np.abs(raw))),
         "maximum_applied_delta": float(np.max(np.abs(delta))),
         "maximum_tracking_error_calibrated": float(np.max(np.abs(applied - current))),

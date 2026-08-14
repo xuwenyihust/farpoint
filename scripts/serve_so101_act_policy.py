@@ -16,6 +16,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from farpoint.action_replay import ExpertActionReplay
 from farpoint.policy_rollout import resolve_replan_interval
 from farpoint.policy_training import file_sha256
 
@@ -72,59 +73,23 @@ def load_policy(checkpoint: Path, replan_interval_steps: int | None):
         )
     if not camera_features:
         raise RuntimeError("ACT checkpoint declares no camera input features")
-    return policy, preprocessor, postprocessor, camera_features, {
-        "chunk_size": chunk_size,
-        "checkpoint_n_action_steps": checkpoint_steps,
-        "replan_interval_steps": int(config.n_action_steps),
-    }
+    return (
+        policy,
+        preprocessor,
+        postprocessor,
+        camera_features,
+        {
+            "chunk_size": chunk_size,
+            "checkpoint_n_action_steps": checkpoint_steps,
+            "replan_interval_steps": int(config.n_action_steps),
+        },
+    )
 
 
 def reset_components(*components) -> None:
     for component in components:
         if hasattr(component, "reset"):
             component.reset()
-
-
-class ExpertActionReplay:
-    """Serve a frozen expert action stream through the policy HTTP contract."""
-
-    def __init__(self, manifest_path: Path):
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if payload.get("schema_version") != "farpoint.expert-action-replay.v1":
-            raise ValueError("unsupported expert action replay manifest")
-        scenes = payload.get("scenes")
-        if not isinstance(scenes, list) or not scenes:
-            raise ValueError("expert action replay manifest has no scenes")
-        self.manifest_sha256 = file_sha256(manifest_path)
-        self.camera_features = payload["camera_features"]
-        self.scenes = {scene["scene_id"]: scene for scene in scenes}
-        if len(self.scenes) != len(scenes):
-            raise ValueError("expert action replay scene IDs must be unique")
-        self.scene_id: str | None = None
-        self.step = 0
-
-    def reset(self, scene_id: str) -> None:
-        if scene_id not in self.scenes:
-            raise KeyError(f"scene is absent from expert replay: {scene_id}")
-        self.scene_id = scene_id
-        self.step = 0
-
-    def next_action(self) -> tuple[np.ndarray, dict]:
-        if self.scene_id is None:
-            raise RuntimeError("expert replay was not reset for a scene")
-        actions = self.scenes[self.scene_id]["actions_calibrated"]
-        if not actions:
-            raise RuntimeError(f"expert replay scene has no actions: {self.scene_id}")
-        source_step = min(self.step, len(actions) - 1)
-        action = np.asarray(actions[source_step], dtype=np.float32)
-        exhausted = self.step >= len(actions)
-        self.step += 1
-        return action, {
-            "source": "dataset_replay",
-            "source_step": source_step,
-            "source_steps": len(actions),
-            "source_exhausted": exhausted,
-        }
 
 
 def main() -> int:

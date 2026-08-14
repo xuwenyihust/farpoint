@@ -14,7 +14,12 @@ from farpoint.contracts import validate_contract, validate_episode_semantics
 from farpoint.demonstration import state_snapshot_sha256
 from farpoint.policy_rollout import load_rollout_spec
 from farpoint.policy_training import file_sha256
-from farpoint.so101 import USD_MAX_DEGREES, USD_MIN_DEGREES, radians_to_lerobot
+from farpoint.so101 import (
+    USD_MAX_DEGREES,
+    USD_MIN_DEGREES,
+    lerobot_to_radians,
+    radians_to_lerobot,
+)
 
 
 def _select_evenly(values: list[Any], count: int) -> list[Any]:
@@ -35,6 +40,130 @@ def _pick_object(metadata: dict[str, Any]) -> dict[str, Any]:
     return matches[0]
 
 
+def _relative_artifact(root: Path, value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("recovery command trace path must be relative")
+    resolved_root = root.resolve()
+    resolved = (resolved_root / path).resolve()
+    if resolved_root not in resolved.parents:
+        raise ValueError("recovery command trace escapes its episode root")
+    return resolved
+
+
+def _physics_action_groups(
+    root: Path,
+    metadata: dict[str, Any],
+    observations: list[dict[str, Any]],
+    *,
+    physics_hz: int,
+    physics_steps_per_policy: int,
+) -> tuple[list[list[list[float]]], dict[str, Any], int]:
+    intervention = (metadata.get("demonstration") or {}).get("intervention") or {}
+    descriptor = intervention.get("command_trace")
+    if not isinstance(descriptor, dict):
+        raise ValueError(f"recovery episode lacks an audited command trace: {root}")
+    if descriptor.get("control_hz") != physics_hz:
+        raise ValueError("recovery command trace control_hz mismatch")
+    trace_path = _relative_artifact(root, str(descriptor.get("path") or ""))
+    if file_sha256(trace_path) != descriptor.get("sha256"):
+        raise ValueError(f"recovery command trace hash mismatch: {root}")
+    rows = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    if len(rows) != descriptor.get("sample_count") or not rows:
+        raise ValueError("recovery command trace sample count mismatch")
+    if [row.get("control_step") for row in rows] != list(range(len(rows))):
+        raise ValueError("recovery command trace control steps are not contiguous")
+    radians_actions = []
+    clipped = 0
+    for row in rows:
+        radians = np.asarray(row.get("action_joint_positions"), dtype=np.float64)
+        if radians.shape != (6,) or not np.isfinite(radians).all():
+            raise ValueError("recovery command trace contains an invalid action")
+        degrees = np.rad2deg(radians)
+        clipped += int(np.count_nonzero((degrees < USD_MIN_DEGREES) | (degrees > USD_MAX_DEGREES)))
+        radians_actions.append(radians.tolist())
+    groups = []
+    for index, observation in enumerate(observations):
+        start = observation.get("control_step")
+        if start != index * physics_steps_per_policy:
+            raise ValueError("recovery observation control steps do not match policy cadence")
+        end = (
+            observations[index + 1]["control_step"] if index + 1 < len(observations) else len(rows)
+        )
+        if not 1 <= end - start <= physics_steps_per_policy:
+            raise ValueError("recovery command trace cannot be grouped at policy cadence")
+        source_action = np.asarray(observation.get("action_joint_positions"), dtype=np.float64)
+        trace_action = np.asarray(rows[start]["action_joint_positions"], dtype=np.float64)
+        if source_action.shape != (6,) or not np.allclose(
+            source_action, trace_action, rtol=0.0, atol=1e-7
+        ):
+            raise ValueError("recovery observation action does not match command trace")
+        groups.append(radians_actions[start:end])
+    return groups, deepcopy(descriptor), clipped
+
+
+def _pre_handoff_action_groups(
+    root: Path,
+    snapshot: dict[str, Any],
+    *,
+    policy_hz: int,
+    physics_steps_per_policy: int,
+) -> tuple[list[list[float]], list[list[list[float]]], dict[str, Any], int]:
+    """Load the policy history that created the live handoff physics state.
+
+    Restoring only the public articulation and rigid-body tensors does not
+    restore PhysX contact caches, actuator history, or solver warm-start state.
+    Replaying the already-safety-constrained policy commands from the original
+    reset reconstructs those hidden dynamics before the exact Oracle trace.
+    """
+    path = root / "pre-handoff-actions.jsonl"
+    if not path.is_file():
+        raise ValueError(f"recovery episode lacks pre-handoff action history: {root}")
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    expected_steps = int(snapshot["policy_step"]) + 1
+    if len(rows) != expected_steps or not rows:
+        raise ValueError("pre-handoff action history does not end at the handoff step")
+    if [row.get("policy_step") for row in rows] != list(range(expected_steps)):
+        raise ValueError("pre-handoff policy steps are not contiguous")
+    actions: list[list[float]] = []
+    groups: list[list[list[float]]] = []
+    clipped = 0
+    for row in rows:
+        calibrated = np.asarray(row.get("applied_action_calibrated"), dtype=np.float64)
+        if calibrated.shape != (6,) or not np.isfinite(calibrated).all():
+            raise ValueError("pre-handoff action history contains an invalid action")
+        # This is the exact conversion used by the source collector before
+        # each of its four manager/physics steps, including the asymmetric
+        # gripper calibration.
+        radians = np.asarray(lerobot_to_radians(calibrated, clip=True), dtype=np.float64)
+        degrees = np.rad2deg(radians)
+        clipped += int(
+            np.count_nonzero((degrees < USD_MIN_DEGREES) | (degrees > USD_MAX_DEGREES))
+        )
+        actions.append(calibrated.tolist())
+        groups.append([radians.tolist()] * physics_steps_per_policy)
+    snapshot_action = np.asarray(
+        snapshot.get("applied_policy_action_calibrated"), dtype=np.float64
+    )
+    if snapshot_action.shape != (6,) or not np.allclose(
+        snapshot_action, np.asarray(actions[-1]), rtol=0.0, atol=1e-6
+    ):
+        raise ValueError("pre-handoff action history does not match the handoff snapshot")
+    descriptor = {
+        "schema_version": "farpoint.policy-action-trace.v1",
+        "path": path.name,
+        "sha256": file_sha256(path),
+        "sample_count": len(rows),
+        "first_policy_step": 0,
+        "last_policy_step": len(rows) - 1,
+        "policy_hz": policy_hz,
+        "physics_steps_per_policy": physics_steps_per_policy,
+        "action_semantics": "actual_safety_constrained_policy_target_held_for_physics_steps",
+        "unit": "so101_calibrated_position",
+    }
+    return actions, groups, descriptor, clipped
+
+
 def build_recovery_replay(
     selection: dict[str, Any],
     template: dict[str, Any],
@@ -48,6 +177,11 @@ def build_recovery_replay(
     """Freeze state-restored replay scenes and their exported action streams."""
     if selection.get("schema_version") != "farpoint.export-selection.v1":
         raise ValueError("unsupported recovery selection schema")
+    physics_hz = int(runtime["control"]["physics_hz"])
+    policy_hz = int(runtime["control"]["policy_hz"])
+    if physics_hz % policy_hz:
+        raise ValueError("recovery replay physics_hz must be divisible by policy_hz")
+    physics_steps_per_policy = physics_hz // policy_hz
     episodes = selection.get("episodes") or []
     chosen = _select_evenly(episodes, scene_count)
     reference_minimum = int(
@@ -85,11 +219,31 @@ def build_recovery_replay(
         expected_snapshot_sha = demonstration["intervention"]["handoff"]["state_snapshot_sha256"]
         if state_snapshot_sha256(snapshot) != expected_snapshot_sha:
             raise ValueError(f"recovery handoff snapshot hash mismatch: {root}")
-        actions = []
-        phases = []
+        (
+            pre_handoff_actions,
+            pre_handoff_groups,
+            pre_handoff_trace,
+            pre_handoff_clipped,
+        ) = _pre_handoff_action_groups(
+            root,
+            snapshot,
+            policy_hz=policy_hz,
+            physics_steps_per_policy=physics_steps_per_policy,
+        )
+        observation_rows = [
+            json.loads(line) for line in observations_path.read_text(encoding="utf-8").splitlines()
+        ]
+        physics_action_groups, command_trace, physics_clipped = _physics_action_groups(
+            root,
+            metadata,
+            observation_rows,
+            physics_hz=physics_hz,
+            physics_steps_per_policy=physics_steps_per_policy,
+        )
+        actions = list(pre_handoff_actions)
+        phases = ["source_policy"] * len(pre_handoff_actions)
         clipped = 0
-        for line in observations_path.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
+        for row in observation_rows:
             radians = np.asarray(row["action_joint_positions"], dtype=np.float64)
             if radians.shape != (6,) or not np.isfinite(radians).all():
                 raise ValueError(f"invalid recovery action: {observations_path}")
@@ -107,7 +261,12 @@ def build_recovery_replay(
         spec_scenes.append(
             {
                 "scene_id": scene_id,
-                "seed": int((metadata.get("identity") or {})["variation_seed"]),
+                # The collector seeds Isaac/PhysX with the attempt seed.  A
+                # variation seed identifies the frozen scene, but it is not
+                # the simulator reset seed and can initialize different
+                # solver state.  State-restored replay must reproduce the
+                # original reset before applying the handoff snapshot.
+                "seed": int((metadata.get("identity") or {})["attempt_seed"]),
                 "object_variant_id": (
                     ((metadata.get("scene") or {}).get("object_variant") or {}).get("resolved", {})
                 ).get("variant_id"),
@@ -128,7 +287,6 @@ def build_recovery_replay(
                     "rgba": obj["appearance"]["rgba"],
                     "mass_kg": obj["physics"]["mass_kg"],
                 },
-                "initial_state": {"snapshot_sha256": expected_snapshot_sha, **snapshot},
             }
         )
         replay_scenes.append(
@@ -138,10 +296,16 @@ def build_recovery_replay(
                 "source_metadata_sha256": file_sha256(metadata_path),
                 "source_handoff_sha256": file_sha256(handoff_path),
                 "source_observations_sha256": file_sha256(observations_path),
+                "source_command_trace": command_trace,
+                "source_pre_handoff_trace": pre_handoff_trace,
                 "state_snapshot_sha256": expected_snapshot_sha,
                 "actions_calibrated": actions,
+                "physics_action_groups_radians": pre_handoff_groups + physics_action_groups,
                 "phases": phases,
                 "source_values_clipped_by_exporter": clipped,
+                "source_physics_values_clipped_by_exporter": (
+                    pre_handoff_clipped + physics_clipped
+                ),
             }
         )
     spec = deepcopy(template)
@@ -153,7 +317,8 @@ def build_recovery_replay(
         "campaign_id": selection["collection_id"],
         "selection_sha256": selection_sha256,
         "evaluated_episode_count": len(spec_scenes),
-        "state_restore": "handoff_snapshot_v1",
+        "state_restore": "reset_plus_full_command_history_v1",
+        "command_replay": "policy_history_then_physics_rate_trace_v1",
         "action_safety_calibration": deepcopy(action_safety_calibration),
     }
     spec["control"] = {
@@ -178,6 +343,13 @@ def build_recovery_replay(
             "source_unit": "radian",
             "output_unit": "so101_calibrated_position",
             "clip_to_calibrated_range": True,
+        },
+        "physics_replay": {
+            "mode": "exact_trace",
+            "unit": "radian",
+            "physics_hz": physics_hz,
+            "policy_hz": policy_hz,
+            "maximum_targets_per_policy_step": physics_steps_per_policy,
         },
         "source": deepcopy(spec["recovery_replay_source"]),
         "scenes": replay_scenes,

@@ -10,12 +10,16 @@ from farpoint.contracts import load_schema, validate_contract
 from farpoint.policy_rollout import (
     constrain_policy_action,
     evaluate_rollout_acceptance,
+    initial_command_slew_reference,
+    interpolate_command_endpoints,
+    resolve_physics_action_group,
     json_default,
     load_rollout_spec,
     resolve_action_safety_profile,
     resolve_replan_interval,
     summarize_action_errors,
 )
+from farpoint.so101 import lerobot_to_radians
 
 
 def test_json_default_converts_numpy_scalars_and_rejects_unknown_objects():
@@ -153,6 +157,95 @@ def test_command_slew_uses_previous_command_not_lagging_joint_state():
     assert diagnostics["command_slew_limited_count"] == 6
     assert diagnostics["maximum_applied_delta"] == 6.0
     assert diagnostics["maximum_tracking_error_calibrated"] == 36.0
+
+
+def test_state_restored_replay_continues_from_captured_handoff_command():
+    measured = np.asarray([-20.0] * 6)
+    captured = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0]
+    assert initial_command_slew_reference(measured, None).tolist() == measured.tolist()
+    assert (
+        initial_command_slew_reference(
+            measured, {"applied_policy_action_calibrated": captured}
+        ).tolist()
+        == captured
+    )
+    with pytest.raises(ValueError, match="six finite"):
+        initial_command_slew_reference(measured, {"applied_policy_action_calibrated": [1.0]})
+
+
+def test_command_slew_ignores_only_float_round_trip_noise():
+    profile = {"max_command_slew_calibrated_per_step": [1.0] * 6}
+    reference = np.zeros(6)
+    within_noise, diagnostics = constrain_policy_action(
+        [1.00005] * 6,
+        reference,
+        action_safety_profile=profile,
+        previous_applied_action=reference,
+    )
+    assert within_noise.tolist() == pytest.approx([1.00005] * 6)
+    assert diagnostics["delta_limited_count"] == 0
+    assert diagnostics["command_slew_numerical_tolerance_calibrated"] == 1e-4
+
+    limited, diagnostics = constrain_policy_action(
+        [1.0002] * 6,
+        reference,
+        action_safety_profile=profile,
+        previous_applied_action=reference,
+    )
+    assert limited.tolist() == [1.0] * 6
+    assert diagnostics["delta_limited_count"] == 6
+
+
+def test_command_endpoints_are_linearly_interpolated_at_physics_rate():
+    previous = np.zeros(6)
+    applied = np.asarray([4.0, -4.0, 8.0, -8.0, 12.0, -12.0])
+    targets = interpolate_command_endpoints(previous, applied, 4)
+    assert targets.tolist() == [
+        [1.0, -1.0, 2.0, -2.0, 3.0, -3.0],
+        [2.0, -2.0, 4.0, -4.0, 6.0, -6.0],
+        [3.0, -3.0, 6.0, -6.0, 9.0, -9.0],
+        [4.0, -4.0, 8.0, -8.0, 12.0, -12.0],
+    ]
+    with pytest.raises(ValueError, match="positive integer"):
+        interpolate_command_endpoints(previous, applied, 0)
+
+
+def test_exact_physics_action_group_bypasses_endpoint_interpolation():
+    previous = np.zeros(6)
+    applied = np.ones(6)
+    applied_radians = lerobot_to_radians(applied, clip=True)
+    exact = [
+        applied_radians.tolist(),
+        (applied_radians + 0.01).tolist(),
+        (applied_radians - 0.01).tolist(),
+        (applied_radians + 0.02).tolist(),
+    ]
+    targets, mode = resolve_physics_action_group(
+        previous,
+        applied,
+        {
+            "physics_action_source": "exact_trace",
+            "physics_actions_radians": exact,
+        },
+        4,
+    )
+    assert mode == "exact_trace"
+    assert targets.tolist() == exact
+
+    interpolated, mode = resolve_physics_action_group(previous, applied, {}, 4)
+    assert mode == "linear_endpoint"
+    assert interpolated[-1].tolist() == pytest.approx(applied_radians.tolist())
+
+    with pytest.raises(ValueError, match="does not start"):
+        resolve_physics_action_group(
+            previous,
+            applied,
+            {
+                "physics_action_source": "exact_trace",
+                "physics_actions_radians": [[0.5] * 6],
+            },
+            4,
+        )
 
 
 def test_viam_physical_speed_profile_resolves_for_30_hz_so101():

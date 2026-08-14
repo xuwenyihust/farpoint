@@ -56,8 +56,10 @@ from farpoint.oracle import oriented_box_footprint_inside_target  # noqa: E402
 from farpoint.policy_rollout import (  # noqa: E402
     constrain_policy_action,
     evaluate_rollout_acceptance,
+    initial_command_slew_reference,
     json_default,
     load_rollout_spec,
+    resolve_physics_action_group,
     resolve_action_safety_profile,
 )
 from farpoint.policy_training import canonical_sha256, file_sha256  # noqa: E402
@@ -426,6 +428,7 @@ def _run_episode(env, scene_spec, spec, root):
     policy_steps = 0
     task_success = False
     previous_applied_action = None
+    exact_physics_targets = 0
     camera_ids = [feature.rsplit(".", 1)[-1] for feature in spec["environment"]["camera_features"]]
     writers = {
         camera_id: VideoWriter(episode_root / f"{camera_id}.mp4", control["policy_hz"])
@@ -451,15 +454,33 @@ def _run_episode(env, scene_spec, spec, root):
                     state,
                     max_delta=action_safety_profile["max_command_slew_calibrated_per_step"][0],
                 )
+                substep_targets_radians = np.repeat(
+                    lerobot_to_radians(applied, clip=True)[None, :],
+                    physics_steps_per_policy,
+                    axis=0,
+                )
+                safety["physics_target_interpolation"] = "zero_order_hold"
             else:
                 if previous_applied_action is None:
-                    previous_applied_action = state.copy()
+                    previous_applied_action = initial_command_slew_reference(
+                        state, scene_spec.get("initial_state")
+                    )
+                command_start = previous_applied_action.copy()
                 applied, safety = constrain_policy_action(
                     raw_action,
                     state,
                     action_safety_profile=action_safety_profile,
                     previous_applied_action=previous_applied_action,
                 )
+                substep_targets_radians, replay_mode = resolve_physics_action_group(
+                    command_start,
+                    applied,
+                    policy_execution,
+                    physics_steps_per_policy,
+                )
+                safety["physics_target_interpolation"] = replay_mode
+                if replay_mode == "exact_trace":
+                    exact_physics_targets += len(substep_targets_radians)
                 previous_applied_action = applied.copy()
             hard_range_violations += safety["hard_range_violation_count"]
             maximum_range_excess = max(
@@ -468,8 +489,8 @@ def _run_episode(env, scene_spec, spec, root):
             )
             delta_limited += safety["delta_limited_count"]
             target_radians = lerobot_to_radians(applied, clip=True)
-            target = torch.tensor([target_radians], dtype=torch.float32, device=env.device)
-            for _ in range(physics_steps_per_policy):
+            for substep_radians in substep_targets_radians:
+                target = torch.tensor([substep_radians], dtype=torch.float32, device=env.device)
                 env.step(target)
             forces = _cube_contact_forces(scene)
             cube_pose = _numpy(active.data.root_pose_w[0])
@@ -591,6 +612,10 @@ def _run_episode(env, scene_spec, spec, root):
         "hard_range_violation_count": hard_range_violations,
         "maximum_hard_range_excess_calibrated": maximum_range_excess,
         "delta_limited_count": delta_limited,
+        "physics_command_replay": {
+            "mode": ("exact_trace" if exact_physics_targets else "policy_rate_interpolation"),
+            "targets_applied": exact_physics_targets,
+        },
         "action_safety_profile": action_safety_profile,
     }
     _write_json(episode_root / "result.json", result)
