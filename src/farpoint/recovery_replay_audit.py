@@ -131,13 +131,23 @@ def build_recovery_replay_integrity_report(
         trace_path = run_root / result["trace"]
         trace = _rows(trace_path)
         groups = source["physics_action_groups_radians"]
-        if len(trace) != result["policy_steps"] or len(trace) < len(groups):
+        if len(trace) != result["policy_steps"]:
             errors.append(prefix + "rollout_trace_length_mismatch")
-        compared = min(len(trace), len(groups))
+        if len(trace) < len(groups) and not result.get("task_success"):
+            errors.append(prefix + "failed_playback_ended_before_source_trace")
+        compared = len(trace)
         maximum_target_error = 0.0
         for index in range(compared):
             execution = trace[index].get("policy_execution") or {}
-            error = _maximum_error(execution.get("physics_actions_radians"), groups[index])
+            expected_group = (
+                groups[index]
+                if index < len(groups)
+                else [groups[-1][-1]]
+                * int(replay["physics_replay"]["maximum_targets_per_policy_step"])
+            )
+            error = _maximum_error(
+                execution.get("physics_actions_radians"), expected_group
+            )
             maximum_target_error = max(maximum_target_error, error)
         if maximum_target_error > 1e-7:
             errors.append(prefix + "physics_target_sequence_mismatch")
