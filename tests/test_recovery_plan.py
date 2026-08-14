@@ -141,8 +141,18 @@ def test_recovery_continuation_preserves_scene_and_remaining_attempt_budget(tmp_
         source_plan(), config(), campaign_id="recovery-continuation", scene_count=20
     )
     requests = []
+    dense_ordinals = {}
     for index, source in enumerate(parent["trials"]):
         prior = 1 if index < 9 else 0
+        bucket = (
+            source["object_variant_id"],
+            source["yaw_stratum_id"],
+            source["region_band"],
+            source["split"],
+        )
+        dense_ordinal = dense_ordinals.get(bucket, 0)
+        dense_ordinals[bucket] = dense_ordinal + 1
+        source["quota_ordinal"] += 2
         requests.append(
             {
                 "request_kind": "carryover",
@@ -153,7 +163,7 @@ def test_recovery_continuation_preserves_scene_and_remaining_attempt_budget(tmp_
                     "yaw_stratum_id": source["yaw_stratum_id"],
                     "region_band": source["region_band"],
                     "split": source["split"],
-                    "quota_ordinal": source["quota_ordinal"],
+                    "quota_ordinal": dense_ordinal,
                 },
                 "replacement_index": source.get("replacement_index", 0),
                 "variation_seed": source["seed"],
@@ -182,6 +192,13 @@ def test_recovery_continuation_preserves_scene_and_remaining_attempt_budget(tmp_
     assert [row["seed"] for row in continuation["trials"]] == [
         row["seed"] for row in parent["trials"]
     ]
+    assert [row["quota_ordinal"] for row in continuation["trials"]] == [
+        request["quota"]["quota_ordinal"] for request in requests
+    ]
+    assert [
+        row["continuation_provenance"]["source_quota_ordinal"]
+        for row in continuation["trials"]
+    ] == [row["quota_ordinal"] for row in parent["trials"]]
     assert runtime["runtime_id"].endswith("segment-001-act-handoff")
     runtime_path = tmp_path / "runtime.json"
     runtime_path.write_text(json.dumps(runtime))

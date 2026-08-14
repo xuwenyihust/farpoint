@@ -252,9 +252,9 @@ def build_recovery_continuation_plan(
             "yaw_stratum_id": source.get("yaw_stratum_id"),
             "region_band": source.get("region_band"),
             "split": source.get("split"),
-            "quota_ordinal": source.get("quota_ordinal"),
         }
-        if observed_quota != quota:
+        requested_bucket = {key: quota.get(key) for key in observed_quota}
+        if observed_quota != requested_bucket:
             raise ValueError("recovery continuation quota does not match source trial")
         if int(source["seed"]) != int(request["variation_seed"]):
             raise ValueError("carryover recovery seed does not match source trial")
@@ -263,11 +263,14 @@ def build_recovery_continuation_plan(
         ):
             raise ValueError("carryover recovery replacement index mismatch")
         trial = deepcopy(source)
+        legacy_quota_ordinal = int(trial["quota_ordinal"])
+        trial["quota_ordinal"] = int(quota["quota_ordinal"])
         trial["prior_attempt_count"] = int(request["prior_attempt_count"])
         trial["continuation_provenance"] = {
             "request_kind": "carryover",
             "source_segment_id": request.get("source_segment_id"),
             "source_variation_id": source_id,
+            "source_quota_ordinal": legacy_quota_ordinal,
         }
         trials.append(trial)
 

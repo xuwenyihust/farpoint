@@ -100,6 +100,41 @@ def _trial_index(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return rows
 
 
+def _resolved_trial_quota_identities(
+    campaign: dict[str, Any], plan: dict[str, Any]
+) -> dict[str, tuple[Any, ...]]:
+    """Resolve legacy recovery source ordinals into campaign-local ordinals."""
+    trials = plan.get("trials") or []
+    allowed = _campaign_quota_identities(campaign)
+    raw = {trial["variation_id"]: _quota_identity(trial) for trial in trials}
+    if len(set(raw.values())) == len(raw) and set(raw.values()).issubset(allowed):
+        return raw
+    if plan.get("schema_version") != "farpoint.so101-recovery-plan.v1" or (
+        campaign.get("variation_contract") or {}
+    ).get("kind") != "live_policy_recovery":
+        return raw
+
+    counts: Counter[tuple[Any, ...]] = Counter()
+    resolved = {}
+    for trial in trials:
+        bucket = (
+            trial["object_variant_id"],
+            trial["yaw_stratum_id"],
+            trial["region_band"],
+            trial["split"],
+        )
+        quota = (*bucket, counts[bucket])
+        counts[bucket] += 1
+        if quota not in allowed:
+            raise ValueError(
+                "legacy recovery plan cannot be normalized into campaign quotas"
+            )
+        resolved[trial["variation_id"]] = quota
+    if len(set(resolved.values())) != len(resolved):
+        raise ValueError("legacy recovery quota normalization is not unique")
+    return resolved
+
+
 def _is_sha256(value: Any) -> bool:
     if not isinstance(value, str) or len(value) != 64:
         return False
@@ -408,13 +443,14 @@ def build_continuation_requests(
             raise ValueError("continuation parent manifest hash mismatch")
         validate_manifest(manifest, plan)
         trials = _trial_index(plan)
+        resolved_quotas = _resolved_trial_quota_identities(campaign, plan)
         attempt_counts = Counter(
             attempt["variation_id"] for attempt in manifest.get("attempts") or []
         )
         selected = manifest.get("selected_variations") or {}
         segment_quotas: set[tuple[Any, ...]] = set()
         for variation_id, trial in trials.items():
-            quota = _quota_identity(trial)
+            quota = resolved_quotas[variation_id]
             if quota not in allowed_quotas:
                 raise ValueError(
                     f"continuation trial is outside campaign quotas: {variation_id}"
