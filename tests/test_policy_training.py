@@ -27,6 +27,9 @@ V010_PILOT_CONFIG = ROOT / "configs" / "training" / "so101_act_v0_1_0_pilot.json
 V010_BASELINE_20K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_1_0_baseline_20k.json"
 )
+V011_RECOVERY20_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_1_recovery20_20k.json"
+)
 
 
 def test_frozen_act_contract_is_valid_and_partitions_all_episodes():
@@ -103,6 +106,29 @@ def test_v010_formal_contract_selects_validation_without_dataset_test_split():
     assert "CONFIG_NAME must be a basename" in runner
     assert "--profile \"${PROFILE}\"" in runner
     assert "evaluate_act_checkpoints.py" in runner
+
+
+def test_v011_recovery20_contract_is_a_dataset_only_baseline_delta():
+    baseline = load_training_spec(V010_BASELINE_20K_CONFIG)
+    recovery = load_training_spec(V011_RECOVERY20_20K_CONFIG)
+
+    for field in ("environment", "policy", "training", "validation", "smoke"):
+        assert recovery[field] == baseline[field]
+
+    dataset = recovery["dataset"]
+    assert dataset["revision"] == "v0.1.1"
+    assert dataset["resolved_commit"] == "ff1a812584b677b02998a722ac2a446ce1003e55"
+    assert dataset["splits"] == {"train": "0:200", "validation": "200:220"}
+    assert dataset["metadata_splits"]["test"] == "220:220"
+    assert dataset["expected"] == {
+        "total_episodes": 220,
+        "total_frames": 166605,
+        "fps": 30,
+        "selected_frames": {"train": 151804, "validation": 14801},
+    }
+    assert dataset["required_features"] == baseline["dataset"]["required_features"]
+    assert parse_episode_slice(dataset["splits"]["train"]) == list(range(200))
+    assert parse_episode_slice(dataset["splits"]["validation"]) == list(range(200, 220))
 
 
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):
