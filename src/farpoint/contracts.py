@@ -121,8 +121,10 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
             demonstration_type = demonstration.get("type")
             controller = demonstration.get("controller") or {}
             if demonstration_type == "recovery":
-                if identity.get("split") != "train":
-                    errors.append("recovery demonstrations must use the train split")
+                if identity.get("split") not in {"train", "validation"}:
+                    errors.append(
+                        "recovery demonstrations must use the train or validation split"
+                    )
                 if controller.get("type") != "oracle":
                     errors.append("recovery demonstration actions must be Oracle-authored")
                 intervention = demonstration.get("intervention") or {}

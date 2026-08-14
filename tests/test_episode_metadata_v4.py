@@ -355,7 +355,7 @@ def test_episode_v4_accepts_audited_physics_rate_intervention_command_trace():
     )
 
 
-def test_episode_v4_rejects_recovery_validation_split_and_discontinuous_handoff():
+def test_episode_v4_accepts_recovery_validation_split_and_rejects_discontinuous_handoff():
     episode = episode_v4()
     episode["identity"]["split"] = "validation"
     episode["variation"]["split"] = "validation"
@@ -392,8 +392,50 @@ def test_episode_v4_rejects_recovery_validation_split_and_discontinuous_handoff(
         },
     }
     errors = validate_episode_semantics(episode)
-    assert "recovery demonstrations must use the train split" in errors
+    assert "recovery demonstrations must use the train or validation split" not in errors
     assert "recovery handoff source_control_step does not match trigger.control_step" in errors
+
+
+def test_episode_v4_rejects_recovery_test_split():
+    episode = episode_v4()
+    episode["identity"]["split"] = "test"
+    episode["variation"]["split"] = "test"
+    episode["demonstration"] = {
+        "schema_version": "farpoint.demonstration.v1",
+        "type": "recovery",
+        "controller": {"type": "oracle", "profile_id": "recovery-v1"},
+        "source_policy": {
+            "policy_type": "act",
+            "checkpoint_step": 20_000,
+            "model_sha256": "b" * 64,
+            "training_run_id": "act-v010",
+            "rollout_git_commit": "c" * 40,
+        },
+        "intervention": {
+            "trigger": {
+                "trigger_id": "stall-v1",
+                "failure_class": "progress_stall",
+                "control_step": 100,
+                "stage": "transport",
+                "evidence": {"window": 30},
+            },
+            "handoff": {
+                "mode": "live_continuous_state",
+                "source_rollout_id": "source",
+                "source_scene_id": "scene",
+                "source_control_step": 100,
+                "recovery_start_frame": 0,
+                "physics_state_continuous": True,
+                "reset_performed": False,
+                "state_snapshot_sha256": "d" * 64,
+            },
+            "recovery_strategy_id": "recover-v1",
+        },
+    }
+    assert (
+        "recovery demonstrations must use the train or validation split"
+        in validate_episode_semantics(episode)
+    )
 
 
 def test_episode_v4_rejects_camera_and_split_drift():
