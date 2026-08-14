@@ -83,6 +83,24 @@ def test_recovery20_is_balanced_training_only_and_deterministic(tmp_path):
         },
     }
     assert {trial["split"] for trial in first["trials"]} == {"train"}
+    quota_ordinals = {}
+    for trial in first["trials"]:
+        quota = (
+            trial["object_variant_id"],
+            trial["yaw_stratum_id"],
+            trial["region_band"],
+            trial["split"],
+        )
+        quota_ordinals.setdefault(quota, []).append(trial["quota_ordinal"])
+        assert trial["recovery_source"] == {
+            "plan_sha256": source_plan()["plan_sha256"],
+            "trial_id": trial["trial_id"],
+            "variation_id": trial["variation_id"],
+        }
+    assert all(
+        sorted(values) == list(range(len(values)))
+        for values in quota_ordinals.values()
+    )
     assert validate_campaign_semantics(first["campaign_contract"]) == []
     runtime_path = tmp_path / "runtime.json"
     runtime_path.write_text(json.dumps(runtime))
@@ -97,6 +115,7 @@ def test_recovery_pilot_is_six_distinct_train_scenes():
     assert plan["campaign_contract"]["campaign_kind"] == "pilot"
     assert len({row["source_scene_id"] for row in runtime["scenes"]}) == 6
     assert {row["source_partition"] for row in runtime["scenes"]} == {"train"}
+    assert {trial["quota_ordinal"] for trial in plan["trials"]} == {0}
 
 
 def test_initialize_recovery_campaign_is_immutable(tmp_path):

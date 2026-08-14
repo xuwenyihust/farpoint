@@ -4,8 +4,14 @@ import zlib
 
 import pytest
 
+from farpoint.campaign import canonical_sha256
 from farpoint.object_variation import load_variation_config
-from farpoint.so101_collection import create_pilot_manifest, next_attempt, record_attempt
+from farpoint.so101_collection import (
+    create_manifest,
+    create_pilot_manifest,
+    next_attempt,
+    record_attempt,
+)
 from farpoint.so101_pilot import build_so101_pilot_plan, build_so101_yaw_pilot_plan
 from farpoint.so101_pilot_report import (
     _expectation_errors,
@@ -137,6 +143,86 @@ def test_pilot_report_passes_ten_independent_physical_front_only_episodes(tmp_pa
     assert report["evidence_errors"] == []
     assert report["acceptance_errors"] == []
     assert "Pilot status: **PASS**" in render_so101_pilot_report_markdown(report)
+
+
+def test_pilot_report_allows_retry_to_reuse_frozen_variation_seed(tmp_path):
+    config = load_variation_config("configs/variations/so101_cube_pick_place_v1.json")
+    plan = build_so101_pilot_plan(config, pilot_id="retry_seed_report")
+    plan["trials"] = plan["trials"][:10]
+    plan["pilot"]["maximum_attempts"] = 30
+    plan["pilot"]["primary_trial_ids"] = [
+        trial["trial_id"] for trial in plan["trials"]
+    ]
+    plan["pilot"]["fallback_trial_ids"] = []
+    plan["collection"] = {
+        "kind": "self_healing_campaign_segment",
+        "required_successes": 10,
+        "maximum_attempts": 30,
+        "attempt_policy": {"maximum_attempts_per_variation": 3},
+    }
+    plan["plan_sha256"] = canonical_sha256(plan, omit=("plan_sha256",))
+    manifest = create_manifest(
+        plan, collection_id=plan["plan_id"], git_commit="a" * 40
+    )
+    failed_variation_id = None
+    for index in range(10):
+        attempt = next_attempt(manifest, plan)
+        episode_id = f"episode_{index}"
+        _write_success_episode(
+            tmp_path / episode_id, attempt["variation_id"], index / 1000
+        )
+        success = index != 0
+        if not success:
+            failed_variation_id = attempt["variation_id"]
+            (tmp_path / episode_id / "metrics.json").write_text(
+                json.dumps(
+                    {
+                        "success": False,
+                        "dataset_valid": True,
+                        "failure_category": "oracle",
+                        "failure_reason": "grasp_phase_timeout:slow_close",
+                    }
+                ),
+                encoding="utf-8",
+            )
+        record_attempt(
+            manifest,
+            plan,
+            attempt,
+            episode_id=episode_id,
+            success=success,
+            dataset_valid=True,
+            failure_category=None if success else "oracle",
+            failure_reason=None if success else "grasp_phase_timeout:slow_close",
+        )
+    retry = next_attempt(manifest, plan)
+    assert retry["variation_id"] == failed_variation_id
+    _write_success_episode(tmp_path / "episode_retry", retry["variation_id"], 0.02)
+    (tmp_path / "episode_retry" / "metadata.json").write_text(
+        json.dumps(
+            {
+                "variation": {"variation_id": retry["variation_id"]},
+                "attempt_id": retry["attempt_id"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    record_attempt(
+        manifest,
+        plan,
+        retry,
+        episode_id="episode_retry",
+        success=True,
+        dataset_valid=True,
+    )
+
+    report = build_so101_pilot_report(plan, manifest, tmp_path)
+
+    assert report["evidence_errors"] == []
+    assert report["pilot_status"] == "PASS"
+    assert report["attempted_count"] == 11
+    assert report["attempt_seed_count"] == 11
+    assert report["variation_seed_count"] == 10
 
 
 def test_pilot_report_accepts_explicit_dual_camera_contract(tmp_path):

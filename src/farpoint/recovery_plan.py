@@ -26,6 +26,30 @@ def _rank(seed: int, trial: dict[str, Any]) -> bytes:
     return hashlib.sha256(material.encode()).digest()
 
 
+def _assign_campaign_quota_ordinals(
+    selected: list[dict[str, Any]], *, source_plan_sha256: str
+) -> None:
+    """Map source trials onto dense quota ordinals for this recovery campaign."""
+    counts: Counter[tuple[str, str, str, str]] = Counter()
+    for trial in selected:
+        quota = (
+            trial["object_variant_id"],
+            trial["yaw_stratum_id"],
+            trial["region_band"],
+            trial["split"],
+        )
+        source = {
+            "plan_sha256": source_plan_sha256,
+            "trial_id": trial["trial_id"],
+            "variation_id": trial["variation_id"],
+        }
+        if "quota_ordinal" in trial:
+            source["quota_ordinal"] = int(trial["quota_ordinal"])
+        trial["recovery_source"] = source
+        trial["quota_ordinal"] = counts[quota]
+        counts[quota] += 1
+
+
 def build_recovery_plan(
     source_plan: dict[str, Any],
     config: dict[str, Any],
@@ -76,6 +100,9 @@ def build_recovery_plan(
         chosen = min(candidates, key=lambda row: _rank(int(config["selection_seed"]), row))
         selected.append(deepcopy(chosen))
         used.add(chosen["trial_id"])
+    _assign_campaign_quota_ordinals(
+        selected, source_plan_sha256=source_plan["plan_sha256"]
+    )
 
     quotas = []
     counts = Counter(

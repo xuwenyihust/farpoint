@@ -54,6 +54,7 @@ def _parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--live-status", required=True, type=Path)
     evaluate.add_argument("--disk-path", required=True, type=Path)
     evaluate.add_argument("--integrity-errors", type=Path)
+    evaluate.add_argument("--quality-exclusions", type=Path)
     evaluate.add_argument("--output", required=True, type=Path)
 
     freeze = commands.add_parser("freeze-continuation")
@@ -72,6 +73,7 @@ def _parser() -> argparse.ArgumentParser:
     export.add_argument("--campaign", required=True, type=Path)
     export.add_argument("--evidence-index", required=True, type=Path)
     export.add_argument("--dataset-id", required=True)
+    export.add_argument("--quality-exclusions", type=Path)
     export.add_argument("--output", required=True, type=Path)
     return parser
 
@@ -111,6 +113,11 @@ def _evaluate(args: argparse.Namespace) -> int:
         live_status=_read(args.live_status),
         free_disk_bytes=shutil.disk_usage(args.disk_path).free,
         integrity_errors=integrity_errors,
+        quality_exclusions=(
+            _read(args.quality_exclusions)
+            if args.quality_exclusions is not None
+            else None
+        ),
     )
     _write(args.output, report)
     print(json.dumps(report, indent=2, sort_keys=True))
@@ -146,6 +153,11 @@ def _export(args: argparse.Namespace) -> int:
         _read(args.campaign),
         _load_evidence(args.evidence_index),
         dataset_id=args.dataset_id,
+        quality_exclusions=(
+            _read(args.quality_exclusions)
+            if args.quality_exclusions is not None
+            else None
+        ),
     )
     _write(args.output, selection)
     print(json.dumps(selection, indent=2, sort_keys=True))

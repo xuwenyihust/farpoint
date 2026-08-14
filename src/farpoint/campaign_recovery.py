@@ -21,6 +21,7 @@ from farpoint.so101_episode_analysis import classify_so101_failure
 
 POLICY_SCHEMA = "farpoint.self-healing-policy.v1"
 REPORT_SCHEMA = "farpoint.self-healing-campaign-report.v1"
+QUALITY_EXCLUSIONS_SCHEMA = "farpoint.campaign-quality-exclusions.v1"
 DECISIONS = {"CONTINUE", "PAUSE", "COMPLETE", "INVALID"}
 QUOTA_FIELDS = (
     "object_variant_id",
@@ -97,6 +98,163 @@ def _trial_index(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
     if len(rows) != len(plan.get("trials") or []):
         raise ValueError("plan variation ids must be unique")
     return rows
+
+
+def _is_sha256(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _quality_exclusion_index(
+    campaign: dict[str, Any],
+    evidence: Iterable[dict[str, Any]],
+    quality_exclusions: dict[str, Any] | None,
+) -> set[tuple[str, str]]:
+    """Validate immutable exclusions and return ``(segment_id, attempt_id)`` keys."""
+    if quality_exclusions is None:
+        return set()
+    if quality_exclusions.get("schema_version") != QUALITY_EXCLUSIONS_SCHEMA:
+        raise ValueError(f"quality exclusions must use {QUALITY_EXCLUSIONS_SCHEMA}")
+    if quality_exclusions.get("campaign_id") != campaign.get("campaign_id"):
+        raise ValueError("quality exclusions campaign id mismatch")
+    if quality_exclusions.get("campaign_sha256") != campaign.get("campaign_sha256"):
+        raise ValueError("quality exclusions campaign hash mismatch")
+    if not quality_exclusions.get("exclusion_id"):
+        raise ValueError("quality exclusions id must be non-empty")
+    if quality_exclusions.get("selection_policy") != (
+        "exclude_selected_attempts_failing_post_collection_quality_gate"
+    ):
+        raise ValueError("quality exclusions selection policy mismatch")
+    expected_hash = canonical_sha256(
+        quality_exclusions, omit=("quality_exclusions_sha256",)
+    )
+    if quality_exclusions.get("quality_exclusions_sha256") != expected_hash:
+        raise ValueError("quality exclusions hash mismatch")
+
+    by_segment: dict[str, dict[str, Any]] = {}
+    for row in evidence:
+        segment = row.get("segment") or {}
+        segment_id = str(segment.get("segment_id") or "")
+        if not segment_id or segment_id in by_segment:
+            raise ValueError("segment evidence identities must be unique")
+        segment_errors = validate_segment_semantics(segment)
+        if segment_errors:
+            raise ValueError("invalid quality exclusion segment evidence")
+        if segment.get("campaign_sha256") != campaign.get("campaign_sha256"):
+            raise ValueError("quality exclusion segment campaign hash mismatch")
+        validate_manifest(row.get("manifest") or {}, row.get("plan") or {})
+        by_segment[segment_id] = row
+
+    keys: set[tuple[str, str]] = set()
+    for entry in quality_exclusions.get("entries") or []:
+        required_strings = (
+            "segment_id",
+            "manifest_sha256",
+            "attempt_id",
+            "variation_id",
+            "episode_id",
+            "reason_code",
+            "evidence_sha256",
+        )
+        if any(not isinstance(entry.get(field), str) or not entry[field] for field in required_strings):
+            raise ValueError("quality exclusion entries require non-empty identity fields")
+        if not _is_sha256(entry["manifest_sha256"]) or not _is_sha256(
+            entry["evidence_sha256"]
+        ):
+            raise ValueError("quality exclusion entries require sha256 bindings")
+        segment_id = entry["segment_id"]
+        evidence_row = by_segment.get(segment_id)
+        if evidence_row is None:
+            raise ValueError(f"quality exclusion references unknown segment: {segment_id}")
+        manifest = evidence_row.get("manifest") or {}
+        if entry["manifest_sha256"] != canonical_sha256(manifest):
+            raise ValueError("quality exclusion manifest hash mismatch")
+        selected = manifest.get("selected_variations") or {}
+        if selected.get(entry["variation_id"]) != entry["attempt_id"]:
+            raise ValueError("quality exclusion must reference a selected attempt")
+        attempts = {
+            attempt.get("attempt_id"): attempt for attempt in manifest.get("attempts") or []
+        }
+        attempt = attempts.get(entry["attempt_id"])
+        if attempt is None or attempt.get("episode_id") != entry["episode_id"]:
+            raise ValueError("quality exclusion attempt or episode identity mismatch")
+        if not attempt.get("success") or not attempt.get("dataset_valid"):
+            raise ValueError("quality exclusion must reference a successful valid attempt")
+        key = (segment_id, entry["attempt_id"])
+        if key in keys:
+            raise ValueError("quality exclusion attempt identities must be unique")
+        keys.add(key)
+    if not keys:
+        raise ValueError("quality exclusions must contain at least one entry")
+    return keys
+
+
+def create_campaign_quality_exclusions(
+    campaign: dict[str, Any],
+    segment_evidence: Iterable[dict[str, Any]],
+    exclusions: Iterable[dict[str, str]],
+    *,
+    exclusion_id: str,
+) -> dict[str, Any]:
+    """Create a hashed derivative that excludes selected episodes without mutation."""
+    if validate_campaign_semantics(campaign):
+        raise ValueError("campaign contract is invalid")
+    if not exclusion_id:
+        raise ValueError("exclusion_id must be non-empty")
+    evidence = [deepcopy(row) for row in segment_evidence]
+    entries = []
+    for requested in exclusions:
+        segment_id = str(requested.get("segment_id") or "")
+        attempt_id = str(requested.get("attempt_id") or "")
+        reason_code = str(requested.get("reason_code") or "")
+        evidence_sha256 = str(requested.get("evidence_sha256") or "")
+        row = next(
+            (
+                item
+                for item in evidence
+                if (item.get("segment") or {}).get("segment_id") == segment_id
+            ),
+            None,
+        )
+        if row is None:
+            raise ValueError(f"quality exclusion references unknown segment: {segment_id}")
+        manifest = row.get("manifest") or {}
+        attempts = {
+            attempt.get("attempt_id"): attempt for attempt in manifest.get("attempts") or []
+        }
+        attempt = attempts.get(attempt_id)
+        if attempt is None:
+            raise ValueError(f"quality exclusion references unknown attempt: {attempt_id}")
+        variation_id = str(attempt.get("variation_id") or "")
+        if (manifest.get("selected_variations") or {}).get(variation_id) != attempt_id:
+            raise ValueError("quality exclusion must reference a selected attempt")
+        entries.append(
+            {
+                "segment_id": segment_id,
+                "manifest_sha256": canonical_sha256(manifest),
+                "attempt_id": attempt_id,
+                "variation_id": variation_id,
+                "episode_id": str(attempt.get("episode_id") or ""),
+                "reason_code": reason_code,
+                "evidence_sha256": evidence_sha256,
+            }
+        )
+    artifact = {
+        "schema_version": QUALITY_EXCLUSIONS_SCHEMA,
+        "exclusion_id": exclusion_id,
+        "campaign_id": campaign["campaign_id"],
+        "campaign_sha256": campaign["campaign_sha256"],
+        "selection_policy": "exclude_selected_attempts_failing_post_collection_quality_gate",
+        "entries": sorted(entries, key=lambda row: (row["segment_id"], row["attempt_id"])),
+    }
+    artifact["quality_exclusions_sha256"] = canonical_sha256(artifact)
+    _quality_exclusion_index(campaign, evidence, artifact)
+    return artifact
 
 
 def _parse_timestamp(value: Any) -> float | None:
@@ -199,7 +357,10 @@ def build_replacement_requests(
 
 
 def build_continuation_requests(
-    campaign: dict[str, Any], segment_evidence: Iterable[dict[str, Any]]
+    campaign: dict[str, Any],
+    segment_evidence: Iterable[dict[str, Any]],
+    *,
+    quality_exclusions: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Return every missing quota, preserving unexhausted seeds across segments.
 
@@ -221,6 +382,9 @@ def build_continuation_requests(
     )
     if not evidence:
         raise ValueError("continuation generation requires segment evidence")
+    excluded_attempts = _quality_exclusion_index(
+        campaign, evidence, quality_exclusions
+    )
 
     successful_quotas: set[tuple[Any, ...]] = set()
     latest: dict[tuple[Any, ...], dict[str, Any]] = {}
@@ -247,7 +411,7 @@ def build_continuation_requests(
         attempt_counts = Counter(
             attempt["variation_id"] for attempt in manifest.get("attempts") or []
         )
-        selected = set((manifest.get("selected_variations") or {}).keys())
+        selected = manifest.get("selected_variations") or {}
         segment_quotas: set[tuple[Any, ...]] = set()
         for variation_id, trial in trials.items():
             quota = _quota_identity(trial)
@@ -271,7 +435,10 @@ def build_continuation_requests(
                 "segment_id": segment["segment_id"],
                 "attempts_consumed": consumed,
             }
-            if variation_id in selected:
+            selected_attempt_id = selected.get(variation_id)
+            if selected_attempt_id is not None and (
+                segment["segment_id"], selected_attempt_id
+            ) not in excluded_attempts:
                 successful_quotas.add(quota)
         previous_manifest = manifest
 
@@ -412,6 +579,7 @@ def evaluate_self_healing_campaign(
     live_status: dict[str, Any],
     free_disk_bytes: int,
     integrity_errors: Iterable[str] = (),
+    quality_exclusions: dict[str, Any] | None = None,
     now_unix: float | None = None,
 ) -> dict[str, Any]:
     """Evaluate aggregate quota progress without mutating immutable segments."""
@@ -430,6 +598,13 @@ def evaluate_self_healing_campaign(
         (deepcopy(row) for row in segment_evidence),
         key=lambda row: int((row.get("segment") or {}).get("segment_index", -1)),
     )
+    excluded_attempts: set[tuple[str, str]] = set()
+    try:
+        excluded_attempts = _quality_exclusion_index(
+            campaign, evidence, quality_exclusions
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        errors.append(f"invalid_quality_exclusions:{error}")
     all_attempts: list[dict[str, Any]] = []
     successful_quotas: dict[tuple[Any, ...], dict[str, Any]] = {}
     previous_manifest = None
@@ -481,6 +656,8 @@ def evaluate_self_healing_campaign(
             enriched["segment_id"] = segment.get("segment_id")
             all_attempts.append(enriched)
         for variation_id, attempt_id in (manifest.get("selected_variations") or {}).items():
+            if (segment["segment_id"], attempt_id) in excluded_attempts:
+                continue
             trial = trials[variation_id]
             quota = _quota_identity(trial)
             if quota not in expected_quotas:
@@ -567,7 +744,11 @@ def evaluate_self_healing_campaign(
     replacements = []
     if latest_plan is not None and latest_manifest is not None:
         try:
-            replacements = build_continuation_requests(campaign, evidence)
+            replacements = build_continuation_requests(
+                campaign,
+                evidence,
+                quality_exclusions=quality_exclusions,
+            )
         except (KeyError, TypeError, ValueError) as error:
             errors.append(f"replacement_generation:{error}")
 
@@ -625,6 +806,11 @@ def evaluate_self_healing_campaign(
             ),
         ),
     }
+    if quality_exclusions is not None:
+        report["progress"]["quality_excluded_successes"] = len(excluded_attempts)
+        report["quality_exclusions_sha256"] = quality_exclusions.get(
+            "quality_exclusions_sha256"
+        )
     if decision not in DECISIONS:
         raise AssertionError("invalid self-healing decision")
     return report
@@ -635,6 +821,7 @@ def build_campaign_export_selection(
     segment_evidence: Iterable[dict[str, Any]],
     *,
     dataset_id: str,
+    quality_exclusions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compose one successful episode per exact quota across immutable segments."""
     campaign_errors = validate_campaign_semantics(campaign)
@@ -647,6 +834,9 @@ def build_campaign_export_selection(
     evidence = sorted(
         (deepcopy(row) for row in segment_evidence),
         key=lambda row: int((row.get("segment") or {}).get("segment_index", -1)),
+    )
+    excluded_attempts = _quality_exclusion_index(
+        campaign, evidence, quality_exclusions
     )
     previous_manifest = None
     for index, row in enumerate(evidence):
@@ -671,6 +861,8 @@ def build_campaign_export_selection(
         if not episodes_root:
             raise ValueError(f"segment {index} must define episodes_root")
         for variation_id, attempt_id in (manifest.get("selected_variations") or {}).items():
+            if (segment["segment_id"], attempt_id) in excluded_attempts:
+                continue
             trial = trials[variation_id]
             quota = _quota_identity(trial)
             if quota not in expected_quotas:
@@ -697,10 +889,15 @@ def build_campaign_export_selection(
     split_counts = Counter(row["split"] for row in episodes)
     if dict(split_counts) != campaign["target"]["splits"]:
         raise ValueError("campaign selection split counts do not match target")
-    return {
+    selection = {
         "schema_version": "farpoint.export-selection.v1",
         "dataset_id": dataset_id,
         "collection_id": campaign["campaign_id"],
         "selection_policy": "one_success_per_exact_campaign_quota_across_segments",
         "episodes": episodes,
     }
+    if quality_exclusions is not None:
+        selection["quality_exclusions_sha256"] = quality_exclusions[
+            "quality_exclusions_sha256"
+        ]
+    return selection
