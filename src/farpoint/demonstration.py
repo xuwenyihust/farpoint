@@ -20,6 +20,8 @@ RECOVERY_FAILURE_CLASSES = frozenset(
         "release_instability",
         "action_saturation",
         "progress_stall",
+        "approach_miss",
+        "place_release_failure",
     }
 )
 

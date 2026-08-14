@@ -29,6 +29,7 @@ SCHEMA_FILES = {
     "farpoint.policy-training.v1": "policy_training_v1.schema.json",
     "farpoint.policy-rollout.v1": "policy_rollout_v1.schema.json",
     "farpoint.recovery-runtime.v1": "recovery_runtime_v1.schema.json",
+    "farpoint.recovery-runtime.v2": "recovery_runtime_v2.schema.json",
 }
 SPLITS = ("train", "validation", "test")
 SHAPE_TERMS = {

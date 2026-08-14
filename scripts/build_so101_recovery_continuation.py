@@ -117,9 +117,12 @@ def main() -> int:
             formal_config["pilot_authorization"],
             campaign,
             segment_id=args.segment_id,
-            source_plan_sha256=(campaign.get("variation_contract") or {})[
-                "source_plan_sha256"
-            ],
+            source_plan_sha256=(campaign.get("variation_contract") or {})["source_plan_sha256"],
+            allowed_splits=(
+                ("train", "validation")
+                if config.get("schema_version") == "farpoint.recovery-plan-config.v2"
+                else ("train",)
+            ),
         )
     plan, runtime = build_recovery_continuation_plan(
         parent_plan,

@@ -9,6 +9,7 @@ from farpoint.recovery_runtime import (
     recovery_descent_duration_seconds,
     recovery_oracle_command_continuity_enabled,
     recovery_oracle_slew_limits,
+    recovery_trigger_for_scene,
     scene_binding,
     slew_recovery_oracle_target,
 )
@@ -207,3 +208,73 @@ def test_recovery_oracle_slew_rejects_non_integral_control_ratio():
     spec["control"]["physics_hz"] = 100
     with pytest.raises(ValueError, match="integer positive ratio"):
         recovery_oracle_slew_limits(spec)
+
+
+def multistage_runtime_spec():
+    spec = runtime_spec()
+    trigger = {
+        "trigger_id": "transport-v2",
+        "failure_class": "transport_drift",
+        "stage": "transport",
+        "minimum_policy_steps": 4,
+        "maximum_policy_steps_before_handoff": 10,
+        "window_steps": 3,
+        "minimum_progress_m": 0.001,
+        "consecutive_safety_event_steps": 3,
+        "contact_force_threshold_n": 0.1,
+        "lift_threshold_m": 0.005,
+        "target_distance_threshold_m": 0.05,
+    }
+    spec.update(
+        {
+            "schema_version": "farpoint.recovery-runtime.v2",
+            "trigger_profiles": {"transport_drift": trigger},
+            "task_context": {"target": {"target_id": "pad"}},
+        }
+    )
+    spec.pop("trigger")
+    spec["oracle_handoff_profile"].update(
+        {
+            "strategy_id": "regrasp_from_live_state_v2",
+            "command_continuity": "action_safety_profile_control_rate_v1",
+        }
+    )
+    spec["scenes"][0]["trigger_class"] = "transport_drift"
+    return spec
+
+
+def test_v2_runtime_resolves_scene_trigger_and_detects_transport_loss(tmp_path):
+    spec = multistage_runtime_spec()
+    spec["trigger_profiles"]["transport_drift"]["minimum_progress_m"] = 0.0
+    path = tmp_path / "runtime-v2.json"
+    path.write_text(json.dumps(spec))
+    loaded = load_recovery_runtime(path)
+    profile = recovery_trigger_for_scene(loaded, "variation-0")
+    assert profile["failure_class"] == "transport_drift"
+    detector = RecoveryTriggerDetector(profile)
+    trigger = None
+    for step in range(8):
+        trigger = detector.observe(
+            policy_step=step,
+            gripper_position_m=[0.0, 0.0, 0.1],
+            object_position_m=[0.1, 0.0, 0.01 if step < 2 else 0.02],
+            cube_lifted=step >= 2,
+            hard_range_violation_count=0,
+            command_slew_limited_count=0,
+            contact_forces_n=[1.0, 1.0] if step < 5 else [0.0, 0.0],
+            target_position_m=[0.2, 0.1, 0.03],
+        )
+        if trigger:
+            break
+    assert trigger["failure_class"] == "transport_drift"
+    assert trigger["stage"] == "transport"
+    assert not trigger["has_contact"]
+
+
+def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
+    spec = multistage_runtime_spec()
+    spec["scenes"][0]["trigger_class"] = "missing"
+    path = tmp_path / "runtime-v2.json"
+    path.write_text(json.dumps(spec))
+    with pytest.raises(ValueError, match="unknown trigger classes"):
+        load_recovery_runtime(path)

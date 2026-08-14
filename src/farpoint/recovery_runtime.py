@@ -21,17 +21,40 @@ def load_recovery_runtime(path: Path) -> dict[str, Any]:
     errors = validate_contract(payload)
     if errors:
         raise ValueError("invalid recovery runtime contract:\n" + "\n".join(errors))
-    trigger = payload["trigger"]
-    if trigger["minimum_policy_steps"] >= trigger["maximum_policy_steps_before_handoff"]:
-        raise ValueError("minimum_policy_steps must precede the handoff deadline")
-    if trigger["stall_window_steps"] > trigger["minimum_policy_steps"]:
-        raise ValueError("stall_window_steps must fit before trigger admission")
+    triggers = (
+        {"legacy": payload["trigger"]}
+        if payload["schema_version"] == "farpoint.recovery-runtime.v1"
+        else payload["trigger_profiles"]
+    )
+    for trigger_class, trigger in triggers.items():
+        if trigger["minimum_policy_steps"] >= trigger["maximum_policy_steps_before_handoff"]:
+            raise ValueError(
+                f"minimum_policy_steps must precede the handoff deadline: {trigger_class}"
+            )
+        window_key = "stall_window_steps" if "stall_window_steps" in trigger else "window_steps"
+        if trigger[window_key] > trigger["minimum_policy_steps"]:
+            raise ValueError(f"trigger window must fit before admission: {trigger_class}")
     scene_ids = [scene["source_scene_id"] for scene in payload["scenes"]]
     variation_ids = [scene["variation_id"] for scene in payload["scenes"]]
     if len(scene_ids) != len(set(scene_ids)):
         raise ValueError("recovery source_scene_id values must be unique")
     if len(variation_ids) != len(set(variation_ids)):
         raise ValueError("recovery variation_id values must be unique")
+    if payload["schema_version"] == "farpoint.recovery-runtime.v2":
+        unknown = sorted(
+            {
+                scene["trigger_class"]
+                for scene in payload["scenes"]
+                if scene["trigger_class"] not in payload["trigger_profiles"]
+            }
+        )
+        if unknown:
+            raise ValueError(
+                "recovery scenes reference unknown trigger classes: " + ", ".join(unknown)
+            )
+        for key, profile in payload["trigger_profiles"].items():
+            if key != profile["failure_class"]:
+                raise ValueError(f"trigger profile key/failure_class mismatch: {key}")
     return payload
 
 
@@ -40,6 +63,14 @@ def scene_binding(spec: dict[str, Any], variation_id: str) -> dict[str, Any]:
     if len(matches) != 1:
         raise ValueError(f"recovery runtime has no unique binding for {variation_id}")
     return deepcopy(matches[0])
+
+
+def recovery_trigger_for_scene(spec: dict[str, Any], variation_id: str) -> dict[str, Any]:
+    """Resolve one frozen trigger profile while preserving v1 behavior."""
+    if spec["schema_version"] == "farpoint.recovery-runtime.v1":
+        return deepcopy(spec["trigger"])
+    binding = scene_binding(spec, variation_id)
+    return deepcopy(spec["trigger_profiles"][binding["trigger_class"]])
 
 
 def recovery_descent_duration_seconds(spec: dict[str, Any] | None) -> float:
@@ -106,12 +137,21 @@ def slew_recovery_oracle_target(
 
 
 class RecoveryTriggerDetector:
-    """Detect a bounded pre-lift deviation using measured closed-loop state."""
+    """Detect one frozen recovery class from measured closed-loop state.
+
+    A v2 scene is intentionally assigned exactly one class.  This prevents an
+    easy early trigger from starving later transport/place recovery coverage.
+    """
 
     def __init__(self, config: dict[str, Any]):
         self.config = deepcopy(config)
-        self._distance_history: deque[float] = deque(maxlen=int(config["stall_window_steps"]))
+        window = int(config.get("stall_window_steps", config.get("window_steps", 2)))
+        self._distance_history: deque[float] = deque(maxlen=window)
         self._consecutive_safety = 0
+        self._initial_object_position: np.ndarray | None = None
+        self._ever_contact = False
+        self._ever_lifted = False
+        self._ever_near_target = False
 
     def observe(
         self,
@@ -122,6 +162,11 @@ class RecoveryTriggerDetector:
         cube_lifted: bool,
         hard_range_violation_count: int,
         command_slew_limited_count: int,
+        contact_forces_n: Any | None = None,
+        target_position_m: Any | None = None,
+        cube_in_target: bool = False,
+        gripper_released: bool = False,
+        cube_stable: bool = False,
     ) -> dict[str, Any] | None:
         gripper = np.asarray(gripper_position_m, dtype=np.float64)
         obj = np.asarray(object_position_m, dtype=np.float64)
@@ -132,10 +177,43 @@ class RecoveryTriggerDetector:
         if policy_step < 0:
             raise ValueError("policy_step must be non-negative")
         distance = float(np.linalg.norm(gripper - obj))
-        self._distance_history.append(distance)
+        if self._initial_object_position is None:
+            self._initial_object_position = obj.copy()
+        forces = np.zeros(2, dtype=np.float64)
+        if contact_forces_n is not None:
+            forces = np.asarray(contact_forces_n, dtype=np.float64)
+            if forces.shape != (2,) or not np.isfinite(forces).all():
+                raise ValueError(
+                    "recovery trigger contact forces must have shape (2,) and be finite"
+                )
+        force_threshold = float(self.config.get("contact_force_threshold_n", 0.1))
+        has_contact = bool(np.max(forces) >= force_threshold)
+        self._ever_contact = self._ever_contact or has_contact
+        self._ever_lifted = self._ever_lifted or bool(cube_lifted)
+        target_distance = None
+        if target_position_m is not None:
+            target = np.asarray(target_position_m, dtype=np.float64)
+            if target.shape != (3,) or not np.isfinite(target).all():
+                raise ValueError(
+                    "recovery trigger target position must have shape (3,) and be finite"
+                )
+            target_distance = float(np.linalg.norm(obj[:2] - target[:2]))
+            self._ever_near_target = (
+                self._ever_near_target
+                or bool(cube_in_target)
+                or (target_distance <= float(self.config.get("target_distance_threshold_m", 0.04)))
+            )
+        failure_class = self.config.get("failure_class")
+        tracked_distance = (
+            target_distance
+            if failure_class in {"transport_drift", "place_release_failure"}
+            and target_distance is not None
+            else distance
+        )
+        self._distance_history.append(float(tracked_distance))
         safety_event = hard_range_violation_count > 0 or command_slew_limited_count > 0
         self._consecutive_safety = self._consecutive_safety + 1 if safety_event else 0
-        if cube_lifted and self.config["require_not_lifted"]:
+        if cube_lifted and self.config.get("require_not_lifted", False):
             return None
         if policy_step + 1 < int(self.config["minimum_policy_steps"]):
             return None
@@ -144,8 +222,66 @@ class RecoveryTriggerDetector:
             "policy_step": int(policy_step),
             "gripper_object_distance_m": distance,
             "cube_lifted": bool(cube_lifted),
+            "ever_lifted": self._ever_lifted,
+            "has_contact": has_contact,
+            "contact_forces_n": forces.tolist(),
+            "cube_in_target": bool(cube_in_target),
+            "gripper_released": bool(gripper_released),
+            "cube_stable": bool(cube_stable),
             "consecutive_safety_event_steps": self._consecutive_safety,
         }
+        if target_distance is not None:
+            common["object_target_distance_m"] = target_distance
+        if failure_class is not None:
+            common["object_displacement_m"] = float(
+                np.linalg.norm(obj - self._initial_object_position)
+            )
+            stage = self.config["stage"]
+            stage_admitted = {
+                "approach_miss": not self._ever_contact,
+                "contact_without_lift": self._ever_contact and not self._ever_lifted,
+                "transport_drift": self._ever_lifted,
+                "place_release_failure": self._ever_near_target,
+            }.get(failure_class)
+            if stage_admitted is None:
+                raise ValueError(f"unsupported recovery trigger class: {failure_class}")
+            if stage_admitted and self._consecutive_safety >= int(
+                self.config["consecutive_safety_event_steps"]
+            ):
+                return {
+                    **common,
+                    "failure_class": failure_class,
+                    "stage": stage,
+                    "reason": "consecutive_action_safety_intervention",
+                }
+            deadline = policy_step + 1 >= int(self.config["maximum_policy_steps_before_handoff"])
+            progress = None
+            if len(self._distance_history) == self._distance_history.maxlen:
+                progress = float(self._distance_history[0] - self._distance_history[-1])
+            stalled = progress is not None and progress < float(self.config["minimum_progress_m"])
+            if failure_class == "approach_miss":
+                ready = not self._ever_contact and (stalled or deadline)
+            elif failure_class == "contact_without_lift":
+                ready = self._ever_contact and not self._ever_lifted and (stalled or deadline)
+            elif failure_class == "transport_drift":
+                ready = self._ever_lifted and ((not has_contact) or stalled or deadline)
+            elif failure_class == "place_release_failure":
+                ready = (
+                    self._ever_near_target
+                    and not (cube_in_target and gripper_released and cube_stable)
+                    and (stalled or deadline)
+                )
+            if ready:
+                result = {
+                    **common,
+                    "failure_class": failure_class,
+                    "stage": stage,
+                    "reason": "stage_progress_stall" if stalled else "stage_handoff_deadline",
+                }
+                if progress is not None:
+                    result["window_progress_m"] = progress
+                return result
+            return None
         if self._consecutive_safety >= int(self.config["consecutive_safety_event_steps"]):
             return {
                 **common,

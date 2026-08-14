@@ -67,6 +67,34 @@ def config():
     return json.loads((ROOT / "configs/recovery/so101_v011_recovery20.json").read_text())
 
 
+def multistage_config():
+    return json.loads((ROOT / "configs/recovery/so101_v012_recovery80.json").read_text())
+
+
+def multistage_source_plan():
+    source = source_plan()
+    expanded = []
+    index = 0
+    for object_id in ("red-40mm-40g", "blue-30mm-30g"):
+        for yaw_id in multistage_config()["yaw_strata"]:
+            for region in ("core", "middle", "outer"):
+                for ordinal in range(8):
+                    expanded.append(
+                        {
+                            "trial_id": f"v012-source-{index:04d}",
+                            "variation_id": f"v012-variation-{index:04d}",
+                            "seed": 50_000 + index,
+                            "split": "train",
+                            "object_variant_id": object_id,
+                            "yaw_stratum_id": yaw_id,
+                            "region_band": region,
+                        }
+                    )
+                    index += 1
+    source["trials"] = expanded
+    return source
+
+
 def test_recovery20_is_balanced_training_only_and_deterministic(tmp_path):
     first, runtime = build_recovery_plan(
         source_plan(), config(), campaign_id="recovery-test", scene_count=20
@@ -103,10 +131,7 @@ def test_recovery20_is_balanced_training_only_and_deterministic(tmp_path):
             "trial_id": trial["trial_id"],
             "variation_id": trial["variation_id"],
         }
-    assert all(
-        sorted(values) == list(range(len(values)))
-        for values in quota_ordinals.values()
-    )
+    assert all(sorted(values) == list(range(len(values))) for values in quota_ordinals.values())
     assert validate_campaign_semantics(first["campaign_contract"]) == []
     runtime_path = tmp_path / "runtime.json"
     runtime_path.write_text(json.dumps(runtime))
@@ -122,6 +147,114 @@ def test_recovery_pilot_is_six_distinct_train_scenes():
     assert len({row["source_scene_id"] for row in runtime["scenes"]}) == 6
     assert {row["source_partition"] for row in runtime["scenes"]} == {"train"}
     assert {trial["quota_ordinal"] for trial in plan["trials"]} == {0}
+
+
+def test_v012_multistage_recovery80_has_exact_marginals_and_runtime_v2(tmp_path):
+    plan, runtime = build_recovery_plan(
+        multistage_source_plan(),
+        multistage_config(),
+        campaign_id="recovery80-test",
+        scene_count=80,
+    )
+    assert len(plan["trials"]) == len(runtime["scenes"]) == 80
+    assert plan["coverage"] == {
+        "objects": {"blue-30mm-30g": 40, "red-40mm-40g": 40},
+        "recovery_triggers": {
+            "approach_miss": 20,
+            "contact_without_lift": 20,
+            "place_release_failure": 20,
+            "transport_drift": 20,
+        },
+        "regions": {"core": 20, "middle": 40, "outer": 20},
+        "splits": {"train": 72, "validation": 8},
+        "yaw_strata": {
+            "yaw00_18": 16,
+            "yaw18_36": 16,
+            "yaw36_54": 16,
+            "yaw54_72": 16,
+            "yaw72_90": 16,
+        },
+    }
+    for trigger_class in plan["coverage"]["recovery_triggers"]:
+        rows = [row for row in plan["trials"] if row["recovery_trigger_class"] == trigger_class]
+        assert len(rows) == 20
+        assert {
+            key: sum(row["object_variant_id"] == key for row in rows)
+            for key in multistage_config()["objects"]
+        } == {
+            "red-40mm-40g": 10,
+            "blue-30mm-30g": 10,
+        }
+        assert {
+            key: sum(row["region_band"] == key for row in rows)
+            for key in ("core", "middle", "outer")
+        } == {
+            "core": 5,
+            "middle": 10,
+            "outer": 5,
+        }
+        assert sum(row["split"] == "validation" for row in rows) == 2
+    assert runtime["schema_version"] == "farpoint.recovery-runtime.v2"
+    assert runtime["task_context"]["target"] == multistage_source_plan()["target"]
+    assert {row["trigger_class"] for row in runtime["scenes"]} == set(
+        multistage_config()["trigger_classes"]
+    )
+    runtime_path = tmp_path / "runtime-v2.json"
+    runtime_path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(runtime_path) == runtime
+
+
+def test_v012_pilot16_covers_every_trigger_object_region_and_yaw():
+    plan, _runtime = build_recovery_plan(
+        multistage_source_plan(),
+        multistage_config(),
+        campaign_id="recovery16-pilot",
+        scene_count=16,
+    )
+    assert plan["campaign_contract"]["campaign_kind"] == "pilot"
+    assert set(plan["coverage"]["recovery_triggers"].values()) == {4}
+    assert set(plan["coverage"]["objects"]) == set(multistage_config()["objects"])
+    assert set(plan["coverage"]["regions"]) == {"core", "middle", "outer"}
+    assert set(plan["coverage"]["yaw_strata"]) == set(multistage_config()["yaw_strata"])
+
+
+def test_v012_continuation_preserves_trigger_class_and_validation_split(tmp_path):
+    parent, _runtime = build_recovery_plan(
+        multistage_source_plan(),
+        multistage_config(),
+        campaign_id="recovery80-continuation",
+        scene_count=80,
+    )
+    source = next(row for row in parent["trials"] if row["split"] == "validation")
+    request = {
+        "request_kind": "carryover",
+        "source_segment_id": "segment-000",
+        "source_variation_id": source["variation_id"],
+        "quota": {
+            "object_variant_id": source["object_variant_id"],
+            "yaw_stratum_id": source["yaw_stratum_id"],
+            "region_band": source["region_band"],
+            "split": "validation",
+            "quota_ordinal": 0,
+        },
+        "replacement_index": source.get("replacement_index", 0),
+        "variation_seed": source["seed"],
+        "prior_attempt_count": 1,
+        "remaining_attempt_count": 2,
+    }
+    continuation, runtime = build_recovery_continuation_plan(
+        parent,
+        multistage_config(),
+        parent["campaign_contract"],
+        [request],
+        segment_id="segment-001",
+    )
+    assert continuation["trials"][0]["recovery_trigger_class"] == source["recovery_trigger_class"]
+    assert continuation["coverage"]["splits"] == {"validation": 1}
+    assert runtime["scenes"][0]["trigger_class"] == source["recovery_trigger_class"]
+    path = tmp_path / "runtime-v2-continuation.json"
+    path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(path) == runtime
 
 
 def test_initialize_recovery_campaign_is_immutable(tmp_path):
@@ -201,8 +334,7 @@ def test_recovery_continuation_preserves_scene_and_remaining_attempt_budget(tmp_
         request["quota"]["quota_ordinal"] for request in requests
     ]
     assert [
-        row["continuation_provenance"]["source_quota_ordinal"]
-        for row in continuation["trials"]
+        row["continuation_provenance"]["source_quota_ordinal"] for row in continuation["trials"]
     ] == [row["quota_ordinal"] for row in parent["trials"]]
     assert runtime["runtime_id"].endswith("segment-001-act-handoff")
     runtime_path = tmp_path / "runtime.json"
@@ -275,6 +407,7 @@ def test_recovery_replacement_materializes_new_training_scene_deterministically(
         "prior_attempt_count": 0,
         "remaining_attempt_count": 3,
     }
+
     def materialize(row):
         return materialize_v010_recovery_replacement_trial(
             formal_config,
@@ -357,6 +490,6 @@ def test_recovery_replacement_materializer_rejects_non_training_quota():
             ],
         )
     except ValueError as error:
-        assert "training-only" in str(error)
+        assert "split is not allowed" in str(error)
     else:
         raise AssertionError("recovery materializer accepted a non-training quota")

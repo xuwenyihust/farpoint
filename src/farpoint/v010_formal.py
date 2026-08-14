@@ -335,6 +335,7 @@ def materialize_v010_recovery_replacement_trial(
     *,
     segment_id: str,
     source_plan_sha256: str,
+    allowed_splits: tuple[str, ...] = ("train",),
 ) -> dict[str, Any]:
     """Materialize one deterministic training-scene replacement.
 
@@ -357,8 +358,11 @@ def materialize_v010_recovery_replacement_trial(
     if replacement_index < 1:
         raise ValueError("replacement scene requires a positive replacement index")
     quota = request.get("quota") or {}
-    if quota.get("split") != "train":
-        raise ValueError("recovery replacements must remain training-only")
+    if quota.get("split") not in allowed_splits:
+        raise ValueError(
+            "recovery replacement split is not allowed; expected "
+            + ", ".join(allowed_splits)
+        )
 
     base = _formalized_base(config, base_config, authorization)
     yaw_rows = {row["yaw_stratum_id"]: row for row in base["yaw_strata"]}
@@ -372,7 +376,7 @@ def materialize_v010_recovery_replacement_trial(
         object_id=str(quota["object_variant_id"]),
         yaw_row=yaw_rows[yaw_id],
         region_band=str(quota["region_band"]),
-        split="train",
+        split=str(quota["split"]),
         quota_ordinal=int(quota["quota_ordinal"]),
         replacement_index=replacement_index,
         seed=int(request["variation_seed"]),

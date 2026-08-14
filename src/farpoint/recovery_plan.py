@@ -50,6 +50,125 @@ def _assign_campaign_quota_ordinals(
         counts[quota] += 1
 
 
+def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, str]]:
+    """Expand a config-owned marginal policy into deterministic recovery slots."""
+    trigger_classes = tuple(config.get("trigger_classes") or ())
+    objects = tuple(config.get("objects") or ())
+    yaw_strata = tuple(config.get("yaw_strata") or ())
+    policy = config.get("quota_policy") or {}
+    region_slots = tuple(policy.get("region_slots") or ())
+    validation_slots = {
+        tuple(int(value) for value in pair) for pair in (policy.get("validation_slots") or ())
+    }
+    pilot_per_class = int(policy.get("pilot_per_trigger_class", 0))
+    full_count = len(trigger_classes) * len(yaw_strata) * len(region_slots)
+    pilot_count = len(trigger_classes) * pilot_per_class
+    if scene_count not in (pilot_count, full_count):
+        raise ValueError(f"multi-stage recovery scene_count must be {pilot_count} or {full_count}")
+    if not trigger_classes or set(trigger_classes) != set(config.get("trigger_profiles") or {}):
+        raise ValueError("trigger classes and profiles must match exactly")
+    if len(objects) < 2 or not yaw_strata or not region_slots:
+        raise ValueError("multi-stage recovery quota axes must not be empty")
+    if any(len(pair) != 2 for pair in validation_slots):
+        raise ValueError("validation slots must be yaw/region-slot pairs")
+    requests: list[dict[str, str]] = []
+    for class_index, trigger_class in enumerate(trigger_classes):
+        class_requests = []
+        for yaw_index, yaw_id in enumerate(yaw_strata):
+            for slot_index, region in enumerate(region_slots):
+                object_id = objects[(yaw_index + slot_index + class_index) % len(objects)]
+                split = "validation" if (yaw_index, slot_index) in validation_slots else "train"
+                class_requests.append(
+                    {
+                        "trigger_class": trigger_class,
+                        "object_variant_id": object_id,
+                        "yaw_stratum_id": yaw_id,
+                        "region_band": region,
+                        "split": split,
+                    }
+                )
+        if scene_count == pilot_count:
+            pilot_indices = tuple(
+                (class_index + len(yaw_strata) * offset) % len(class_requests)
+                for offset in range(pilot_per_class)
+            )
+            requests.extend(class_requests[index] for index in pilot_indices)
+        else:
+            requests.extend(class_requests)
+    if scene_count == full_count:
+        declared_objects = policy.get("objects") or {}
+        declared_regions = policy.get("regions") or {}
+        declared_splits = policy.get("splits") or {}
+        declared_yaw_each = int(policy.get("yaw_strata_each", -1))
+        declared_per_class = int(policy.get("per_trigger_class", -1))
+        for trigger_class in trigger_classes:
+            rows = [row for row in requests if row["trigger_class"] == trigger_class]
+            observed = {
+                "objects": Counter(row["object_variant_id"] for row in rows),
+                "regions": Counter(row["region_band"] for row in rows),
+                "splits": Counter(row["split"] for row in rows),
+                "yaw": Counter(row["yaw_stratum_id"] for row in rows),
+            }
+            if len(rows) != declared_per_class:
+                raise ValueError("declared per-trigger recovery quota does not match slots")
+            if observed["objects"] != Counter(declared_objects):
+                raise ValueError("declared object recovery quotas do not match slots")
+            if observed["regions"] != Counter(declared_regions):
+                raise ValueError("declared region recovery quotas do not match slots")
+            if observed["splits"] != Counter(declared_splits):
+                raise ValueError("declared split recovery quotas do not match slots")
+            if set(observed["yaw"].values()) != {declared_yaw_each}:
+                raise ValueError("declared yaw recovery quotas do not match slots")
+    return requests
+
+
+def _runtime_payload(
+    config: dict[str, Any],
+    source_plan: dict[str, Any],
+    selected: list[dict[str, Any]],
+    *,
+    runtime_id: str,
+    source_rollout_id: str,
+) -> dict[str, Any]:
+    common = {
+        "runtime_id": runtime_id,
+        "source_policy": deepcopy(config["source_policy"]),
+        "control": deepcopy(config["control"]),
+        "oracle_handoff_profile": deepcopy(config["oracle_handoff_profile"]),
+    }
+    if config.get("schema_version") == "farpoint.recovery-plan-config.v2":
+        return {
+            "schema_version": "farpoint.recovery-runtime.v2",
+            **common,
+            "trigger_profiles": deepcopy(config["trigger_profiles"]),
+            "task_context": {"target": deepcopy(source_plan["target"])},
+            "scenes": [
+                {
+                    "variation_id": trial["variation_id"],
+                    "source_rollout_id": source_rollout_id,
+                    "source_scene_id": trial["recovery_source"].get("trial_id", trial["trial_id"]),
+                    "source_partition": "train",
+                    "trigger_class": trial["recovery_trigger_class"],
+                }
+                for trial in selected
+            ],
+        }
+    return {
+        "schema_version": "farpoint.recovery-runtime.v1",
+        **common,
+        "trigger": deepcopy(config["trigger"]),
+        "scenes": [
+            {
+                "variation_id": trial["variation_id"],
+                "source_rollout_id": source_rollout_id,
+                "source_scene_id": trial["trial_id"],
+                "source_partition": "train",
+            }
+            for trial in selected
+        ],
+    }
+
+
 def build_recovery_plan(
     source_plan: dict[str, Any],
     config: dict[str, Any],
@@ -58,14 +177,25 @@ def build_recovery_plan(
     scene_count: int = 20,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Select balanced nominal train scenes and bind their ACT handoff runtime."""
-    if scene_count not in (6, 20):
-        raise ValueError("recovery plan scene_count must be 6 or 20")
-    if config.get("target_successes") != 20:
-        raise ValueError("v0.1.1 recovery config must target 20 successes")
-    if config.get("yaw_region_pairs") != {
-        key: list(value) for key, value in REGION_PATTERN.items()
-    }:
-        raise ValueError("recovery yaw/region allocation does not match the frozen policy")
+    multistage = config.get("schema_version") == "farpoint.recovery-plan-config.v2"
+    if multistage:
+        expected = (
+            len(config.get("trigger_classes") or ())
+            * len(config.get("yaw_strata") or ())
+            * len((config.get("quota_policy") or {}).get("region_slots") or ())
+        )
+        if config.get("target_successes") != expected:
+            raise ValueError("multi-stage recovery target does not match its quota slots")
+        slot_requests = _v012_requests(config, scene_count)
+    else:
+        if scene_count not in (6, 20):
+            raise ValueError("recovery plan scene_count must be 6 or 20")
+        if config.get("target_successes") != 20:
+            raise ValueError("v0.1.1 recovery config must target 20 successes")
+        if config.get("yaw_region_pairs") != {
+            key: list(value) for key, value in REGION_PATTERN.items()
+        }:
+            raise ValueError("recovery yaw/region allocation does not match the frozen policy")
     source_trials = [
         trial for trial in source_plan.get("trials", []) if trial.get("split") == "train"
     ]
@@ -76,17 +206,28 @@ def build_recovery_plan(
     if any(trial["trial_id"] in holdout_ids for trial in source_trials):
         raise ValueError("source train trials overlap rollout holdouts")
 
-    requests = []
-    for object_id in config["objects"]:
-        for yaw_id, regions in REGION_PATTERN.items():
-            for region in regions:
-                requests.append((object_id, yaw_id, region))
-    if scene_count == 6:
-        requests = [requests[index] for index in (0, 3, 8, 10, 13, 18)]
+    if not multistage:
+        slot_requests = []
+        for object_id in config["objects"]:
+            for yaw_id, regions in REGION_PATTERN.items():
+                for region in regions:
+                    slot_requests.append(
+                        {
+                            "object_variant_id": object_id,
+                            "yaw_stratum_id": yaw_id,
+                            "region_band": region,
+                            "split": "train",
+                        }
+                    )
+        if scene_count == 6:
+            slot_requests = [slot_requests[index] for index in (0, 3, 8, 10, 13, 18)]
 
     selected = []
     used = set()
-    for object_id, yaw_id, region in requests:
+    for request in slot_requests:
+        object_id = request["object_variant_id"]
+        yaw_id = request["yaw_stratum_id"]
+        region = request["region_band"]
         candidates = [
             trial
             for trial in source_trials
@@ -98,11 +239,21 @@ def build_recovery_plan(
         if not candidates:
             raise ValueError(f"source plan has no train scene for {object_id}/{yaw_id}/{region}")
         chosen = min(candidates, key=lambda row: _rank(int(config["selection_seed"]), row))
-        selected.append(deepcopy(chosen))
+        chosen = deepcopy(chosen)
+        chosen["recovery_source"] = {
+            "plan_sha256": source_plan["plan_sha256"],
+            "trial_id": chosen["trial_id"],
+            "variation_id": chosen["variation_id"],
+            **(
+                {"quota_ordinal": int(chosen["quota_ordinal"])} if "quota_ordinal" in chosen else {}
+            ),
+        }
+        chosen["split"] = request["split"]
+        if multistage:
+            chosen["recovery_trigger_class"] = request["trigger_class"]
+        selected.append(chosen)
         used.add(chosen["trial_id"])
-    _assign_campaign_quota_ordinals(
-        selected, source_plan_sha256=source_plan["plan_sha256"]
-    )
+    _assign_campaign_quota_ordinals(selected, source_plan_sha256=source_plan["plan_sha256"])
 
     quotas = []
     counts = Counter(
@@ -110,7 +261,7 @@ def build_recovery_plan(
             trial["object_variant_id"],
             trial["yaw_stratum_id"],
             trial["region_band"],
-            "train",
+            trial["split"],
         )
         for trial in selected
     )
@@ -127,11 +278,16 @@ def build_recovery_plan(
     campaign = create_campaign(
         {
             "campaign_id": campaign_id,
-            "lineage_id": "farpoint-so101-v011-recovery",
+            "lineage_id": (config["lineage_id"] if multistage else "farpoint-so101-v011-recovery"),
             "task_id": source_plan["task_id"],
             "campaign_version": config["config_version"],
-            "campaign_kind": "pilot" if scene_count == 6 else "formal",
-            "target": {"successful_episodes": scene_count, "splits": {"train": scene_count}},
+            "campaign_kind": (
+                "pilot" if scene_count != int(config["target_successes"]) else "formal"
+            ),
+            "target": {
+                "successful_episodes": scene_count,
+                "splits": dict(sorted(Counter(row["split"] for row in selected).items())),
+            },
             "quotas": quotas,
             "variation_contract": {
                 "kind": "live_policy_recovery",
@@ -144,7 +300,13 @@ def build_recovery_plan(
                 "global_attempt_limit": None,
                 "replacement_policy": "same_quota_new_variation_seed",
             },
-            "watchdog_policy": {"profile_id": "so101-v011-recovery-watchdog-v1"},
+            "watchdog_policy": {
+                "profile_id": (
+                    config["watchdog_profile_id"]
+                    if multistage
+                    else "so101-v011-recovery-watchdog-v1"
+                )
+            },
             "rollout_holdout": {
                 "policy": "inherit_v010_holdout_excluded",
                 "source_plan_sha256": source_plan["plan_sha256"],
@@ -179,27 +341,26 @@ def build_recovery_plan(
             "objects": dict(sorted(Counter(row["object_variant_id"] for row in selected).items())),
             "regions": dict(sorted(Counter(row["region_band"] for row in selected).items())),
             "yaw_strata": dict(sorted(Counter(row["yaw_stratum_id"] for row in selected).items())),
-            "splits": {"train": scene_count},
+            "splits": dict(sorted(Counter(row["split"] for row in selected).items())),
+            **(
+                {
+                    "recovery_triggers": dict(
+                        sorted(Counter(row["recovery_trigger_class"] for row in selected).items())
+                    )
+                }
+                if multistage
+                else {}
+            ),
         },
     }
     plan["plan_sha256"] = canonical_sha256(plan)
-    runtime = {
-        "schema_version": "farpoint.recovery-runtime.v1",
-        "runtime_id": f"{campaign_id}-act-handoff",
-        "source_policy": deepcopy(config["source_policy"]),
-        "control": deepcopy(config["control"]),
-        "trigger": deepcopy(config["trigger"]),
-        "oracle_handoff_profile": deepcopy(config["oracle_handoff_profile"]),
-        "scenes": [
-            {
-                "variation_id": trial["variation_id"],
-                "source_rollout_id": f"{campaign_id}-pre-handoff",
-                "source_scene_id": trial["trial_id"],
-                "source_partition": "train",
-            }
-            for trial in selected
-        ],
-    }
+    runtime = _runtime_payload(
+        config,
+        source_plan,
+        selected,
+        runtime_id=f"{campaign_id}-act-handoff",
+        source_rollout_id=f"{campaign_id}-pre-handoff",
+    )
     return plan, runtime
 
 
@@ -223,18 +384,26 @@ def build_recovery_continuation_plan(
         raise ValueError("parent plan is not an SO-101 recovery plan")
     if parent_plan.get("campaign_sha256") != campaign.get("campaign_sha256"):
         raise ValueError("parent plan does not belong to the recovery campaign")
-    if config.get("target_successes") != 20:
-        raise ValueError("v0.1.1 recovery config must target 20 successes")
-    if config.get("yaw_region_pairs") != {
-        key: list(value) for key, value in REGION_PATTERN.items()
-    }:
-        raise ValueError("recovery yaw/region allocation does not match the frozen policy")
+    multistage = config.get("schema_version") == "farpoint.recovery-plan-config.v2"
+    if multistage:
+        expected = (
+            len(config.get("trigger_classes") or ())
+            * len(config.get("yaw_strata") or ())
+            * len((config.get("quota_policy") or {}).get("region_slots") or ())
+        )
+        if config.get("target_successes") != expected:
+            raise ValueError("multi-stage recovery target does not match its quota slots")
+    else:
+        if config.get("target_successes") != 20:
+            raise ValueError("v0.1.1 recovery config must target 20 successes")
+        if config.get("yaw_region_pairs") != {
+            key: list(value) for key, value in REGION_PATTERN.items()
+        }:
+            raise ValueError("recovery yaw/region allocation does not match the frozen policy")
     if not requests:
         raise ValueError("recovery continuation requires at least one request")
 
-    by_variation = {
-        trial["variation_id"]: trial for trial in parent_plan.get("trials") or []
-    }
+    by_variation = {trial["variation_id"]: trial for trial in parent_plan.get("trials") or []}
     if len(by_variation) != len(parent_plan.get("trials") or []):
         raise ValueError("parent recovery variation ids must be unique")
     trials = []
@@ -257,9 +426,7 @@ def build_recovery_continuation_plan(
         if request_kind == "carryover":
             if int(source["seed"]) != int(request["variation_seed"]):
                 raise ValueError("carryover recovery seed does not match source trial")
-            if int(source.get("replacement_index", 0)) != int(
-                request.get("replacement_index", 0)
-            ):
+            if int(source.get("replacement_index", 0)) != int(request.get("replacement_index", 0)):
                 raise ValueError("carryover recovery replacement index mismatch")
             trial = deepcopy(source)
             source_quota_ordinal = int(trial["quota_ordinal"])
@@ -275,6 +442,8 @@ def build_recovery_continuation_plan(
                 raise ValueError("replacement materializer reused the source variation id")
             if int(trial.get("seed", -1)) == int(source.get("seed", -1)):
                 raise ValueError("replacement materializer reused the source seed")
+            if multistage:
+                trial["recovery_trigger_class"] = source["recovery_trigger_class"]
         else:
             raise ValueError("recovery continuation request has an invalid kind")
 
@@ -289,9 +458,7 @@ def build_recovery_continuation_plan(
             raise ValueError("materialized recovery scene changed its requested quota")
         if int(trial.get("seed", -1)) != int(request["variation_seed"]):
             raise ValueError("materialized recovery scene seed does not match request")
-        if int(trial.get("replacement_index", 0)) != int(
-            request.get("replacement_index", 0)
-        ):
+        if int(trial.get("replacement_index", 0)) != int(request.get("replacement_index", 0)):
             raise ValueError("materialized recovery replacement index mismatch")
         trial["prior_attempt_count"] = int(request["prior_attempt_count"])
         trial["continuation_provenance"] = {
@@ -300,11 +467,12 @@ def build_recovery_continuation_plan(
             "source_variation_id": source_id,
             "source_quota_ordinal": source_quota_ordinal,
         }
+        if multistage and not trial.get("recovery_trigger_class"):
+            raise ValueError("multi-stage recovery continuation lost its trigger class")
         trials.append(trial)
 
     holdout_seeds = {
-        int(scene["seed"])
-        for scene in (parent_plan.get("rollout_holdout") or {}).get("scenes", [])
+        int(scene["seed"]) for scene in (parent_plan.get("rollout_holdout") or {}).get("scenes", [])
     }
     trial_seeds = [int(trial["seed"]) for trial in trials]
     if len(trial_seeds) != len(set(trial_seeds)):
@@ -323,43 +491,36 @@ def build_recovery_continuation_plan(
     plan["collection"] = {
         "kind": "self_healing_campaign_segment",
         "required_successes": len(trials),
-        "maximum_attempts": sum(
-            int(request["remaining_attempt_count"]) for request in requests
-        ),
+        "maximum_attempts": sum(int(request["remaining_attempt_count"]) for request in requests),
         "attempt_policy": deepcopy(campaign["attempt_policy"]),
     }
     plan["coverage"] = {
-        "objects": dict(
-            sorted(Counter(row["object_variant_id"] for row in trials).items())
-        ),
+        "objects": dict(sorted(Counter(row["object_variant_id"] for row in trials).items())),
         "regions": dict(sorted(Counter(row["region_band"] for row in trials).items())),
-        "yaw_strata": dict(
-            sorted(Counter(row["yaw_stratum_id"] for row in trials).items())
-        ),
+        "yaw_strata": dict(sorted(Counter(row["yaw_stratum_id"] for row in trials).items())),
         "splits": dict(sorted(Counter(row["split"] for row in trials).items())),
+        **(
+            {
+                "recovery_triggers": dict(
+                    sorted(Counter(row["recovery_trigger_class"] for row in trials).items())
+                )
+            }
+            if multistage
+            else {}
+        ),
     }
     plan["replacement_requests"] = deepcopy(requests)
     plan.pop("plan_sha256", None)
     plan["plan_sha256"] = canonical_sha256(plan)
     validate_replacement_plan(requests, plan)
 
-    runtime = {
-        "schema_version": "farpoint.recovery-runtime.v1",
-        "runtime_id": f"{campaign['campaign_id']}-{segment_id}-act-handoff",
-        "source_policy": deepcopy(config["source_policy"]),
-        "control": deepcopy(config["control"]),
-        "trigger": deepcopy(config["trigger"]),
-        "oracle_handoff_profile": deepcopy(config["oracle_handoff_profile"]),
-        "scenes": [
-            {
-                "variation_id": trial["variation_id"],
-                "source_rollout_id": f"{campaign['campaign_id']}-pre-handoff",
-                "source_scene_id": trial["trial_id"],
-                "source_partition": "train",
-            }
-            for trial in trials
-        ],
-    }
+    runtime = _runtime_payload(
+        config,
+        parent_plan,
+        trials,
+        runtime_id=f"{campaign['campaign_id']}-{segment_id}-act-handoff",
+        source_rollout_id=f"{campaign['campaign_id']}-pre-handoff",
+    )
     return plan, runtime
 
 

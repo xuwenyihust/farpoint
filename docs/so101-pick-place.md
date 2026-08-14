@@ -652,6 +652,31 @@ The candidate manifest and export selection are emitted only after the full
 episode audit passes. A failed audit leaves only the JSON and Markdown
 validation reports in the new output directory.
 
+## Multi-stage live recovery (v0.1.2)
+
+`configs/recovery/so101_v012_recovery80.json` defines the recovery experiment;
+the reusable planner expands only its declared axes and marginal policy. The
+80-scene formal plan contains 20 scenes for each of `approach_miss`,
+`contact_without_lift`, `transport_drift`, and `place_release_failure`. Within
+each class it balances both object variants, all yaw strata, the three feasible
+region bands, and an 18/2 train/validation split. The 16-scene pilot samples all
+four trigger classes before a formal campaign may start.
+
+Recovery runtime v2 assigns one trigger class to each immutable scene. ACT runs
+closed loop until measured state admits that class; the collector then hashes
+the complete physics snapshot and hands the unchanged scene to the Oracle. A
+scene that never reaches its assigned stage is a failed attempt, not a relabeled
+recovery. Continuations preserve the trigger class, quota, split, parent
+manifest hash, and three-attempt budget. Runtime v1 remains readable for the
+published v0.1.1 pre-lift episodes.
+
+The v0.1.2 dataset composition target is 200 nominal demonstrations, the 20
+published pre-lift recoveries, and 80 new multi-stage recoveries. Export must
+place all 270 training episodes before the 30 validation episodes so the frozen
+LeRobot split is contiguous and recovery demonstrations are actually sampled
+during ACT training. Dataset publication remains a separate owner-approved
+operation.
+
 ## Dashboard lifecycle
 
 Episode IDs include the collection ID as well as the attempt ID, so two

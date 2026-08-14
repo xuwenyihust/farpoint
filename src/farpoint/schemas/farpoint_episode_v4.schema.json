@@ -180,7 +180,7 @@
           "required": ["trigger_id", "failure_class", "control_step", "stage", "evidence"],
           "properties": {
             "trigger_id": {"type": "string", "minLength": 1},
-            "failure_class": {"enum": ["grasp_alignment", "contact_without_lift", "dropped_object", "transport_drift", "place_alignment", "release_instability", "action_saturation", "progress_stall"]},
+            "failure_class": {"enum": ["grasp_alignment", "contact_without_lift", "dropped_object", "transport_drift", "place_alignment", "release_instability", "action_saturation", "progress_stall", "approach_miss", "place_release_failure"]},
             "control_step": {"type": "integer", "minimum": 0},
             "stage": {"type": "string", "minLength": 1},
             "evidence": {"type": "object", "minProperties": 1}
