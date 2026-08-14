@@ -4,6 +4,7 @@ from pathlib import Path
 from farpoint.campaign import validate_campaign_semantics
 from farpoint.recovery_plan import (
     REGION_PATTERN,
+    build_recovery_continuation_plan,
     build_recovery_plan,
     initialize_recovery_campaign,
 )
@@ -133,3 +134,90 @@ def test_initialize_recovery_campaign_is_immutable(tmp_path):
         pass
     else:
         raise AssertionError("immutable campaign initialization accepted overwrite")
+
+
+def test_recovery_continuation_preserves_scene_and_remaining_attempt_budget(tmp_path):
+    parent, _ = build_recovery_plan(
+        source_plan(), config(), campaign_id="recovery-continuation", scene_count=20
+    )
+    requests = []
+    for index, source in enumerate(parent["trials"]):
+        prior = 1 if index < 9 else 0
+        requests.append(
+            {
+                "request_kind": "carryover",
+                "source_segment_id": "segment-000",
+                "source_variation_id": source["variation_id"],
+                "quota": {
+                    "object_variant_id": source["object_variant_id"],
+                    "yaw_stratum_id": source["yaw_stratum_id"],
+                    "region_band": source["region_band"],
+                    "split": source["split"],
+                    "quota_ordinal": source["quota_ordinal"],
+                },
+                "replacement_index": source.get("replacement_index", 0),
+                "variation_seed": source["seed"],
+                "prior_attempt_count": prior,
+                "remaining_attempt_count": 3 - prior,
+            }
+        )
+
+    continuation, runtime = build_recovery_continuation_plan(
+        parent,
+        config(),
+        parent["campaign_contract"],
+        requests,
+        segment_id="segment-001",
+    )
+
+    assert continuation["collection"] == {
+        "kind": "self_healing_campaign_segment",
+        "required_successes": 20,
+        "maximum_attempts": 51,
+        "attempt_policy": parent["campaign_contract"]["attempt_policy"],
+    }
+    assert [row["trial_id"] for row in continuation["trials"]] == [
+        row["trial_id"] for row in parent["trials"]
+    ]
+    assert [row["seed"] for row in continuation["trials"]] == [
+        row["seed"] for row in parent["trials"]
+    ]
+    assert runtime["runtime_id"].endswith("segment-001-act-handoff")
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(runtime_path) == runtime
+
+
+def test_recovery_continuation_rejects_unmaterialized_replacement_seed():
+    parent, _ = build_recovery_plan(
+        source_plan(), config(), campaign_id="recovery-replacement", scene_count=20
+    )
+    source = parent["trials"][0]
+    request = {
+        "request_kind": "replacement",
+        "source_segment_id": "segment-000",
+        "source_variation_id": source["variation_id"],
+        "quota": {
+            "object_variant_id": source["object_variant_id"],
+            "yaw_stratum_id": source["yaw_stratum_id"],
+            "region_band": source["region_band"],
+            "split": source["split"],
+            "quota_ordinal": source["quota_ordinal"],
+        },
+        "replacement_index": 1,
+        "variation_seed": source["seed"] + 1,
+        "prior_attempt_count": 0,
+        "remaining_attempt_count": 3,
+    }
+    try:
+        build_recovery_continuation_plan(
+            parent,
+            config(),
+            parent["campaign_contract"],
+            [request],
+            segment_id="segment-001",
+        )
+    except ValueError as error:
+        assert "new-seed scene materializer" in str(error)
+    else:
+        raise AssertionError("replacement seed was rebound to an old recovery scene")

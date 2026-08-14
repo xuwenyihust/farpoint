@@ -203,6 +203,125 @@ def build_recovery_plan(
     return plan, runtime
 
 
+def build_recovery_continuation_plan(
+    parent_plan: dict[str, Any],
+    config: dict[str, Any],
+    campaign: dict[str, Any],
+    requests: list[dict[str, Any]],
+    *,
+    segment_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Materialize unexhausted recovery variations as an immutable continuation.
+
+    Recovery observations must begin from the exact same frozen scene until its
+    three-attempt budget is exhausted.  New-seed replacement requests need a
+    separate scene sampler and are rejected here instead of silently rebinding a
+    new seed to an old pose.
+    """
+    if parent_plan.get("schema_version") != "farpoint.so101-recovery-plan.v1":
+        raise ValueError("parent plan is not an SO-101 recovery plan")
+    if parent_plan.get("campaign_sha256") != campaign.get("campaign_sha256"):
+        raise ValueError("parent plan does not belong to the recovery campaign")
+    if config.get("target_successes") != 20:
+        raise ValueError("v0.1.1 recovery config must target 20 successes")
+    if config.get("yaw_region_pairs") != {
+        key: list(value) for key, value in REGION_PATTERN.items()
+    }:
+        raise ValueError("recovery yaw/region allocation does not match the frozen policy")
+    if not requests:
+        raise ValueError("recovery continuation requires at least one request")
+
+    by_variation = {
+        trial["variation_id"]: trial for trial in parent_plan.get("trials") or []
+    }
+    if len(by_variation) != len(parent_plan.get("trials") or []):
+        raise ValueError("parent recovery variation ids must be unique")
+    trials = []
+    for request in requests:
+        if request.get("request_kind") != "carryover":
+            raise ValueError(
+                "recovery replacement requests require a new-seed scene materializer"
+            )
+        source_id = request.get("source_variation_id")
+        source = by_variation.get(source_id)
+        if source is None:
+            raise ValueError(f"unknown recovery source variation: {source_id}")
+        quota = request.get("quota") or {}
+        observed_quota = {
+            "object_variant_id": source.get("object_variant_id"),
+            "yaw_stratum_id": source.get("yaw_stratum_id"),
+            "region_band": source.get("region_band"),
+            "split": source.get("split"),
+            "quota_ordinal": source.get("quota_ordinal"),
+        }
+        if observed_quota != quota:
+            raise ValueError("recovery continuation quota does not match source trial")
+        if int(source["seed"]) != int(request["variation_seed"]):
+            raise ValueError("carryover recovery seed does not match source trial")
+        if int(source.get("replacement_index", 0)) != int(
+            request.get("replacement_index", 0)
+        ):
+            raise ValueError("carryover recovery replacement index mismatch")
+        trial = deepcopy(source)
+        trial["prior_attempt_count"] = int(request["prior_attempt_count"])
+        trial["continuation_provenance"] = {
+            "request_kind": "carryover",
+            "source_segment_id": request.get("source_segment_id"),
+            "source_variation_id": source_id,
+        }
+        trials.append(trial)
+
+    from farpoint.campaign_recovery import validate_replacement_plan
+
+    plan = deepcopy(parent_plan)
+    plan["plan_id"] = f"{campaign['campaign_id']}_{segment_id}"
+    plan["config_version"] = config["config_version"]
+    plan["config_sha256"] = canonical_sha256(config)
+    plan["campaign_contract"] = deepcopy(campaign)
+    plan["trials"] = trials
+    plan["collection"] = {
+        "kind": "self_healing_campaign_segment",
+        "required_successes": len(trials),
+        "maximum_attempts": sum(
+            int(request["remaining_attempt_count"]) for request in requests
+        ),
+        "attempt_policy": deepcopy(campaign["attempt_policy"]),
+    }
+    plan["coverage"] = {
+        "objects": dict(
+            sorted(Counter(row["object_variant_id"] for row in trials).items())
+        ),
+        "regions": dict(sorted(Counter(row["region_band"] for row in trials).items())),
+        "yaw_strata": dict(
+            sorted(Counter(row["yaw_stratum_id"] for row in trials).items())
+        ),
+        "splits": dict(sorted(Counter(row["split"] for row in trials).items())),
+    }
+    plan["replacement_requests"] = deepcopy(requests)
+    plan.pop("plan_sha256", None)
+    plan["plan_sha256"] = canonical_sha256(plan)
+    validate_replacement_plan(requests, plan)
+
+    runtime = {
+        "schema_version": "farpoint.recovery-runtime.v1",
+        "runtime_id": f"{campaign['campaign_id']}-{segment_id}-act-handoff",
+        "source_policy": deepcopy(config["source_policy"]),
+        "control": deepcopy(config["control"]),
+        "trigger": deepcopy(config["trigger"]),
+        "oracle_handoff_profile": deepcopy(config["oracle_handoff_profile"]),
+        "scenes": [
+            {
+                "variation_id": trial["variation_id"],
+                "source_rollout_id": f"{campaign['campaign_id']}-pre-handoff",
+                "source_scene_id": trial["trial_id"],
+                "source_partition": "train",
+            }
+            for trial in trials
+        ],
+    }
+    return plan, runtime
+
+
 def initialize_recovery_campaign(
     root: str | Path,
     plan: dict[str, Any],
