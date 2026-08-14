@@ -319,16 +319,43 @@ def _campaign_segment_progress(root: Path, campaign: dict[str, Any]) -> dict[str
                 "manifest_path": str(manifest_path),
             }
         )
-    return {
+    aggregate = {
         "completed_attempts": completed_attempts,
         "successful_episodes": len(selected_quotas),
         "target_successful_episodes": int(
             (campaign.get("target") or {}).get("successful_episodes", 0)
         ),
+        "success_count_source": "segment_manifests",
         "segments": sorted(
             segment_rows, key=lambda row: int(row.get("segment_index") or 0)
         ),
     }
+    report_path = root / "campaign-report.json"
+    if not report_path.is_file():
+        return aggregate
+    try:
+        report = _read_json(report_path)
+        progress = report["progress"]
+        report_successes = int(progress["successful_quotas"])
+        report_target = int(progress["target_successful_episodes"])
+        report_attempts = int(progress["attempted_count"])
+    except (KeyError, OSError, TypeError, ValueError):
+        return aggregate
+    target_successes = aggregate["target_successful_episodes"]
+    report_is_authoritative = (
+        report.get("decision") == "COMPLETE"
+        and not (report.get("errors") or [])
+        and report.get("campaign_id") == campaign.get("campaign_id")
+        and report.get("campaign_sha256") == campaign.get("campaign_sha256")
+        and report_successes == report_target == target_successes
+        and report_attempts == completed_attempts
+        and report_successes <= aggregate["successful_episodes"]
+    )
+    if report_is_authoritative:
+        aggregate["raw_selected_successes"] = aggregate["successful_episodes"]
+        aggregate["successful_episodes"] = report_successes
+        aggregate["success_count_source"] = "complete_campaign_report"
+    return aggregate
 
 
 @dataclass(frozen=True)

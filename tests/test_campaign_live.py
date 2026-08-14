@@ -315,3 +315,119 @@ def test_campaign_dashboard_aggregates_parent_and_continuation_quotas(tmp_path):
     assert row["completed_attempts"] == 2
     assert index.benchmarks(now_unix=100)[0]["campaign_id"] == "formal-aggregate"
     assert len(index.campaign_detail("formal-aggregate")["aggregate"]["segments"]) == 2
+
+
+def test_campaign_dashboard_uses_bound_complete_report_after_exclusions(tmp_path):
+    root = tmp_path / "formal-quality-exclusions"
+    root.mkdir()
+    campaign = _campaign("formal-quality-exclusions", campaign_kind="formal")
+    (root / "campaign.json").write_text(json.dumps(campaign))
+    (root / "status.json").write_text(
+        json.dumps(
+            {
+                "execution_status": "FINISHED",
+                "quality_status": "PASS",
+                "heartbeat_unix": 90.0,
+            }
+        )
+    )
+
+    segments = []
+    for index, ordinal in enumerate((0, 1, 2)):
+        segment_id = f"segment-{index:03d}"
+        destination = root / "segments" / segment_id
+        destination.mkdir(parents=True)
+        trial = {
+            "variation_id": f"variation-{index}",
+            "object_variant_id": "red-40mm-40g",
+            "yaw_stratum_id": "yaw00",
+            "region_band": "core",
+            "split": "train",
+            "quota_ordinal": ordinal,
+        }
+        (destination / "segment.json").write_text(
+            json.dumps(
+                {
+                    "segment_id": segment_id,
+                    "segment_index": index,
+                    "git_commit": f"commit-{index}",
+                }
+            )
+        )
+        (destination / "plan.json").write_text(
+            json.dumps({"plan_sha256": str(index) * 64, "trials": [trial]})
+        )
+        (destination / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "execution_status": "FINISHED",
+                    "quality_status": "PASS",
+                    "attempts": [{"attempt_id": f"attempt-{index}"}],
+                    "selected_variations": {
+                        trial["variation_id"]: f"attempt-{index}"
+                    },
+                }
+            )
+        )
+        segments.append(
+            {
+                "segment": f"segments/{segment_id}/segment.json",
+                "plan": f"segments/{segment_id}/plan.json",
+                "manifest": f"segments/{segment_id}/manifest.json",
+            }
+        )
+    (root / "evidence-index.json").write_text(json.dumps({"segments": segments}))
+    (root / "campaign-report.json").write_text(
+        json.dumps(
+            {
+                "campaign_id": campaign["campaign_id"],
+                "campaign_sha256": campaign["campaign_sha256"],
+                "decision": "COMPLETE",
+                "errors": [],
+                "progress": {
+                    "successful_quotas": 2,
+                    "target_successful_episodes": 2,
+                    "attempted_count": 3,
+                    "segment_count": 3,
+                },
+            }
+        )
+    )
+
+    index = CampaignDashboardIndex([tmp_path])
+    row = index.benchmarks(now_unix=100)[0]
+    assert row["successful_episodes"] == 2
+    assert row["target_successful_episodes"] == 2
+    aggregate = index.campaign_detail(campaign["campaign_id"])["aggregate"]
+    assert aggregate["raw_selected_successes"] == 3
+    assert aggregate["success_count_source"] == "complete_campaign_report"
+
+
+def test_campaign_dashboard_ignores_unbound_complete_report(tmp_path):
+    root = tmp_path / "formal-unbound-report"
+    root.mkdir()
+    campaign = _campaign("formal-unbound-report", campaign_kind="formal")
+    (root / "campaign.json").write_text(json.dumps(campaign))
+    (root / "status.json").write_text(json.dumps({"execution_status": "FINISHED"}))
+    (root / "evidence-index.json").write_text(json.dumps({"segments": []}))
+    (root / "campaign-report.json").write_text(
+        json.dumps(
+            {
+                "campaign_id": campaign["campaign_id"],
+                "campaign_sha256": "0" * 64,
+                "decision": "COMPLETE",
+                "errors": [],
+                "progress": {
+                    "successful_quotas": 2,
+                    "target_successful_episodes": 2,
+                    "attempted_count": 0,
+                },
+            }
+        )
+    )
+
+    aggregate = CampaignDashboardIndex([tmp_path]).campaign_detail(
+        campaign["campaign_id"]
+    )["aggregate"]
+    assert aggregate["successful_episodes"] == 0
+    assert aggregate["success_count_source"] == "segment_manifests"
