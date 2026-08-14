@@ -6,11 +6,12 @@ from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 
 SELECTION_SCHEMA_VERSION = "farpoint.export-selection.v1"
-VALID_SPLITS = {"train", "validation", "test"}
+SPLIT_ORDER = ("train", "validation", "test")
+VALID_SPLITS = set(SPLIT_ORDER)
 
 
 def file_sha256(path: Path) -> str:
@@ -77,5 +78,88 @@ def compose_export_selections(
         "dataset_id": dataset_id,
         "selection_policy": selection_policy,
         "selection_sources": source_records,
+        "episodes": episodes,
+    }
+
+
+def repartition_export_selection(
+    source_path: Path,
+    *,
+    dataset_id: str,
+    selection_policy: str,
+    split_counts: Mapping[str, int],
+    seed: int,
+) -> dict[str, Any]:
+    """Assign dataset splits deterministically without mutating source episodes.
+
+    Raw episode metadata keeps the collection-time split.  Each output entry
+    binds that value as ``source_split`` and carries the independently assigned
+    dataset ``split``.  The SO-101 exporter validates the binding before
+    applying a split override to its exported metadata copy.
+    """
+    if not dataset_id or not selection_policy:
+        raise ValueError("dataset_id and selection_policy must be non-empty")
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError("split assignment seed must be a non-negative integer")
+    if any(not isinstance(split, str) for split in split_counts):
+        raise ValueError("split target names must be strings")
+    unknown = set(split_counts).difference(VALID_SPLITS)
+    if unknown:
+        raise ValueError(f"invalid split targets: {sorted(unknown)}")
+    raw_counts = {split: split_counts.get(split, 0) for split in SPLIT_ORDER}
+    if any(
+        isinstance(count, bool) or not isinstance(count, int) or count < 0
+        for count in raw_counts.values()
+    ):
+        raise ValueError("split targets must be non-negative integers")
+    normalized_counts = dict(raw_counts)
+
+    source = load_export_selection(source_path)
+    if sum(normalized_counts.values()) != len(source["episodes"]):
+        raise ValueError("split targets must sum to the source episode count")
+
+    ranked = []
+    for index, episode in enumerate(source["episodes"]):
+        trial_id = str(episode.get("trial_id") or "")
+        episode_dir = str(episode.get("episode_dir") or "")
+        source_split = episode.get("split")
+        if not trial_id or not episode_dir or source_split not in VALID_SPLITS:
+            raise ValueError(f"source episode {index} has invalid identity or split")
+        material = f"{seed}:{trial_id}:{Path(episode_dir).expanduser().resolve()}"
+        ranked.append((hashlib.sha256(material.encode()).digest(), index))
+    ranked.sort()
+
+    assigned: dict[int, tuple[str, int]] = {}
+    rank = 0
+    for split in SPLIT_ORDER:
+        for _ in range(normalized_counts[split]):
+            _, source_index = ranked[rank]
+            assigned[source_index] = (split, rank)
+            rank += 1
+
+    episodes = []
+    for index, source_episode in enumerate(source["episodes"]):
+        episode = deepcopy(source_episode)
+        episode["source_split"] = source_episode["split"]
+        episode["split"], episode["split_assignment_rank"] = assigned[index]
+        episodes.append(episode)
+
+    return {
+        "schema_version": SELECTION_SCHEMA_VERSION,
+        "dataset_id": dataset_id,
+        "selection_policy": selection_policy,
+        "selection_sources": [
+            {
+                "role": "repartition_source",
+                "dataset_id": source["dataset_id"],
+                "selection_sha256": file_sha256(source_path),
+                "episode_count": len(source["episodes"]),
+            }
+        ],
+        "split_assignment": {
+            "algorithm": "sha256_rank_v1",
+            "seed": seed,
+            "targets": normalized_counts,
+        },
         "episodes": episodes,
     }

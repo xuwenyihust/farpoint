@@ -314,6 +314,80 @@ def test_export_so101_episode_v4_uses_dual_camera_six_dof_path(tmp_path):
     assert sidecar["recording"]["recording_stride"] == 4
 
 
+def test_export_so101_episode_v4_applies_a_source_bound_dataset_split(tmp_path):
+    metadata = _metadata_v4()
+    metadata["identity"]["split"] = "train"
+    metadata["variation"]["split"] = "train"
+    source = tmp_path / "episode-v4-repartition"
+    _episode(source, metadata)
+    manifest = tmp_path / "selection.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "dataset_id": "so101-v4-repartition-fixture",
+                "selection_policy": "deterministic_repartition",
+                "episodes": [
+                    {
+                        "episode_dir": str(source),
+                        "trial_id": "trial-v4",
+                        "source_split": "train",
+                        "split": "validation",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = export_dataset(
+        manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset
+    )
+
+    exported = json.loads((output / "meta/episode_metadata.jsonl").read_text())
+    sidecar = json.loads((output / "meta/farpoint_v3.json").read_text())
+    assert exported["identity"]["split"] == "validation"
+    assert exported["variation"]["split"] == "validation"
+    assert exported["provenance"]["source_episode_split"] == "train"
+    assert exported["provenance"]["dataset_split_assignment"] == {
+        "split": "validation",
+        "selection_policy": "deterministic_repartition",
+    }
+    assert sidecar["splits"] == {"train": 0, "validation": 1, "test": 0}
+    assert sidecar["episode_scene_metadata"][0]["source_split"] == "train"
+    assert json.loads((source / "metadata.json").read_text())["identity"]["split"] == "train"
+
+
+def test_export_so101_rejects_unbound_split_override(tmp_path):
+    metadata = _metadata_v4()
+    metadata["identity"]["split"] = "train"
+    metadata["variation"]["split"] = "train"
+    source = tmp_path / "episode-v4-unbound"
+    _episode(source, metadata)
+    manifest = tmp_path / "selection.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "dataset_id": "so101-v4-unbound-fixture",
+                "episodes": [
+                    {
+                        "episode_dir": str(source),
+                        "trial_id": "trial-v4",
+                        "split": "validation",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="must bind.*source_split"):
+        export_dataset(
+            manifest, tmp_path / "export", dataset_class=FakeLeRobotDataset
+        )
+
+
 def test_export_so101_indexes_generic_scene_entities_without_policy_features(tmp_path):
     metadata = _metadata(include_entities=True)
     source = tmp_path / "episode-0000"
