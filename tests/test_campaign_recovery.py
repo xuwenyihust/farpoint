@@ -644,6 +644,45 @@ def test_legacy_recovery_source_ordinals_normalize_to_campaign_local_quotas():
     }
 
 
+def test_legacy_recovery_quotas_are_shared_by_evaluator_and_exporter(tmp_path):
+    campaign = _campaign(count=2, recovery=True)
+    plan = _plan(campaign, count=2)
+    plan["schema_version"] = "farpoint.so101-recovery-plan.v1"
+    plan["trials"][0]["quota_ordinal"] = 2
+    plan["trials"][1]["quota_ordinal"] = 7
+    plan["plan_sha256"] = canonical_sha256(plan, omit=("plan_sha256",))
+    manifest = create_manifest(
+        plan, collection_id="legacy-recovery-segment", git_commit="abcdef1"
+    )
+    _success_next(manifest, plan, episode_id="episode-legacy-0")
+    _success_next(manifest, plan, episode_id="episode-legacy-1")
+    evidence = {
+        "segment": _segment(campaign, plan),
+        "plan": plan,
+        "manifest": manifest,
+        "episodes_root": str(tmp_path / "episodes"),
+    }
+
+    report = evaluate_self_healing_campaign(
+        campaign,
+        [evidence],
+        _policy(),
+        live_status={"heartbeat_unix": 1000.0, "started_unix": 900.0},
+        free_disk_bytes=600 * 1024**3,
+        now_unix=1001.0,
+    )
+    selection = build_campaign_export_selection(
+        campaign, [evidence], dataset_id="farpoint-so101"
+    )
+
+    assert report["decision"] == "COMPLETE"
+    assert report["errors"] == []
+    assert [row["quota"]["quota_ordinal"] for row in selection["episodes"]] == [
+        0,
+        1,
+    ]
+
+
 def test_quality_excluded_parent_is_replaced_by_continuation_selection(tmp_path):
     campaign = _campaign(count=1)
     parent_plan = _plan(campaign, count=1)
