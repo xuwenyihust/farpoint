@@ -74,7 +74,7 @@ def main() -> int:
     parser.add_argument("--parent-segment", type=Path, required=True)
     parser.add_argument("--parent-plan", type=Path, required=True)
     parser.add_argument("--parent-manifest", type=Path, required=True)
-    parser.add_argument("--quality-exclusions", type=Path, required=True)
+    parser.add_argument("--quality-exclusions", type=Path)
     parser.add_argument("--segment-id", required=True)
     parser.add_argument("--git-commit", required=True)
     parser.add_argument("--oracle-profile", action="append", required=True)
@@ -99,7 +99,11 @@ def main() -> int:
     requests = build_continuation_requests(
         campaign,
         evidence,
-        quality_exclusions=_read(args.quality_exclusions),
+        quality_exclusions=(
+            _read(args.quality_exclusions)
+            if args.quality_exclusions is not None
+            else None
+        ),
     )
     materializer = None
     if any(request.get("request_kind") == "replacement" for request in requests):
