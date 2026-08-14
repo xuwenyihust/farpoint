@@ -326,6 +326,68 @@ def _trial_record(
     }
 
 
+def materialize_v010_recovery_replacement_trial(
+    config: dict[str, Any],
+    base_config: dict[str, Any],
+    authorization: dict[str, Any],
+    campaign: dict[str, Any],
+    request: dict[str, Any],
+    *,
+    segment_id: str,
+    source_plan_sha256: str,
+) -> dict[str, Any]:
+    """Materialize one deterministic training-scene replacement.
+
+    Campaign recovery owns quota and seed allocation.  This function owns only
+    scene realization through the versioned v0.1.0 feasible-region and Sobol
+    sampler contract.  Keeping that boundary explicit prevents the generic
+    continuation engine from knowing about cube geometry or pose axes.
+    """
+    validate_v010_formal_config(config, base_config)
+    campaign_errors = validate_campaign_semantics(campaign)
+    if campaign_errors:
+        raise ValueError("invalid recovery campaign: " + "; ".join(campaign_errors))
+    if request.get("request_kind") != "replacement":
+        raise ValueError("scene materializer only accepts replacement requests")
+    if int(request.get("prior_attempt_count", -1)) != 0 or int(
+        request.get("remaining_attempt_count", -1)
+    ) != 3:
+        raise ValueError("replacement scene must start with a fresh attempt budget")
+    replacement_index = int(request.get("replacement_index", 0))
+    if replacement_index < 1:
+        raise ValueError("replacement scene requires a positive replacement index")
+    quota = request.get("quota") or {}
+    if quota.get("split") != "train":
+        raise ValueError("recovery replacements must remain training-only")
+
+    base = _formalized_base(config, base_config, authorization)
+    yaw_rows = {row["yaw_stratum_id"]: row for row in base["yaw_strata"]}
+    yaw_id = quota.get("yaw_stratum_id")
+    if yaw_id not in yaw_rows:
+        raise ValueError(f"unknown recovery yaw stratum: {yaw_id}")
+    trial = _trial_record(
+        config=config,
+        base=base,
+        campaign=campaign,
+        object_id=str(quota["object_variant_id"]),
+        yaw_row=yaw_rows[yaw_id],
+        region_band=str(quota["region_band"]),
+        split="train",
+        quota_ordinal=int(quota["quota_ordinal"]),
+        replacement_index=replacement_index,
+        seed=int(request["variation_seed"]),
+        sample_ordinal=int(quota["quota_ordinal"]),
+        trial_prefix=segment_id,
+    )
+    trial["recovery_source"] = {
+        "kind": "resampled_training_scene",
+        "plan_sha256": source_plan_sha256,
+        "source_variation_id": request.get("source_variation_id"),
+        "materializer": "farpoint.so101-v010-formal-sobol.v1",
+    }
+    return trial
+
+
 def _campaign_contract(
     config: dict[str, Any], base: dict[str, Any], *, campaign_id: str
 ) -> dict[str, Any]:

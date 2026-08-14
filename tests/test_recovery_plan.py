@@ -9,6 +9,11 @@ from farpoint.recovery_plan import (
     initialize_recovery_campaign,
 )
 from farpoint.recovery_runtime import load_recovery_runtime
+from farpoint.v010_formal import (
+    build_v010_formal_plan,
+    load_v010_formal_config,
+    materialize_v010_recovery_replacement_trial,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -238,3 +243,120 @@ def test_recovery_continuation_rejects_unmaterialized_replacement_seed():
         assert "new-seed scene materializer" in str(error)
     else:
         raise AssertionError("replacement seed was rebound to an old recovery scene")
+
+
+def test_recovery_replacement_materializes_new_training_scene_deterministically():
+    formal_config, base = load_v010_formal_config(
+        ROOT / "configs/variations/so101_v010_formal200.json", project_root=ROOT
+    )
+    formal_source = build_v010_formal_plan(
+        formal_config,
+        base,
+        formal_config["pilot_authorization"],
+        campaign_id="formal-source",
+    )
+    parent, _ = build_recovery_plan(
+        formal_source, config(), campaign_id="recovery-replacement", scene_count=20
+    )
+    source = parent["trials"][0]
+    request = {
+        "request_kind": "replacement",
+        "source_segment_id": "segment-000",
+        "source_variation_id": source["variation_id"],
+        "quota": {
+            "object_variant_id": source["object_variant_id"],
+            "yaw_stratum_id": source["yaw_stratum_id"],
+            "region_band": source["region_band"],
+            "split": "train",
+            "quota_ordinal": source["quota_ordinal"],
+        },
+        "replacement_index": 1,
+        "variation_seed": source["seed"] + 1,
+        "prior_attempt_count": 0,
+        "remaining_attempt_count": 3,
+    }
+    def materialize(row):
+        return materialize_v010_recovery_replacement_trial(
+            formal_config,
+            base,
+            formal_config["pilot_authorization"],
+            parent["campaign_contract"],
+            row,
+            segment_id="segment-001",
+            source_plan_sha256=parent["campaign_contract"]["variation_contract"][
+                "source_plan_sha256"
+            ],
+        )
+
+    first, runtime = build_recovery_continuation_plan(
+        parent,
+        config(),
+        parent["campaign_contract"],
+        [request],
+        segment_id="segment-001",
+        replacement_materializer=materialize,
+    )
+    second, _ = build_recovery_continuation_plan(
+        parent,
+        config(),
+        parent["campaign_contract"],
+        [request],
+        segment_id="segment-001",
+        replacement_materializer=materialize,
+    )
+    assert first == second
+    replacement = first["trials"][0]
+    assert replacement["seed"] == request["variation_seed"]
+    assert replacement["variation_id"] != source["variation_id"]
+    assert replacement["requested"] != source["requested"]
+    assert replacement["split"] == "train"
+    assert replacement["continuation_provenance"] == {
+        "request_kind": "replacement",
+        "source_segment_id": "segment-000",
+        "source_variation_id": source["variation_id"],
+        "source_quota_ordinal": source["quota_ordinal"],
+    }
+    assert replacement["recovery_source"]["kind"] == "resampled_training_scene"
+    assert runtime["scenes"][0]["source_partition"] == "train"
+
+
+def test_recovery_replacement_materializer_rejects_non_training_quota():
+    parent, _ = build_recovery_plan(
+        source_plan(), config(), campaign_id="recovery-replacement", scene_count=20
+    )
+    source = parent["trials"][0]
+    request = {
+        "request_kind": "replacement",
+        "source_segment_id": "segment-000",
+        "source_variation_id": source["variation_id"],
+        "quota": {
+            "object_variant_id": source["object_variant_id"],
+            "yaw_stratum_id": source["yaw_stratum_id"],
+            "region_band": source["region_band"],
+            "split": "validation",
+            "quota_ordinal": source["quota_ordinal"],
+        },
+        "replacement_index": 1,
+        "variation_seed": source["seed"] + 1,
+        "prior_attempt_count": 0,
+        "remaining_attempt_count": 3,
+    }
+    formal_config, base = load_v010_formal_config(
+        ROOT / "configs/variations/so101_v010_formal200.json", project_root=ROOT
+    )
+    try:
+        materialize_v010_recovery_replacement_trial(
+            formal_config,
+            base,
+            formal_config["pilot_authorization"],
+            parent["campaign_contract"],
+            request,
+            segment_id="segment-001",
+            source_plan_sha256=parent["campaign_contract"]["variation_contract"][
+                "source_plan_sha256"
+            ],
+        )
+    except ValueError as error:
+        assert "training-only" in str(error)
+    else:
+        raise AssertionError("recovery materializer accepted a non-training quota")

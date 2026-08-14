@@ -7,7 +7,7 @@ from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from farpoint.campaign import canonical_sha256, create_campaign, create_segment
 
@@ -210,13 +210,14 @@ def build_recovery_continuation_plan(
     requests: list[dict[str, Any]],
     *,
     segment_id: str,
+    replacement_materializer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Materialize unexhausted recovery variations as an immutable continuation.
+    """Materialize carryover/replacement requests as an immutable continuation.
 
     Recovery observations must begin from the exact same frozen scene until its
-    three-attempt budget is exhausted.  New-seed replacement requests need a
-    separate scene sampler and are rejected here instead of silently rebinding a
-    new seed to an old pose.
+    three-attempt budget is exhausted.  A replacement is realized only through
+    an explicit scene materializer; it is never created by rebinding a new seed
+    to the old requested/resolved pose.
     """
     if parent_plan.get("schema_version") != "farpoint.so101-recovery-plan.v1":
         raise ValueError("parent plan is not an SO-101 recovery plan")
@@ -238,10 +239,6 @@ def build_recovery_continuation_plan(
         raise ValueError("parent recovery variation ids must be unique")
     trials = []
     for request in requests:
-        if request.get("request_kind") != "carryover":
-            raise ValueError(
-                "recovery replacement requests require a new-seed scene materializer"
-            )
         source_id = request.get("source_variation_id")
         source = by_variation.get(source_id)
         if source is None:
@@ -256,23 +253,64 @@ def build_recovery_continuation_plan(
         requested_bucket = {key: quota.get(key) for key in observed_quota}
         if observed_quota != requested_bucket:
             raise ValueError("recovery continuation quota does not match source trial")
-        if int(source["seed"]) != int(request["variation_seed"]):
-            raise ValueError("carryover recovery seed does not match source trial")
-        if int(source.get("replacement_index", 0)) != int(
+        request_kind = request.get("request_kind")
+        if request_kind == "carryover":
+            if int(source["seed"]) != int(request["variation_seed"]):
+                raise ValueError("carryover recovery seed does not match source trial")
+            if int(source.get("replacement_index", 0)) != int(
+                request.get("replacement_index", 0)
+            ):
+                raise ValueError("carryover recovery replacement index mismatch")
+            trial = deepcopy(source)
+            source_quota_ordinal = int(trial["quota_ordinal"])
+            trial["quota_ordinal"] = int(quota["quota_ordinal"])
+        elif request_kind == "replacement":
+            if replacement_materializer is None:
+                raise ValueError(
+                    "recovery replacement requests require a new-seed scene materializer"
+                )
+            trial = replacement_materializer(deepcopy(request))
+            source_quota_ordinal = int(source["quota_ordinal"])
+            if trial.get("variation_id") == source.get("variation_id"):
+                raise ValueError("replacement materializer reused the source variation id")
+            if int(trial.get("seed", -1)) == int(source.get("seed", -1)):
+                raise ValueError("replacement materializer reused the source seed")
+        else:
+            raise ValueError("recovery continuation request has an invalid kind")
+
+        materialized_quota = {
+            "object_variant_id": trial.get("object_variant_id"),
+            "yaw_stratum_id": trial.get("yaw_stratum_id"),
+            "region_band": trial.get("region_band"),
+            "split": trial.get("split"),
+            "quota_ordinal": int(trial.get("quota_ordinal", -1)),
+        }
+        if materialized_quota != quota:
+            raise ValueError("materialized recovery scene changed its requested quota")
+        if int(trial.get("seed", -1)) != int(request["variation_seed"]):
+            raise ValueError("materialized recovery scene seed does not match request")
+        if int(trial.get("replacement_index", 0)) != int(
             request.get("replacement_index", 0)
         ):
-            raise ValueError("carryover recovery replacement index mismatch")
-        trial = deepcopy(source)
-        legacy_quota_ordinal = int(trial["quota_ordinal"])
-        trial["quota_ordinal"] = int(quota["quota_ordinal"])
+            raise ValueError("materialized recovery replacement index mismatch")
         trial["prior_attempt_count"] = int(request["prior_attempt_count"])
         trial["continuation_provenance"] = {
-            "request_kind": "carryover",
+            "request_kind": request_kind,
             "source_segment_id": request.get("source_segment_id"),
             "source_variation_id": source_id,
-            "source_quota_ordinal": legacy_quota_ordinal,
+            "source_quota_ordinal": source_quota_ordinal,
         }
         trials.append(trial)
+
+    holdout_seeds = {
+        int(scene["seed"])
+        for scene in (parent_plan.get("rollout_holdout") or {}).get("scenes", [])
+    }
+    trial_seeds = [int(trial["seed"]) for trial in trials]
+    if len(trial_seeds) != len(set(trial_seeds)):
+        raise ValueError("recovery continuation contains duplicate variation seeds")
+    if set(trial_seeds) & holdout_seeds:
+        raise ValueError("recovery continuation overlaps rollout holdout seeds")
 
     from farpoint.campaign_recovery import validate_replacement_plan
 
