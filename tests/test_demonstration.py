@@ -3,6 +3,7 @@ import math
 import pytest
 
 from farpoint.demonstration import (
+    intervention_command_trace,
     nominal_demonstration,
     recovery_demonstration,
     state_snapshot_sha256,
@@ -82,3 +83,50 @@ def test_recovery_metadata_rejects_missing_policy_and_nonfinite_snapshot():
     invalid["simulation_time_s"] = math.inf
     with pytest.raises(ValueError, match="non-finite"):
         state_snapshot_sha256(invalid)
+
+
+def test_intervention_command_trace_binds_physics_rate_targets():
+    trace = intervention_command_trace(
+        path="oracle-commands.jsonl",
+        sha256="c" * 64,
+        control_hz=120,
+        sample_count=4,
+        first_control_step=0,
+        last_control_step=3,
+        joint_order=["joint_0", "joint_1"],
+    )
+    assert trace == {
+        "schema_version": "farpoint.command-trace.v1",
+        "path": "oracle-commands.jsonl",
+        "sha256": "c" * 64,
+        "control_hz": 120,
+        "sampling_stride": 1,
+        "sample_count": 4,
+        "first_control_step": 0,
+        "last_control_step": 3,
+        "joint_order": ["joint_0", "joint_1"],
+        "unit": "radian",
+        "action_semantics": "actual_joint_position_target_sent_before_physics_step",
+    }
+
+
+@pytest.mark.parametrize(
+    "overrides,match",
+    [
+        ({"path": "../trace.jsonl"}, "relative artifact"),
+        ({"sha256": "not-a-hash"}, "lowercase SHA256"),
+        ({"sample_count": 3}, "one sample per physics"),
+    ],
+)
+def test_intervention_command_trace_rejects_invalid_descriptors(overrides, match):
+    values = {
+        "path": "oracle-commands.jsonl",
+        "sha256": "c" * 64,
+        "control_hz": 120,
+        "sample_count": 4,
+        "first_control_step": 0,
+        "last_control_step": 3,
+        "joint_order": ["joint_0", "joint_1"],
+    }
+    with pytest.raises(ValueError, match=match):
+        intervention_command_trace(**{**values, **overrides})

@@ -297,6 +297,64 @@ def test_episode_v4_validates_live_recovery_intervention_metadata():
     assert validate_episode_semantics(episode) == []
 
 
+def test_episode_v4_accepts_audited_physics_rate_intervention_command_trace():
+    episode = episode_v4()
+    episode["demonstration"] = {
+        "schema_version": "farpoint.demonstration.v1",
+        "type": "recovery",
+        "controller": {"type": "oracle", "profile_id": "recovery-transport-v1"},
+        "source_policy": {
+            "policy_type": "act",
+            "checkpoint_step": 20_000,
+            "model_sha256": "b" * 64,
+            "training_run_id": "act-v010-baseline-20k",
+            "rollout_git_commit": "c" * 40,
+        },
+        "intervention": {
+            "trigger": {
+                "trigger_id": "target-progress-stall-v1",
+                "failure_class": "transport_drift",
+                "control_step": 684,
+                "stage": "transport",
+                "evidence": {"target_distance_progress_m": 0.0},
+            },
+            "handoff": {
+                "mode": "live_continuous_state",
+                "source_rollout_id": "act-v010-recovery-source-001",
+                "source_scene_id": "train-scene-001",
+                "source_control_step": 684,
+                "recovery_start_frame": 0,
+                "physics_state_continuous": True,
+                "reset_performed": False,
+                "state_snapshot_sha256": "d" * 64,
+            },
+            "command_trace": {
+                "schema_version": "farpoint.command-trace.v1",
+                "path": "oracle-commands.jsonl",
+                "sha256": "e" * 64,
+                "control_hz": 120,
+                "sampling_stride": 1,
+                "sample_count": 4,
+                "first_control_step": 0,
+                "last_control_step": 3,
+                "joint_order": JOINTS,
+                "unit": "radian",
+                "action_semantics": ("actual_joint_position_target_sent_before_physics_step"),
+            },
+            "recovery_strategy_id": "stabilize-lift-preplace-v1",
+        },
+    }
+    assert validate_contract(episode) == []
+    assert validate_episode_semantics(episode) == []
+
+    invalid = deepcopy(episode)
+    invalid["demonstration"]["intervention"]["command_trace"]["control_hz"] = 60
+    assert (
+        "recovery command trace control_hz does not match recording.control_hz"
+        in validate_episode_semantics(invalid)
+    )
+
+
 def test_episode_v4_rejects_recovery_validation_split_and_discontinuous_handoff():
     episode = episode_v4()
     episode["identity"]["split"] = "validation"

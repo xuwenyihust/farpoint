@@ -200,6 +200,23 @@
             "state_snapshot_sha256": {"$ref": "#/$defs/sha256"}
           }
         },
+        "command_trace": {
+          "type": "object", "additionalProperties": false,
+          "required": ["schema_version", "path", "sha256", "control_hz", "sampling_stride", "sample_count", "first_control_step", "last_control_step", "joint_order", "unit", "action_semantics"],
+          "properties": {
+            "schema_version": {"const": "farpoint.command-trace.v1"},
+            "path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "control_hz": {"type": "integer", "minimum": 1},
+            "sampling_stride": {"const": 1},
+            "sample_count": {"type": "integer", "minimum": 1},
+            "first_control_step": {"type": "integer", "minimum": 0},
+            "last_control_step": {"type": "integer", "minimum": 0},
+            "joint_order": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+            "unit": {"const": "radian"},
+            "action_semantics": {"const": "actual_joint_position_target_sent_before_physics_step"}
+          }
+        },
         "recovery_strategy_id": {"type": "string", "minLength": 1}
       }
     },
