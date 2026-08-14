@@ -673,13 +673,14 @@ def evaluate_self_healing_campaign(
             errors.append(f"segment[{index}]:invalid_manifest:{error}")
             continue
         trials = _trial_index(plan)
+        try:
+            resolved_quotas = _resolved_trial_quota_identities(campaign, plan)
+        except (KeyError, TypeError, ValueError) as error:
+            errors.append(f"segment[{index}]:invalid_trial_quotas:{error}")
+            continue
         segment_quotas = []
-        for trial in trials.values():
-            try:
-                quota = _quota_identity(trial)
-            except ValueError as error:
-                errors.append(f"segment[{index}]:{error}")
-                continue
+        for variation_id in trials:
+            quota = resolved_quotas[variation_id]
             if quota not in expected_quotas:
                 errors.append(f"segment[{index}]:trial_outside_campaign_quota:{quota}")
             segment_quotas.append(quota)
@@ -694,8 +695,7 @@ def evaluate_self_healing_campaign(
         for variation_id, attempt_id in (manifest.get("selected_variations") or {}).items():
             if (segment["segment_id"], attempt_id) in excluded_attempts:
                 continue
-            trial = trials[variation_id]
-            quota = _quota_identity(trial)
+            quota = resolved_quotas[variation_id]
             if quota not in expected_quotas:
                 errors.append(f"segment[{index}]:success_outside_campaign_quota:{quota}")
                 continue
@@ -890,6 +890,7 @@ def build_campaign_export_selection(
             raise ValueError("continuation parent manifest hash mismatch")
         validate_manifest(manifest, plan)
         trials = _trial_index(plan)
+        resolved_quotas = _resolved_trial_quota_identities(campaign, plan)
         attempts = {
             attempt["attempt_id"]: attempt for attempt in manifest.get("attempts") or []
         }
@@ -900,7 +901,7 @@ def build_campaign_export_selection(
             if (segment["segment_id"], attempt_id) in excluded_attempts:
                 continue
             trial = trials[variation_id]
-            quota = _quota_identity(trial)
+            quota = resolved_quotas[variation_id]
             if quota not in expected_quotas:
                 raise ValueError(f"selected episode is outside campaign quota: {quota}")
             if quota in selected:
