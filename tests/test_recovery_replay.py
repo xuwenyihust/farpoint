@@ -4,9 +4,12 @@ from pathlib import Path
 import pytest
 
 from farpoint.demonstration import intervention_command_trace, recovery_demonstration
+from farpoint.campaign import canonical_sha256
 from farpoint.policy_rollout import load_rollout_spec
 from farpoint.policy_training import file_sha256
 from farpoint.recovery_replay import write_recovery_replay_bundle
+from farpoint.recovery_replay_audit import build_recovery_replay_integrity_report
+from farpoint.so101 import radians_to_lerobot
 
 from test_episode_metadata_v4 import episode_v4
 
@@ -336,3 +339,134 @@ def test_recovery_replay_rejects_safety_bound_below_reference(tmp_path):
             suite_id="invalid_bounds",
             action_safety_calibration=invalid,
         )
+
+
+def test_recovery_replay_integrity_passes_with_diagnostic_task_failure(tmp_path):
+    episode = tmp_path / "episode"
+    _write_episode(episode, "episode")
+    (episode / "metrics.json").write_text(
+        json.dumps({"success": True, "dataset_valid": True})
+    )
+    selection_path = tmp_path / "selection.json"
+    selection_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.export-selection.v1",
+                "collection_id": "recovery",
+                "episodes": [{"episode_dir": str(episode), "split": "train"}],
+            }
+        )
+    )
+    runtime_path = tmp_path / "runtime.json"
+    runtime_path.write_text(
+        json.dumps(
+            {
+                "control": {
+                    "physics_hz": 120,
+                    "policy_hz": 30,
+                    "action_safety_profile": {
+                        "schema_version": "farpoint.action-safety-profile.v1",
+                        "profile_id": "test",
+                        "joint_order": [
+                            "shoulder_pan.pos",
+                            "shoulder_lift.pos",
+                            "elbow_flex.pos",
+                            "wrist_flex.pos",
+                            "wrist_roll.pos",
+                            "gripper.pos",
+                        ],
+                        "arm_max_command_speed_deg_s": 50.0,
+                        "gripper_max_command_slew_calibrated_per_step": 5.5,
+                        "source": {
+                            "kind": "open_source_hardware_default",
+                            "reference": "https://example.invalid/so101",
+                            "resolved_revision": "test",
+                            "statistic": "speed cap",
+                        },
+                    },
+                }
+            }
+        )
+    )
+    root = Path(__file__).resolve().parents[1]
+    bundle = tmp_path / "bundle"
+    write_recovery_replay_bundle(
+        selection_path,
+        root / "configs/evaluations/so101_act_v0_1_0_holdout_template.json",
+        runtime_path,
+        bundle,
+        scene_count=1,
+        suite_id="recovery_integrity_test",
+        action_safety_calibration=ACTION_SAFETY_CALIBRATION,
+    )
+    spec = json.loads((bundle / "spec.json").read_text())
+    replay = json.loads((bundle / "replay-manifest.json").read_text())
+    source = replay["scenes"][0]
+    scene_id = source["scene_id"]
+    snapshot = _snapshot()
+    episode_root = tmp_path / "run" / "episodes" / scene_id
+    episode_root.mkdir(parents=True)
+    rows = []
+    for index, group in enumerate(source["physics_action_groups_radians"]):
+        rows.append(
+            {
+                "policy_step": index,
+                "state_calibrated": radians_to_lerobot(
+                    snapshot["joint_positions_rad"], clip=True
+                ).tolist(),
+                "target_radians": snapshot["joint_position_target_rad"],
+                "policy_execution": {"physics_actions_radians": group},
+                "cube_pose_xyzw": snapshot["object_pose_xyzw"],
+                "cube_velocity_mps": snapshot["object_linear_velocity_mps"],
+                "contact_forces_n": snapshot["contact_forces_n"],
+            }
+        )
+    trace_path = episode_root / "actions.jsonl"
+    trace_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    videos = {}
+    for camera in ("front", "wrist"):
+        path = episode_root / f"{camera}.mp4"
+        path.write_bytes(camera.encode())
+        videos[camera] = {
+            "path": str(path.relative_to(tmp_path / "run")),
+            "sha256": file_sha256(path),
+            "decoded_frames": len(rows),
+            "width": 640,
+            "height": 480,
+            "avg_frame_rate": "30/1",
+        }
+    commit = "a" * 40
+    report = {
+        "rollout_git_commit": commit,
+        "spec_sha256": canonical_sha256(spec),
+        "recovery_replay_source": spec["recovery_replay_source"],
+        "policy_server": {
+            "action_execution": {
+                "replay_manifest_sha256": file_sha256(bundle / "replay-manifest.json")
+            }
+        },
+        "episodes": [
+            {
+                "scene_id": scene_id,
+                "task_success": False,
+                "terminal_reason": "contact_without_lift",
+                "policy_steps": len(rows),
+                "trace": str(trace_path.relative_to(tmp_path / "run")),
+                "videos": videos,
+                "nonfinite_action_count": 0,
+                "hard_range_violation_count": 0,
+            }
+        ],
+    }
+    (tmp_path / "run" / "report.json").write_text(json.dumps(report))
+    audit = build_recovery_replay_integrity_report(
+        selection_path=selection_path,
+        spec_path=bundle / "spec.json",
+        replay_manifest_path=bundle / "replay-manifest.json",
+        run_root=tmp_path / "run",
+        expected_git_commit=commit,
+    )
+    assert audit["status"] == "PASS"
+    assert audit["source_success_count"] == 1
+    assert audit["playback_task_success_count"] == 0
+    assert audit["evidence_errors"] == []
