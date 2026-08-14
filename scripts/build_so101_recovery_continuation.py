@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import json
 from pathlib import Path
 import sys
@@ -18,6 +19,10 @@ from farpoint.campaign_recovery import (  # noqa: E402
 )
 from farpoint.recovery_plan import build_recovery_continuation_plan  # noqa: E402
 from farpoint.recovery_runtime import load_recovery_runtime  # noqa: E402
+from farpoint.v010_formal import (  # noqa: E402
+    load_v010_formal_config,
+    materialize_v010_recovery_replacement_trial,
+)
 
 
 def _read(path: Path) -> dict:
@@ -64,6 +69,7 @@ def _load_evidence(index_path: Path) -> list[dict]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--source-formal-config", type=Path)
     parser.add_argument("--campaign", type=Path, required=True)
     parser.add_argument("--parent-segment", type=Path, required=True)
     parser.add_argument("--parent-plan", type=Path, required=True)
@@ -95,12 +101,33 @@ def main() -> int:
         evidence,
         quality_exclusions=_read(args.quality_exclusions),
     )
+    materializer = None
+    if any(request.get("request_kind") == "replacement" for request in requests):
+        if args.source_formal_config is None:
+            raise ValueError(
+                "--source-formal-config is required when replacement scenes are needed"
+            )
+        formal_config, base_config = load_v010_formal_config(
+            args.source_formal_config, project_root=PROJECT_ROOT
+        )
+        materializer = partial(
+            materialize_v010_recovery_replacement_trial,
+            formal_config,
+            base_config,
+            formal_config["pilot_authorization"],
+            campaign,
+            segment_id=args.segment_id,
+            source_plan_sha256=(campaign.get("variation_contract") or {})[
+                "source_plan_sha256"
+            ],
+        )
     plan, runtime = build_recovery_continuation_plan(
         parent_plan,
         config,
         campaign,
         requests,
         segment_id=args.segment_id,
+        replacement_materializer=materializer,
     )
     segment = create_continuation_segment(
         campaign,
