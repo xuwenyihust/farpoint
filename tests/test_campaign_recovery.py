@@ -39,7 +39,7 @@ def _policy(**overrides):
     return value
 
 
-def _campaign(count=2):
+def _campaign(count=2, *, recovery=False):
     return create_campaign(
         {
             "campaign_id": "so101-v010-formal",
@@ -57,7 +57,11 @@ def _campaign(count=2):
                     "count": count,
                 }
             ],
-            "variation_contract": {"sampler": "farpoint.scrambled-sobol.v1"},
+            "variation_contract": (
+                {"kind": "live_policy_recovery"}
+                if recovery
+                else {"sampler": "farpoint.scrambled-sobol.v1"}
+            ),
             "attempt_policy": {
                 "maximum_attempts_per_variation": 3,
                 "global_attempt_limit": None,
@@ -614,6 +618,30 @@ def test_quality_exclusion_reopens_selected_quota_without_mutating_parent(tmp_pa
     assert requests[0]["source_variation_id"] == parent_attempt["variation_id"]
     assert requests[0]["prior_attempt_count"] == 1
     assert requests[0]["remaining_attempt_count"] == 2
+
+
+def test_legacy_recovery_source_ordinals_normalize_to_campaign_local_quotas():
+    campaign = _campaign(count=2, recovery=True)
+    plan = _plan(campaign, count=2)
+    plan["schema_version"] = "farpoint.so101-recovery-plan.v1"
+    plan["trials"][0]["quota_ordinal"] = 2
+    plan["trials"][1]["quota_ordinal"] = 7
+    plan["plan_sha256"] = canonical_sha256(plan, omit=("plan_sha256",))
+    manifest = create_manifest(
+        plan, collection_id="legacy-recovery-segment", git_commit="abcdef1"
+    )
+    segment = _segment(campaign, plan)
+
+    requests = build_continuation_requests(
+        campaign,
+        [{"segment": segment, "plan": plan, "manifest": manifest}],
+    )
+
+    assert [request["quota"]["quota_ordinal"] for request in requests] == [0, 1]
+    assert {request["source_variation_id"] for request in requests} == {
+        "variation-0-0",
+        "variation-0-1",
+    }
 
 
 def test_quality_excluded_parent_is_replaced_by_continuation_selection(tmp_path):
