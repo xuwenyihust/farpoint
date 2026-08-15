@@ -99,18 +99,28 @@ def build_preview_manifest(episodes_root, episode_id, episode_dir=None):
             raise FileNotFoundError(episode_id) from error
     if not episode_dir.is_dir():
         raise FileNotFoundError(episode_id)
-    frames = sorted((episode_dir / "preview").glob("*.png"))
-    if not frames:
-        frames = sorted((episode_dir / "rgb").glob("front_*.png"))
+    front_frames = sorted((episode_dir / "preview").glob("*.png"))
+    if not front_frames:
+        front_frames = sorted((episode_dir / "rgb").glob("front_*.png"))
+    wrist_frames = sorted((episode_dir / "rgb").glob("wrist_*.png"))
     encoded_episode = quote(episode_id, safe="")
-    return {
-        "episode_id": episode_id,
-        "frame_count": len(frames),
-        "frames": [
+    def frame_urls(frames):
+        return [
             f"/files/episodes/{encoded_episode}/"
             f"{quote(frame.relative_to(episode_dir).as_posix(), safe='/')}"
             for frame in frames
-        ],
+        ]
+
+    camera_frames = {"front": frame_urls(front_frames)}
+    if wrist_frames:
+        camera_frames["wrist"] = frame_urls(wrist_frames)
+    return {
+        "episode_id": episode_id,
+        # Keep the legacy fields as the front-camera view for old clients.
+        "frame_count": len(front_frames),
+        "frames": camera_frames["front"],
+        "cameras": list(camera_frames),
+        "camera_frames": camera_frames,
     }
 
 
