@@ -408,6 +408,42 @@ def test_liveness_disk_and_integrity_fail_closed():
     assert any(reason.startswith("disk_below_minimum") for reason in report["pause_reasons"])
 
 
+def test_terminal_segment_ignores_stale_live_liveness_and_freezes_replacement():
+    campaign = _campaign()
+    plan = _plan(campaign)
+    manifest = create_manifest(
+        plan, collection_id="segment-000", git_commit="abcdef1"
+    )
+    success = _success_next(manifest, plan, episode_id="episode-success")
+    for attempt in manifest["attempts"]:
+        if attempt["attempt_id"] == success["attempt_id"]:
+            attempt["finished_at"] = "1970-01-01T00:00:01Z"
+    while manifest["execution_status"] == "RUNNING":
+        _fail_next(manifest, plan)
+
+    assert manifest["execution_status"] == "FINISHED"
+    assert manifest["quality_status"] == "FAIL"
+    report = evaluate_self_healing_campaign(
+        campaign,
+        [{"segment": _segment(campaign, plan), "plan": plan, "manifest": manifest}],
+        _policy(),
+        live_status={
+            "execution_status": "FINISHED",
+            "heartbeat_unix": 1.0,
+            "started_unix": 1.0,
+        },
+        free_disk_bytes=600 * 1024**3,
+        now_unix=10_000.0,
+    )
+
+    assert report["decision"] == "CONTINUE"
+    assert report["next_action"] == "FREEZE_REPLACEMENT_SEGMENT"
+    assert report["pause_reasons"] == []
+    assert report["liveness"]["heartbeat_age_seconds"] == 9999.0
+    assert report["liveness"]["no_success_age_seconds"] == 9999.0
+    assert len(report["replacement_requests"]) == 1
+
+
 def test_continuation_binds_exact_parent_manifest_hash_and_next_index():
     campaign = _campaign()
     plan = _plan(campaign)
