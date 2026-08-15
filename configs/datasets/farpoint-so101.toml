@@ -1,8 +1,13 @@
 schema_version = "farpoint.dataset-release.v1"
-dataset_version = "0.0.3"
+dataset_version = "0.1.2"
 dataset_id = "farpoint_so101"
 hf_repo_id = "wenyixu101/farpoint-so101"
 dataset_schema = "farpoint.dataset.v3"
 variation_schema = "farpoint.variation.v3"
 lerobot_format = "v3"
-variation_config = "configs/variations/so101_cube_pick_place_v1.json"
+variation_config = "configs/variations/so101_v010_formal200.json"
+source_configs = [
+  "configs/variations/so101_v010_formal200.json",
+  "configs/recovery/so101_v011_recovery20.json",
+  "configs/recovery/so101_v012_grasp_recovery20.json",
+]

@@ -4,6 +4,43 @@ This changelog tracks published versions of
 `wenyixu101/farpoint-so101`. Dataset versions are independent of Farpoint
 Python package and schema versions.
 
+## v0.1.2
+
+Adds grasp-stage recovery demonstrations while preserving the v0.1.x policy
+feature schema:
+
+- 240 successful SO-101 cube pick-and-place demonstrations
+- 183,914 policy frames at 30 Hz
+- 220 train and 20 validation episodes
+- 200 nominal demonstrations, 20 approach-stage recovery demonstrations, and
+  20 grasp-stage recovery demonstrations
+- grasp recovery handoff requires measured cube contact without a prior lift
+- two synchronized 640 x 480 RGB streams: front and wrist
+- unchanged six-dimensional joint state and joint-position action schema
+
+## v0.1.1
+
+Adds approach-stage recovery demonstrations to the v0.1.0 lineage:
+
+- 220 successful SO-101 cube pick-and-place demonstrations
+- 166,605 policy frames at 30 Hz
+- 200 train and 20 validation episodes
+- 200 nominal demonstrations and 20 approach-stage recovery demonstrations
+- two synchronized 640 x 480 RGB streams: front and wrist
+- unchanged six-dimensional joint state and joint-position action schema
+
+## v0.1.0
+
+Starts the dual-camera continuous-position lineage:
+
+- 200 successful SO-101 cube pick-and-place demonstrations
+- 149,948 policy frames at 30 Hz
+- 180 train and 20 validation episodes
+- two object variants across continuous positions, five yaw strata, and three
+  feasible-region bands
+- two synchronized 640 x 480 RGB streams: front and wrist
+- six-dimensional joint state and joint-position action schema
+
 ## v0.0.3
 
 Adds a 30° cube-yaw increment while preserving the policy feature schema:

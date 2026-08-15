@@ -36,6 +36,15 @@ def check_versions(spec_path: Path = DEFAULT_RELEASE_SPEC) -> list[str]:
     )
     if legacy_script.exists():
         errors.append("release script filename must not contain the release version")
+    for source_config in spec["source_configs"]:
+        source_path = (PROJECT_ROOT / source_config).resolve()
+        try:
+            source_path.relative_to(PROJECT_ROOT.resolve())
+        except ValueError:
+            errors.append(f"dataset source config escapes the project root: {source_config}")
+            continue
+        if not source_path.is_file():
+            errors.append(f"dataset source config does not exist: {source_config}")
     return errors
 
 
