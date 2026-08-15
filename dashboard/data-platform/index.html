@@ -380,6 +380,7 @@
           <option value="20">20 fps</option>
           <option value="30">30 fps</option>
         </select>
+        <select class="player-speed" id="playerCamera" aria-label="Preview camera"></select>
       </div>
     </div>
   </div>
@@ -410,7 +411,7 @@
       collections: [],
       policyRollouts: [],
       storage: null,
-      player: { frames: [], frame: 0, timer: null, playing: false }
+      player: { frames: [], cameraFrames: {}, camera: "front", frame: 0, timer: null, playing: false }
     };
     const titles = {
       overview: ["Overview", "Farpoint artifacts and experiment health"],
@@ -788,6 +789,8 @@
     async function openPreview(episodeId) {
       stopPreview();
       state.player.frames = [];
+      state.player.cameraFrames = {};
+      state.player.camera = "front";
       state.player.frame = 0;
       $("playerEpisode").textContent = episodeId;
       $("playerStatus").textContent = "Loading frames";
@@ -797,12 +800,18 @@
       document.body.style.overflow = "hidden";
       try {
         const result = await api(`/api/episodes/${encodeURIComponent(episodeId)}/preview`);
-        state.player.frames = result.frames;
-        $("playerStatus").textContent = `${result.frame_count} preview frames`;
-        $("playerSlider").max = Math.max(0, result.frame_count - 1);
-        $("playerEmpty").hidden = result.frame_count > 0;
-        $("playerImage").hidden = result.frame_count === 0;
-        if (result.frame_count) {
+        state.player.cameraFrames = result.camera_frames || {front: result.frames};
+        const cameras = result.cameras || Object.keys(state.player.cameraFrames);
+        state.player.camera = cameras.includes("front") ? "front" : cameras[0];
+        state.player.frames = state.player.cameraFrames[state.player.camera] || [];
+        $("playerCamera").innerHTML = cameras.map(camera => `<option value="${esc(camera)}">${esc(camera)} camera</option>`).join("");
+        $("playerCamera").value = state.player.camera;
+        $("playerCamera").hidden = cameras.length < 2;
+        $("playerStatus").textContent = `${state.player.frames.length} ${state.player.camera} frames`;
+        $("playerSlider").max = Math.max(0, state.player.frames.length - 1);
+        $("playerEmpty").hidden = state.player.frames.length > 0;
+        $("playerImage").hidden = state.player.frames.length === 0;
+        if (state.player.frames.length) {
           renderPreviewFrame(0);
           startPreview();
         } else {
@@ -866,6 +875,16 @@
     $("scan").addEventListener("click", async () => { await api("/api/refresh", {method:"POST", body:"{}"}); toast("Artifacts scanned."); await loadAll(); });
     $("previewRetention").addEventListener("click", renderRetention);
     $("playerClose").addEventListener("click", closePreview);
+    $("playerCamera").addEventListener("change", () => {
+      stopPreview();
+      state.player.camera = $("playerCamera").value;
+      state.player.frames = state.player.cameraFrames[state.player.camera] || [];
+      $("playerStatus").textContent = `${state.player.frames.length} ${state.player.camera} frames`;
+      $("playerSlider").max = Math.max(0, state.player.frames.length - 1);
+      $("playerEmpty").hidden = state.player.frames.length > 0;
+      $("playerImage").hidden = state.player.frames.length === 0;
+      if (state.player.frames.length) { renderPreviewFrame(0); startPreview(); }
+    });
     $("detailsClose").addEventListener("click", closeDetails);
     $("rolloutVideoClose").addEventListener("click", closeRolloutVideo);
     let synchronizingRolloutVideos = false;

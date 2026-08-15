@@ -251,6 +251,8 @@ def dashboard(tmp_path):
         rgb.mkdir()
         (rgb / "front_000000.png").write_bytes(PNG)
         (rgb / "front_000001.png").write_bytes(PNG)
+        (rgb / "wrist_000000.png").write_bytes(PNG)
+        (rgb / "wrist_000001.png").write_bytes(PNG)
         return external_episode
 
     so101_success = make_so101_episode("episode_so101_success", True)
@@ -446,7 +448,7 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         page.get_by_role("link", name=dashboard["episode_id"]).wait_for()
 
         page.get_by_role("button", name=f"Play preview for {dashboard['episode_id']}").click()
-        page.get_by_text("2 preview frames").wait_for()
+        page.get_by_text("2 front frames").wait_for()
         playwright.expect(page.locator("#playerImage")).to_have_js_property("naturalWidth", 1)
         page.get_by_role("button", name="Close playback").click()
 
@@ -455,7 +457,7 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         page.get_by_text(dashboard["so101_failure"], exact=True).wait_for()
         page.get_by_text(dashboard["so101_incomplete"], exact=True).wait_for()
         page.get_by_role("button", name=f"Play preview for {dashboard['so101_success']}").click()
-        page.get_by_text("2 preview frames").wait_for()
+        page.get_by_text("2 front frames").wait_for()
         player_source = page.locator("#playerImage").get_attribute("src")
         assert any(
             frame in player_source
@@ -464,6 +466,10 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
                 "/rgb/front_000001.png",
             )
         )
+        page.get_by_label("Preview camera").select_option("wrist")
+        page.get_by_text("2 wrist frames").wait_for()
+        assert "/rgb/wrist_" in page.locator("#playerImage").get_attribute("src")
+        playwright.expect(page.locator("#playerImage")).to_have_js_property("naturalWidth", 1)
         page.get_by_role("button", name="Close playback").click()
         page.get_by_role("button", name=f"View metadata for {dashboard['so101_success']}").click()
         page.get_by_text("Manipulated object", exact=True).wait_for()

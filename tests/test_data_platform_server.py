@@ -270,6 +270,29 @@ class EpisodeReportCompatibilityTests(unittest.TestCase):
                     "/files/episodes/episode_001/preview/rgb_0010.png",
                 ],
             )
+            self.assertEqual(manifest["cameras"], ["front"])
+            self.assertEqual(manifest["camera_frames"]["front"], manifest["frames"])
+
+    def test_lists_front_and_wrist_camera_frames(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            episodes = Path(temporary)
+            episode = episodes / "episode_001"
+            rgb = episode / "rgb"
+            rgb.mkdir(parents=True)
+            (episode / "metadata.json").write_text(
+                '{"episode_id":"episode_001"}', encoding="utf-8"
+            )
+            (rgb / "front_000000.png").write_bytes(b"front")
+            (rgb / "wrist_000000.png").write_bytes(b"wrist")
+
+            manifest = build_preview_manifest(episodes, "episode_001")
+
+            self.assertEqual(manifest["cameras"], ["front", "wrist"])
+            self.assertEqual(manifest["frame_count"], 1)
+            self.assertEqual(
+                manifest["camera_frames"]["wrist"],
+                ["/files/episodes/episode_001/rgb/wrist_000000.png"],
+            )
 
     def test_rejects_paths_outside_episode_root(self):
         with tempfile.TemporaryDirectory() as temporary:
