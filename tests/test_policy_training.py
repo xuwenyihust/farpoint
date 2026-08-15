@@ -30,6 +30,9 @@ V010_BASELINE_20K_CONFIG = (
 V011_RECOVERY20_20K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_1_1_recovery20_20k.json"
 )
+V012_GRASP20_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_2_grasp20_20k.json"
+)
 
 
 def test_frozen_act_contract_is_valid_and_partitions_all_episodes():
@@ -129,6 +132,29 @@ def test_v011_recovery20_contract_is_a_dataset_only_baseline_delta():
     assert dataset["required_features"] == baseline["dataset"]["required_features"]
     assert parse_episode_slice(dataset["splits"]["train"]) == list(range(200))
     assert parse_episode_slice(dataset["splits"]["validation"]) == list(range(200, 220))
+
+
+def test_v012_grasp20_contract_is_a_dataset_only_v011_delta():
+    recovery20 = load_training_spec(V011_RECOVERY20_20K_CONFIG)
+    grasp20 = load_training_spec(V012_GRASP20_20K_CONFIG)
+
+    for field in ("environment", "policy", "training", "validation", "smoke"):
+        assert grasp20[field] == recovery20[field]
+
+    dataset = grasp20["dataset"]
+    assert dataset["revision"] == "v0.1.2"
+    assert dataset["resolved_commit"] == "5458c9b17e8fe85774f73aa03515cd6fc2127fda"
+    assert dataset["splits"] == {"train": "0:220", "validation": "220:240"}
+    assert dataset["metadata_splits"]["test"] == "240:240"
+    assert dataset["expected"] == {
+        "total_episodes": 240,
+        "total_frames": 183914,
+        "fps": 30,
+        "selected_frames": {"train": 169113, "validation": 14801},
+    }
+    assert dataset["required_features"] == recovery20["dataset"]["required_features"]
+    assert parse_episode_slice(dataset["splits"]["train"]) == list(range(220))
+    assert parse_episode_slice(dataset["splits"]["validation"]) == list(range(220, 240))
 
 
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):
