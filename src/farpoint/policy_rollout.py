@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,121 @@ from farpoint.so101 import (
     lerobot_to_radians,
     radians_to_lerobot,
 )
+
+
+STABLE_GRASP_MIN_POLICY_STEPS = 3
+
+
+@dataclass
+class RolloutStageTracker:
+    """Accumulate diagnostic stage evidence without changing task success."""
+
+    policy_hz: int
+    stable_grasp_min_steps: int = STABLE_GRASP_MIN_POLICY_STEPS
+    first_contact_step: int | None = None
+    first_bilateral_contact_step: int | None = None
+    first_stable_grasp_step: int | None = None
+    first_lift_step: int | None = None
+    first_target_entry_step: int | None = None
+    first_release_after_lift_step: int | None = None
+    first_stable_release_step: int | None = None
+    bilateral_streak: int = 0
+    maximum_bilateral_streak: int = 0
+    minimum_pre_contact_gripper_origin_to_object_center_distance_m: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.policy_hz < 1:
+            raise ValueError("policy_hz must be positive")
+        if self.stable_grasp_min_steps < 1:
+            raise ValueError("stable grasp duration must be positive")
+
+    @staticmethod
+    def _first(current: int | None, step: int, condition: bool) -> int | None:
+        return step if current is None and condition else current
+
+    def observe(
+        self,
+        *,
+        policy_step: int,
+        contact: bool,
+        bilateral_contact: bool,
+        lifted: bool,
+        entered_target: bool,
+        released: bool,
+        stable_release: bool,
+        gripper_origin_to_object_center_distance_m: float,
+    ) -> None:
+        if policy_step < 0:
+            raise ValueError("policy_step must be non-negative")
+        distance = float(gripper_origin_to_object_center_distance_m)
+        if not np.isfinite(distance) or distance < 0:
+            raise ValueError("gripper-object distance must be finite and non-negative")
+        if self.first_contact_step is None:
+            if (
+                self.minimum_pre_contact_gripper_origin_to_object_center_distance_m is None
+                or distance < self.minimum_pre_contact_gripper_origin_to_object_center_distance_m
+            ):
+                self.minimum_pre_contact_gripper_origin_to_object_center_distance_m = distance
+        self.first_contact_step = self._first(self.first_contact_step, policy_step, contact)
+        self.first_bilateral_contact_step = self._first(
+            self.first_bilateral_contact_step, policy_step, bilateral_contact
+        )
+        self.bilateral_streak = self.bilateral_streak + 1 if bilateral_contact else 0
+        self.maximum_bilateral_streak = max(self.maximum_bilateral_streak, self.bilateral_streak)
+        self.first_stable_grasp_step = self._first(
+            self.first_stable_grasp_step,
+            policy_step,
+            self.bilateral_streak >= self.stable_grasp_min_steps,
+        )
+        self.first_lift_step = self._first(self.first_lift_step, policy_step, lifted)
+        self.first_target_entry_step = self._first(
+            self.first_target_entry_step, policy_step, entered_target
+        )
+        self.first_release_after_lift_step = self._first(
+            self.first_release_after_lift_step,
+            policy_step,
+            released and self.first_lift_step is not None,
+        )
+        self.first_stable_release_step = self._first(
+            self.first_stable_release_step, policy_step, stable_release
+        )
+
+    def result(self) -> dict[str, Any]:
+        contact_to_lift_steps = (
+            None
+            if self.first_contact_step is None or self.first_lift_step is None
+            else self.first_lift_step - self.first_contact_step
+        )
+        return {
+            "metric_definition": {
+                "stable_grasp_min_policy_steps": self.stable_grasp_min_steps,
+                "stable_grasp_min_duration_s": self.stable_grasp_min_steps / self.policy_hz,
+                "distance": "minimum through first contact: gripper rigid-body origin to object center",
+                "diagnostic_only": True,
+            },
+            "ever_cube_contact": self.first_contact_step is not None,
+            "ever_bilateral_contact": self.first_bilateral_contact_step is not None,
+            "ever_stable_grasp": self.first_stable_grasp_step is not None,
+            "ever_lifted": self.first_lift_step is not None,
+            "ever_entered_target": self.first_target_entry_step is not None,
+            "ever_released_after_lift": self.first_release_after_lift_step is not None,
+            "ever_stable_release": self.first_stable_release_step is not None,
+            "first_contact_step": self.first_contact_step,
+            "first_bilateral_contact_step": self.first_bilateral_contact_step,
+            "first_stable_grasp_step": self.first_stable_grasp_step,
+            "first_lift_step": self.first_lift_step,
+            "first_target_entry_step": self.first_target_entry_step,
+            "first_release_after_lift_step": self.first_release_after_lift_step,
+            "first_stable_release_step": self.first_stable_release_step,
+            "maximum_consecutive_bilateral_contact_steps": self.maximum_bilateral_streak,
+            "contact_to_lift_steps": contact_to_lift_steps,
+            "contact_to_lift_s": (
+                None if contact_to_lift_steps is None else contact_to_lift_steps / self.policy_hz
+            ),
+            "minimum_pre_contact_gripper_origin_to_object_center_distance_m": (
+                self.minimum_pre_contact_gripper_origin_to_object_center_distance_m
+            ),
+        }
 
 
 def json_default(value: Any) -> Any:
@@ -357,8 +473,11 @@ def evaluate_rollout_acceptance(
     stage_names = (
         "ever_cube_contact",
         "ever_bilateral_contact",
+        "ever_stable_grasp",
         "ever_lifted",
         "ever_entered_target",
+        "ever_released_after_lift",
+        "ever_stable_release",
     )
     stage_progress = {
         name: sum(
@@ -382,4 +501,134 @@ def evaluate_rollout_acceptance(
         "delta_limited_count": delta_limited,
         "stage_progress": stage_progress,
         "terminal_reason_counts": dict(sorted(terminal_reasons.items())),
+    }
+
+
+def compare_paired_rollout_reports(
+    baseline: dict[str, Any], candidate: dict[str, Any]
+) -> dict[str, Any]:
+    """Compare two policies on the same frozen scenes without hiding pairing."""
+    baseline_episodes = baseline.get("episodes") or []
+    candidate_episodes = candidate.get("episodes") or []
+    baseline_ids = [row.get("scene_id") for row in baseline_episodes]
+    candidate_ids = [row.get("scene_id") for row in candidate_episodes]
+    if not baseline_ids or baseline_ids != candidate_ids:
+        raise ValueError("paired rollout reports must contain the same ordered scenes")
+    if len(baseline_ids) != len(set(baseline_ids)):
+        raise ValueError("paired rollout scene IDs must be unique")
+    if any(row.get("execution_status") != "FINISHED" for row in baseline_episodes):
+        raise ValueError("baseline rollout contains incomplete episodes")
+    if any(row.get("execution_status") != "FINISHED" for row in candidate_episodes):
+        raise ValueError("candidate rollout contains incomplete episodes")
+    context_keys = ("object_variant_id", "region_band", "yaw_stratum_id")
+    for baseline_row, candidate_row in zip(baseline_episodes, candidate_episodes):
+        if baseline_row.get("scene_context") != candidate_row.get("scene_context"):
+            raise ValueError("paired rollout scene context differs")
+
+    stage_names = (
+        "ever_cube_contact",
+        "ever_bilateral_contact",
+        "ever_stable_grasp",
+        "ever_lifted",
+        "ever_entered_target",
+        "ever_released_after_lift",
+        "ever_stable_release",
+    )
+
+    def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        stage_counts = {
+            name: sum(bool((row.get("stage_evidence") or {}).get(name)) for row in rows)
+            for name in stage_names
+        }
+        distances = [
+            float(
+                row["stage_evidence"][
+                    "minimum_pre_contact_gripper_origin_to_object_center_distance_m"
+                ]
+            )
+            for row in rows
+            if (row.get("stage_evidence") or {}).get(
+                "minimum_pre_contact_gripper_origin_to_object_center_distance_m"
+            )
+            is not None
+        ]
+        contact_to_lift = [
+            float(row["stage_evidence"]["contact_to_lift_s"])
+            for row in rows
+            if (row.get("stage_evidence") or {}).get("contact_to_lift_s") is not None
+        ]
+        return {
+            "episodes": len(rows),
+            "task_successes": sum(bool(row.get("task_success")) for row in rows),
+            "stage_counts": stage_counts,
+            "minimum_pre_contact_gripper_object_distance_median": (
+                None if not distances else float(np.median(distances))
+            ),
+            "contact_to_lift_s_median": (
+                None if not contact_to_lift else float(np.median(contact_to_lift))
+            ),
+            "hard_range_violation_count": sum(
+                int(row.get("hard_range_violation_count", 0)) for row in rows
+            ),
+            "delta_limited_count": sum(int(row.get("delta_limited_count", 0)) for row in rows),
+        }
+
+    baseline_summary = summarize(baseline_episodes)
+    candidate_summary = summarize(candidate_episodes)
+    paired_outcomes = {
+        "improved": 0,
+        "regressed": 0,
+        "unchanged_success": 0,
+        "unchanged_failure": 0,
+    }
+    for baseline_row, candidate_row in zip(baseline_episodes, candidate_episodes):
+        before = bool(baseline_row.get("task_success"))
+        after = bool(candidate_row.get("task_success"))
+        key = (
+            "improved"
+            if not before and after
+            else "regressed"
+            if before and not after
+            else "unchanged_success"
+            if before
+            else "unchanged_failure"
+        )
+        paired_outcomes[key] += 1
+
+    strata: dict[str, Any] = {}
+    for context_key in context_keys:
+        values = sorted({str(row["scene_context"][context_key]) for row in baseline_episodes})
+        strata[context_key] = {}
+        for value in values:
+            indexes = [
+                index
+                for index, row in enumerate(baseline_episodes)
+                if str(row["scene_context"][context_key]) == value
+            ]
+            strata[context_key][value] = {
+                "baseline": summarize([baseline_episodes[index] for index in indexes]),
+                "candidate": summarize([candidate_episodes[index] for index in indexes]),
+            }
+
+    return {
+        "schema_version": "farpoint.paired-policy-rollout-comparison.v1",
+        "scene_count": len(baseline_ids),
+        "scene_ids": baseline_ids,
+        "baseline": baseline_summary,
+        "candidate": candidate_summary,
+        "delta": {
+            "task_successes": candidate_summary["task_successes"]
+            - baseline_summary["task_successes"],
+            "stage_counts": {
+                name: candidate_summary["stage_counts"][name]
+                - baseline_summary["stage_counts"][name]
+                for name in stage_names
+            },
+            "hard_range_violation_count": candidate_summary["hard_range_violation_count"]
+            - baseline_summary["hard_range_violation_count"],
+            "delta_limited_count": candidate_summary["delta_limited_count"]
+            - baseline_summary["delta_limited_count"],
+        },
+        "paired_task_outcomes": paired_outcomes,
+        "strata": strata,
     }

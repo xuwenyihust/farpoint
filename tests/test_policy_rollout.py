@@ -8,6 +8,8 @@ import pytest
 
 from farpoint.contracts import load_schema, validate_contract
 from farpoint.policy_rollout import (
+    RolloutStageTracker,
+    compare_paired_rollout_reports,
     constrain_policy_action,
     evaluate_rollout_acceptance,
     initial_command_slew_reference,
@@ -20,6 +22,131 @@ from farpoint.policy_rollout import (
     summarize_action_errors,
 )
 from farpoint.so101 import lerobot_to_radians
+
+
+def test_rollout_stage_tracker_records_ordered_diagnostic_evidence():
+    tracker = RolloutStageTracker(policy_hz=30)
+    rows = [
+        (False, False, False, False, True, False, 0.08),
+        (True, True, False, False, False, False, 0.02),
+        (True, True, False, False, False, False, 0.018),
+        (True, True, True, False, False, False, 0.019),
+        (True, False, True, True, True, False, 0.04),
+        (False, False, False, True, True, True, 0.05),
+    ]
+    for step, row in enumerate(rows):
+        tracker.observe(
+            policy_step=step,
+            contact=row[0],
+            bilateral_contact=row[1],
+            lifted=row[2],
+            entered_target=row[3],
+            released=row[4],
+            stable_release=row[5],
+            gripper_origin_to_object_center_distance_m=row[6],
+        )
+
+    result = tracker.result()
+    assert result["first_contact_step"] == 1
+    assert result["first_bilateral_contact_step"] == 1
+    assert result["first_stable_grasp_step"] == 3
+    assert result["first_lift_step"] == 3
+    assert result["first_target_entry_step"] == 4
+    assert result["first_release_after_lift_step"] == 4
+    assert result["first_stable_release_step"] == 5
+    assert result["maximum_consecutive_bilateral_contact_steps"] == 3
+    assert result["contact_to_lift_steps"] == 2
+    assert result["contact_to_lift_s"] == pytest.approx(2 / 30)
+    assert result["minimum_pre_contact_gripper_origin_to_object_center_distance_m"] == 0.02
+
+
+def test_rollout_stage_tracker_rejects_invalid_measurements():
+    tracker = RolloutStageTracker(policy_hz=30)
+    with pytest.raises(ValueError, match="distance"):
+        tracker.observe(
+            policy_step=0,
+            contact=False,
+            bilateral_contact=False,
+            lifted=False,
+            entered_target=False,
+            released=False,
+            stable_release=False,
+            gripper_origin_to_object_center_distance_m=float("nan"),
+        )
+
+
+def test_compare_paired_rollouts_reports_stage_and_stratified_deltas():
+    def episode(scene_id, variant, region, success, contact, lift, distance):
+        return {
+            "scene_id": scene_id,
+            "scene_context": {
+                "object_variant_id": variant,
+                "region_band": region,
+                "yaw_stratum_id": "yaw00_18",
+                "yaw_degrees": 1.0,
+            },
+            "execution_status": "FINISHED",
+            "task_success": success,
+            "stage_evidence": {
+                "ever_cube_contact": contact,
+                "ever_bilateral_contact": lift,
+                "ever_stable_grasp": lift,
+                "ever_lifted": lift,
+                "ever_entered_target": success,
+                "ever_released_after_lift": success,
+                "ever_stable_release": success,
+                "contact_to_lift_s": 0.2 if lift else None,
+                "minimum_pre_contact_gripper_origin_to_object_center_distance_m": distance,
+            },
+            "hard_range_violation_count": 0,
+            "delta_limited_count": 2,
+        }
+
+    baseline = {
+        "episodes": [
+            episode("a", "small", "core", False, True, False, 0.03),
+            episode("b", "large", "outer", True, True, True, 0.02),
+        ]
+    }
+    candidate = {
+        "episodes": [
+            episode("a", "small", "core", True, True, True, 0.018),
+            episode("b", "large", "outer", True, True, True, 0.019),
+        ]
+    }
+    comparison = compare_paired_rollout_reports(baseline, candidate)
+    assert comparison["delta"]["task_successes"] == 1
+    assert comparison["delta"]["stage_counts"]["ever_lifted"] == 1
+    assert comparison["paired_task_outcomes"] == {
+        "improved": 1,
+        "regressed": 0,
+        "unchanged_success": 1,
+        "unchanged_failure": 0,
+    }
+    assert comparison["strata"]["region_band"]["core"]["candidate"]["task_successes"] == 1
+
+
+def test_compare_paired_rollouts_rejects_scene_drift():
+    baseline = {
+        "episodes": [
+            {
+                "scene_id": "a",
+                "scene_context": {},
+                "execution_status": "FINISHED",
+            }
+        ]
+    }
+    candidate = {
+        "episodes": [
+            {
+                "scene_id": "b",
+                "scene_context": {},
+                "execution_status": "FINISHED",
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="same ordered scenes"):
+        compare_paired_rollout_reports(baseline, candidate)
 
 
 def test_json_default_converts_numpy_scalars_and_rejects_unknown_objects():
