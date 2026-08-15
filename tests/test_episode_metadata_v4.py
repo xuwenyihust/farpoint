@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from farpoint.contracts import task_definition, validate_contract, validate_episode_semantics
+from farpoint.demonstration import recovery_demonstration
 from farpoint.episode_metadata import validate_compatible_episode_metadata
 from farpoint.scene_entities import legacy_object_entity, placement_target_entity
 
@@ -257,6 +258,40 @@ def test_episode_v4_accepts_backward_compatible_missing_demonstration_section():
     assert "demonstration" not in episode
     assert validate_contract(episode) == []
     assert validate_episode_semantics(episode) == []
+
+
+def test_episode_v4_validates_explicit_recovery_handoff_stage_contract():
+    episode = episode_v4()
+    episode["demonstration"] = recovery_demonstration(
+        oracle_profile_id="recovery-v1",
+        source_policy={
+            "policy_type": "act",
+            "checkpoint_step": 20_000,
+            "model_sha256": SHA,
+            "training_run_id": "act-v010",
+            "rollout_git_commit": "b" * 40,
+        },
+        trigger_id="approach-stall-v1",
+        failure_class="approach_miss",
+        control_step=119,
+        handoff_stage="approach",
+        trigger_reason="stage_progress_stall",
+        trigger_evidence={"contact_forces_n": [0.0, 0.0]},
+        source_rollout_id="rollout-1",
+        source_scene_id="scene-1",
+        state_snapshot={"joint_positions_rad": [0.0] * 6},
+        recovery_strategy_id="regrasp-v1",
+    )
+    assert validate_contract(episode) == []
+    assert validate_episode_semantics(episode) == []
+
+    mismatched = deepcopy(episode)
+    mismatched["demonstration"]["intervention"]["trigger"]["evidence"][
+        "handoff_stage"
+    ] = "grasp"
+    assert "recovery trigger evidence handoff_stage does not match" in (
+        validate_episode_semantics(mismatched)
+    )
 
 
 def test_episode_v4_validates_live_recovery_intervention_metadata():

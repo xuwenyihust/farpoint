@@ -1,6 +1,6 @@
 {
   "schema_version": "farpoint.recovery-plan-config.v2",
-  "config_version": "0.1.2-recovery.3",
+  "config_version": "0.1.2-recovery.4",
   "selection_seed": 20260814,
   "lineage_id": "farpoint-so101-v012-recovery",
   "watchdog_profile_id": "so101-v012-recovery-watchdog-v1",
@@ -62,7 +62,7 @@
     "approach_miss": {
       "trigger_id": "act-approach-miss-v2",
       "failure_class": "approach_miss",
-      "stage": "approach",
+      "admission_stage": "approach",
       "minimum_policy_steps": 90,
       "maximum_policy_steps_before_handoff": 240,
       "window_steps": 30,
@@ -75,7 +75,7 @@
     "contact_without_lift": {
       "trigger_id": "act-contact-without-lift-v3",
       "failure_class": "contact_without_lift",
-      "stage": "grasp",
+      "admission_stage": "grasp",
       "minimum_policy_steps": 120,
       "maximum_policy_steps_before_handoff": 700,
       "window_steps": 30,
@@ -88,7 +88,7 @@
     "transport_drift": {
       "trigger_id": "act-transport-drift-v3",
       "failure_class": "transport_drift",
-      "stage": "transport",
+      "admission_stage": "transport",
       "minimum_policy_steps": 240,
       "maximum_policy_steps_before_handoff": 1050,
       "window_steps": 30,
@@ -101,7 +101,7 @@
     "place_release_failure": {
       "trigger_id": "act-place-release-failure-v3",
       "failure_class": "place_release_failure",
-      "stage": "place_release",
+      "admission_stage": "place",
       "minimum_policy_steps": 500,
       "maximum_policy_steps_before_handoff": 1200,
       "window_steps": 30,

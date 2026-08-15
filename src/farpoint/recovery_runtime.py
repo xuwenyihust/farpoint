@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from farpoint.contracts import validate_contract
+from farpoint.handoff_stage import HANDOFF_STAGE_SCHEMA_VERSION, derive_handoff_stage
 from farpoint.policy_rollout import resolve_action_safety_profile
 from farpoint.so101 import lerobot_to_radians, radians_to_lerobot
 
@@ -83,7 +84,8 @@ def recovery_oracle_entry_phase(trigger: dict[str, Any]) -> str:
     the target.
     """
     failure_class = trigger.get("failure_class")
-    if failure_class == "approach_miss":
+    handoff_stage = trigger.get("handoff_stage")
+    if handoff_stage == "approach":
         return "pregrasp"
     has_contact = bool(trigger.get("has_contact", False))
     ever_lifted = bool(trigger.get("ever_lifted", trigger.get("cube_lifted", False)))
@@ -96,26 +98,36 @@ def recovery_oracle_entry_phase(trigger: dict[str, Any]) -> str:
         and bool(trigger.get("cube_lifted", False))
         and lift_height_m >= 0.010
     )
-    if failure_class == "contact_without_lift":
+    if handoff_stage == "grasp":
         # A live fingertip contact is legitimate recovery state, but PREGRASP
         # deliberately rejects any contact during its collision-safe route.
         # Open and retreat through HOME before attempting a fresh grasp.
         return "home" if has_contact else "pregrasp"
-    if failure_class == "transport_drift":
+    if handoff_stage == "lift":
+        # The Oracle's LIFT phase assumes private capture state established by
+        # its own close/verification sequence.  A policy handoff cannot safely
+        # synthesize that state, so preserve the scene and re-enter via HOME.
+        return "home"
+    if handoff_stage in {"transport", "place"}:
         # ``ever_lifted`` alone also describes a cube that has already fallen
         # back to the table.  Continue transport only from a currently secure,
         # bilateral grasp with useful clearance; otherwise retreat and regrasp
         # without resetting the live scene.
         return "preplace" if securely_carried and ever_lifted else "home"
+    if handoff_stage == "release":
+        return "open"
+    if handoff_stage == "settle":
+        return "settle"
+    # Frozen v1/v2 evidence did not carry a versioned handoff stage.
+    if failure_class == "approach_miss":
+        return "pregrasp"
+    if failure_class == "contact_without_lift":
+        return "home" if has_contact else "pregrasp"
+    if failure_class == "transport_drift":
+        return "preplace" if securely_carried and ever_lifted else "home"
     if failure_class == "place_release_failure":
         if bool(trigger.get("cube_in_target", False)):
-            if bool(trigger.get("gripper_released", False)):
-                return "settle"
-            # The cube may already be resting stably on the pad after contact
-            # has separated while the jaw is still commanded closed. Opening
-            # and settling is the correct continuation; regrasping would undo
-            # a valid placement.
-            return "open"
+            return "settle" if bool(trigger.get("gripper_released", False)) else "open"
         return "preplace" if securely_carried and ever_lifted else "home"
     return "pregrasp"
 
@@ -270,8 +282,14 @@ class RecoveryTriggerDetector:
             "gripper_object_distance_m": distance,
             "cube_lifted": bool(cube_lifted),
             "ever_lifted": self._ever_lifted,
+            "ever_contact": self._ever_contact,
+            "ever_near_target": self._ever_near_target,
             "has_contact": has_contact,
             "contact_forces_n": forces.tolist(),
+            "contact_force_threshold_n": force_threshold,
+            "secure_grasp": bool(
+                np.min(forces) >= force_threshold and not gripper_released
+            ),
             "cube_in_target": bool(cube_in_target),
             "gripper_released": bool(gripper_released),
             "cube_stable": bool(cube_stable),
@@ -284,7 +302,7 @@ class RecoveryTriggerDetector:
             common["object_displacement_m"] = float(
                 np.linalg.norm(obj - self._initial_object_position)
             )
-            stage = self.config["stage"]
+            admission_stage = self.config.get("admission_stage", self.config.get("stage"))
             stage_admitted = {
                 "approach_miss": not self._ever_contact,
                 "contact_without_lift": self._ever_contact and not self._ever_lifted,
@@ -296,12 +314,18 @@ class RecoveryTriggerDetector:
             if stage_admitted and self._consecutive_safety >= int(
                 self.config["consecutive_safety_event_steps"]
             ):
-                return {
+                result = {
                     **common,
                     "failure_class": failure_class,
-                    "stage": stage,
-                    "reason": "consecutive_action_safety_intervention",
+                    "trigger_reason": "consecutive_action_safety_intervention",
                 }
+                result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
+                result["handoff_stage"] = derive_handoff_stage(result)
+                result["stage"] = result["handoff_stage"]
+                result["reason"] = result["trigger_reason"]
+                if admission_stage:
+                    result["source_stage_label"] = admission_stage
+                return result
             deadline = policy_step + 1 >= int(self.config["maximum_policy_steps_before_handoff"])
             progress = None
             if len(self._distance_history) == self._distance_history.maxlen:
@@ -323,35 +347,57 @@ class RecoveryTriggerDetector:
                 result = {
                     **common,
                     "failure_class": failure_class,
-                    "stage": stage,
-                    "reason": "stage_progress_stall" if stalled else "stage_handoff_deadline",
+                    "trigger_reason": (
+                        "stage_progress_stall" if stalled else "stage_handoff_deadline"
+                    ),
                 }
                 if progress is not None:
                     result["window_progress_m"] = progress
+                result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
+                result["handoff_stage"] = derive_handoff_stage(result)
+                result["stage"] = result["handoff_stage"]
+                result["reason"] = result["trigger_reason"]
+                if admission_stage:
+                    result["source_stage_label"] = admission_stage
                 return result
             return None
         if self._consecutive_safety >= int(self.config["consecutive_safety_event_steps"]):
-            return {
+            result = {
                 **common,
                 "failure_class": "action_saturation",
-                "stage": "pre_lift",
-                "reason": "consecutive_action_safety_intervention",
+                "trigger_reason": "consecutive_action_safety_intervention",
             }
+            result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
+            result["handoff_stage"] = derive_handoff_stage(result)
+            result["stage"] = result["handoff_stage"]
+            result["source_stage_label"] = "pre_lift"
+            result["reason"] = result["trigger_reason"]
+            return result
         if len(self._distance_history) == self._distance_history.maxlen:
             progress = float(self._distance_history[0] - self._distance_history[-1])
             if progress < float(self.config["minimum_progress_m"]):
-                return {
+                result = {
                     **common,
                     "failure_class": "progress_stall",
-                    "stage": "pre_lift",
-                    "reason": "insufficient_gripper_object_progress",
+                    "trigger_reason": "insufficient_gripper_object_progress",
                     "window_progress_m": progress,
                 }
+                result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
+                result["handoff_stage"] = derive_handoff_stage(result)
+                result["stage"] = result["handoff_stage"]
+                result["source_stage_label"] = "pre_lift"
+                result["reason"] = result["trigger_reason"]
+                return result
         if policy_step + 1 >= int(self.config["maximum_policy_steps_before_handoff"]):
-            return {
+            result = {
                 **common,
                 "failure_class": "progress_stall",
-                "stage": "pre_lift",
-                "reason": "bounded_pre_lift_handoff_deadline",
+                "trigger_reason": "bounded_pre_lift_handoff_deadline",
             }
+            result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
+            result["handoff_stage"] = derive_handoff_stage(result)
+            result["stage"] = result["handoff_stage"]
+            result["source_stage_label"] = "pre_lift"
+            result["reason"] = result["trigger_reason"]
+            return result
         return None

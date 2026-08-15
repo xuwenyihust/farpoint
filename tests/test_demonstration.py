@@ -41,7 +41,8 @@ def test_recovery_demonstration_binds_live_handoff_and_snapshot_deterministicall
         "trigger_id": "target-progress-stall-v1",
         "failure_class": "transport_drift",
         "control_step": 684,
-        "stage": "transport",
+        "handoff_stage": "transport",
+        "trigger_reason": "stage_progress_stall",
         "trigger_evidence": {"window_steps": 90, "progress_m": 0.0},
         "source_rollout_id": "rollout-1",
         "source_scene_id": "train-scene-1",
@@ -62,6 +63,12 @@ def test_recovery_demonstration_binds_live_handoff_and_snapshot_deterministicall
     assert handoff["physics_state_continuous"] is True
     assert handoff["reset_performed"] is False
     assert handoff["state_snapshot_sha256"] == state_snapshot_sha256(SNAPSHOT)
+    trigger = first["intervention"]["trigger"]
+    assert trigger["stage"] == "transport"
+    assert trigger["handoff_stage_schema_version"] == "1"
+    assert trigger["handoff_stage"] == "transport"
+    assert trigger["trigger_reason"] == "stage_progress_stall"
+    assert trigger["evidence"]["handoff_stage"] == "transport"
 
 
 def test_recovery_metadata_rejects_missing_policy_and_nonfinite_snapshot():
@@ -72,7 +79,8 @@ def test_recovery_metadata_rejects_missing_policy_and_nonfinite_snapshot():
             trigger_id="stall-v1",
             failure_class="progress_stall",
             control_step=10,
-            stage="transport",
+            handoff_stage="transport",
+            trigger_reason="stage_progress_stall",
             trigger_evidence={"window": 5},
             source_rollout_id="rollout",
             source_scene_id="scene",
