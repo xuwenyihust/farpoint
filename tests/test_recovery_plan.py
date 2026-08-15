@@ -72,6 +72,12 @@ def multistage_config():
     return json.loads((ROOT / "configs/recovery/so101_v012_recovery80.json").read_text())
 
 
+def grasp_recovery_config():
+    return json.loads(
+        (ROOT / "configs/recovery/so101_v012_grasp_recovery20.json").read_text()
+    )
+
+
 def multistage_source_plan():
     source = source_plan()
     expanded = []
@@ -206,6 +212,107 @@ def test_v012_multistage_recovery80_has_exact_marginals_and_runtime_v2(tmp_path)
     runtime_path = tmp_path / "runtime-v2.json"
     runtime_path.write_text(json.dumps(runtime))
     assert load_recovery_runtime(runtime_path) == runtime
+
+
+def test_v012_grasp_recovery20_freezes_train_only_crossed_coverage(tmp_path):
+    config_value = grasp_recovery_config()
+    plan, runtime = build_recovery_plan(
+        multistage_source_plan(),
+        config_value,
+        campaign_id="grasp-recovery20-test",
+        scene_count=20,
+    )
+
+    assert plan["coverage"] == {
+        "objects": {"blue-30mm-30g": 10, "red-40mm-40g": 10},
+        "recovery_triggers": {"contact_without_lift": 20},
+        "regions": {"middle": 10, "outer": 10},
+        "splits": {"train": 20},
+        "yaw_strata": {
+            "yaw00_18": 4,
+            "yaw18_36": 4,
+            "yaw36_54": 4,
+            "yaw54_72": 4,
+            "yaw72_90": 4,
+        },
+    }
+    assert plan["campaign_contract"]["target"] == {
+        "successful_episodes": 20,
+        "splits": {"train": 20},
+    }
+    eligibility = plan["campaign_contract"]["variation_contract"][
+        "episode_eligibility"
+    ]
+    assert eligibility == {
+        "schema_version": "farpoint.recovery-episode-eligibility.v1",
+        "by_trigger_class": {
+            "contact_without_lift": {
+                "handoff_stage": "grasp",
+                "trigger_evidence": {
+                    "ever_contact": True,
+                    "ever_lifted": False,
+                    "has_contact": True,
+                    "cube_lifted": False,
+                },
+                "handoff": {
+                    "physics_state_continuous": True,
+                    "reset_performed": False,
+                },
+            }
+        },
+    }
+    assert runtime["source_policy"]["model_sha256"] == (
+        "2752a1ce2f2a71787215eba39c57d8b87946df5ba3ebaae1f80be8bdc6e5681b"
+    )
+    assert runtime["trigger_profiles"]["contact_without_lift"][
+        "required_handoff_stage"
+    ] == "grasp"
+    runtime_path = tmp_path / "grasp-runtime-v2.json"
+    runtime_path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(runtime_path) == runtime
+
+
+def test_v012_grasp_pilot6_covers_both_objects_regions_and_every_yaw():
+    plan, _runtime = build_recovery_plan(
+        multistage_source_plan(),
+        grasp_recovery_config(),
+        campaign_id="grasp-recovery6-pilot",
+        scene_count=6,
+    )
+
+    assert plan["campaign_contract"]["campaign_kind"] == "pilot"
+    assert plan["coverage"] == {
+        "objects": {"blue-30mm-30g": 3, "red-40mm-40g": 3},
+        "recovery_triggers": {"contact_without_lift": 6},
+        "regions": {"middle": 3, "outer": 3},
+        "splits": {"train": 6},
+        "yaw_strata": {
+            "yaw00_18": 2,
+            "yaw18_36": 1,
+            "yaw36_54": 1,
+            "yaw54_72": 1,
+            "yaw72_90": 1,
+        },
+    }
+
+
+def test_v012_rejects_duplicate_configured_pilot_slots():
+    broken = grasp_recovery_config()
+    slots = broken["quota_policy"]["pilot_slots_by_trigger_class"][
+        "contact_without_lift"
+    ]
+    slots[-1] = dict(slots[0])
+    try:
+        build_recovery_plan(
+            multistage_source_plan(),
+            broken,
+            campaign_id="grasp-invalid-pilot-slots",
+            scene_count=6,
+        )
+    except ValueError as error:
+        assert "pilot slots must be unique" in str(error)
+    else:
+        raise AssertionError("duplicate pilot slots must be rejected")
 
 
 def test_v012_pilot16_covers_every_trigger_object_region_and_yaw():

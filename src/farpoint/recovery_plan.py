@@ -88,6 +88,9 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
         tuple(int(value) for value in pair) for pair in (policy.get("validation_slots") or ())
     }
     pilot_per_class = int(policy.get("pilot_per_trigger_class", 0))
+    pilot_slots_by_class = policy.get("pilot_slots_by_trigger_class") or {}
+    if pilot_slots_by_class and set(pilot_slots_by_class) != set(trigger_classes):
+        raise ValueError("per-trigger pilot slots must match trigger classes exactly")
     full_count = len(trigger_classes) * len(yaw_strata) * region_slot_count
     pilot_count = len(trigger_classes) * pilot_per_class
     if scene_count not in (pilot_count, full_count):
@@ -116,10 +119,35 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
                     }
                 )
         if scene_count == pilot_count:
-            pilot_indices = tuple(
-                (class_index + len(yaw_strata) * offset) % len(class_requests)
-                for offset in range(pilot_per_class)
-            )
+            configured_slots = pilot_slots_by_class.get(trigger_class)
+            if configured_slots is not None:
+                if len(configured_slots) != pilot_per_class:
+                    raise ValueError("declared pilot slots do not match pilot count")
+                pilot_indices = []
+                seen_slots = set()
+                for slot in configured_slots:
+                    yaw_id = slot.get("yaw_stratum_id")
+                    slot_index = slot.get("region_slot_index")
+                    if yaw_id not in yaw_strata:
+                        raise ValueError("pilot slot references an unknown yaw stratum")
+                    if (
+                        not isinstance(slot_index, int)
+                        or isinstance(slot_index, bool)
+                        or not 0 <= slot_index < region_slot_count
+                    ):
+                        raise ValueError("pilot slot has an invalid region slot index")
+                    identity = (yaw_id, slot_index)
+                    if identity in seen_slots:
+                        raise ValueError("pilot slots must be unique within a trigger class")
+                    seen_slots.add(identity)
+                    pilot_indices.append(
+                        yaw_strata.index(yaw_id) * region_slot_count + slot_index
+                    )
+            else:
+                pilot_indices = tuple(
+                    (class_index + len(yaw_strata) * offset) % len(class_requests)
+                    for offset in range(pilot_per_class)
+                )
             requests.extend(class_requests[index] for index in pilot_indices)
         else:
             requests.extend(class_requests)
@@ -163,6 +191,30 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
         ) != Counter(declared_aggregate_regions):
             raise ValueError("declared aggregate region recovery quotas do not match slots")
     return requests
+
+
+def _episode_eligibility(config: dict[str, Any]) -> dict[str, Any] | None:
+    """Freeze config-owned measured handoff requirements into the campaign."""
+    by_trigger_class = {}
+    for trigger_class, profile in (config.get("trigger_profiles") or {}).items():
+        handoff_stage = profile.get("required_handoff_stage")
+        evidence = profile.get("required_trigger_evidence")
+        if handoff_stage is None and evidence is None:
+            continue
+        by_trigger_class[trigger_class] = {
+            **({"handoff_stage": handoff_stage} if handoff_stage is not None else {}),
+            **({"trigger_evidence": deepcopy(evidence)} if evidence is not None else {}),
+            "handoff": {
+                "physics_state_continuous": True,
+                "reset_performed": False,
+            },
+        }
+    if not by_trigger_class:
+        return None
+    return {
+        "schema_version": "farpoint.recovery-episode-eligibility.v1",
+        "by_trigger_class": by_trigger_class,
+    }
 
 
 def _runtime_payload(
@@ -318,6 +370,7 @@ def build_recovery_plan(
                 "count": count,
             }
         )
+    episode_eligibility = _episode_eligibility(config) if multistage else None
     campaign = create_campaign(
         {
             "campaign_id": campaign_id,
@@ -337,6 +390,11 @@ def build_recovery_plan(
                 "source_plan_sha256": source_plan["plan_sha256"],
                 "selection_seed": config["selection_seed"],
                 "demonstration_schema": "farpoint.demonstration.v1",
+                **(
+                    {"episode_eligibility": episode_eligibility}
+                    if episode_eligibility is not None
+                    else {}
+                ),
             },
             "attempt_policy": {
                 "maximum_attempts_per_variation": 3,
