@@ -3,12 +3,15 @@ import json
 import numpy as np
 import pytest
 
+from farpoint.handoff_stage import derive_handoff_stage, normalize_handoff_stage
 from farpoint.recovery_runtime import (
     RecoveryTriggerDetector,
     load_recovery_runtime,
     recovery_descent_duration_seconds,
+    recovery_oracle_entry_phase,
     recovery_oracle_command_continuity_enabled,
     recovery_oracle_slew_limits,
+    recovery_trigger_for_scene,
     scene_binding,
     slew_recovery_oracle_target,
 )
@@ -166,6 +169,11 @@ def test_trigger_detects_stall_and_deadline():
             break
     assert trigger["failure_class"] == "progress_stall"
     assert trigger["reason"] == "insufficient_gripper_object_progress"
+    assert trigger["trigger_reason"] == "insufficient_gripper_object_progress"
+    assert trigger["handoff_stage_schema_version"] == "1"
+    assert trigger["handoff_stage"] == "approach"
+    assert trigger["stage"] == "approach"
+    assert trigger["source_stage_label"] == "pre_lift"
 
 
 def test_recovery_oracle_target_is_slew_bounded_at_control_rate():
@@ -207,3 +215,228 @@ def test_recovery_oracle_slew_rejects_non_integral_control_ratio():
     spec["control"]["physics_hz"] = 100
     with pytest.raises(ValueError, match="integer positive ratio"):
         recovery_oracle_slew_limits(spec)
+
+
+def multistage_runtime_spec():
+    spec = runtime_spec()
+    trigger = {
+        "trigger_id": "transport-v2",
+        "failure_class": "transport_drift",
+        "stage": "transport",
+        "minimum_policy_steps": 4,
+        "maximum_policy_steps_before_handoff": 10,
+        "window_steps": 3,
+        "minimum_progress_m": 0.001,
+        "consecutive_safety_event_steps": 3,
+        "contact_force_threshold_n": 0.1,
+        "lift_threshold_m": 0.005,
+        "target_distance_threshold_m": 0.05,
+    }
+    spec.update(
+        {
+            "schema_version": "farpoint.recovery-runtime.v2",
+            "trigger_profiles": {"transport_drift": trigger},
+            "task_context": {"target": {"target_id": "pad"}},
+        }
+    )
+    spec.pop("trigger")
+    spec["oracle_handoff_profile"].update(
+        {
+            "strategy_id": "regrasp_from_live_state_v2",
+            "command_continuity": "action_safety_profile_control_rate_v1",
+        }
+    )
+    spec["scenes"][0]["trigger_class"] = "transport_drift"
+    return spec
+
+
+def test_v2_runtime_resolves_scene_trigger_and_detects_transport_loss(tmp_path):
+    spec = multistage_runtime_spec()
+    spec["trigger_profiles"]["transport_drift"]["minimum_progress_m"] = 0.0
+    path = tmp_path / "runtime-v2.json"
+    path.write_text(json.dumps(spec))
+    loaded = load_recovery_runtime(path)
+    profile = recovery_trigger_for_scene(loaded, "variation-0")
+    assert profile["failure_class"] == "transport_drift"
+    detector = RecoveryTriggerDetector(profile)
+    trigger = None
+    for step in range(8):
+        trigger = detector.observe(
+            policy_step=step,
+            gripper_position_m=[0.0, 0.0, 0.1],
+            object_position_m=[0.1, 0.0, 0.01 if step < 2 else 0.02],
+            cube_lifted=step >= 2,
+            hard_range_violation_count=0,
+            command_slew_limited_count=0,
+            contact_forces_n=[1.0, 1.0] if step < 5 else [0.0, 0.0],
+            target_position_m=[0.2, 0.1, 0.03],
+        )
+        if trigger:
+            break
+    assert trigger["failure_class"] == "transport_drift"
+    assert trigger["stage"] == "transport"
+    assert trigger["handoff_stage"] == "transport"
+    assert trigger["source_stage_label"] == "transport"
+    assert not trigger["has_contact"]
+
+
+def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
+    spec = multistage_runtime_spec()
+    spec["scenes"][0]["trigger_class"] = "missing"
+    path = tmp_path / "runtime-v2.json"
+    path.write_text(json.dumps(spec))
+    with pytest.raises(ValueError, match="unknown trigger classes"):
+        load_recovery_runtime(path)
+
+
+@pytest.mark.parametrize(
+    ("trigger", "expected"),
+    [
+        ({"failure_class": "approach_miss"}, "pregrasp"),
+        (
+            {
+                "failure_class": "contact_without_lift",
+                "has_contact": True,
+                "contact_forces_n": [0.0, 3.0],
+            },
+            "home",
+        ),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": True,
+                "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.02,
+                "contact_forces_n": [2.0, 3.0],
+            },
+            "preplace",
+        ),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": False,
+                "ever_lifted": True,
+            },
+            "home",
+        ),
+        (
+            {
+                "failure_class": "place_release_failure",
+                "cube_in_target": True,
+                "has_contact": False,
+                "gripper_released": False,
+            },
+            "open",
+        ),
+        (
+            {
+                "failure_class": "place_release_failure",
+                "cube_in_target": True,
+                "gripper_released": True,
+            },
+            "settle",
+        ),
+        (
+            {
+                "failure_class": "place_release_failure",
+                "has_contact": True,
+                "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.02,
+                "contact_forces_n": [2.0, 3.0],
+            },
+            "preplace",
+        ),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": True,
+                "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.005,
+                "contact_forces_n": [2.0, 3.0],
+            },
+            "home",
+        ),
+        (
+            {
+                "failure_class": "transport_drift",
+                "has_contact": True,
+                "ever_lifted": True,
+                "cube_lifted": True,
+                "lift_height_m": 0.02,
+                "contact_forces_n": [0.0, 3.0],
+            },
+            "home",
+        ),
+    ],
+)
+def test_recovery_oracle_entry_phase_preserves_live_stage(trigger, expected):
+    assert recovery_oracle_entry_phase(trigger) == expected
+
+
+def test_multistage_trigger_records_current_lift_height():
+    profile = multistage_runtime_spec()["trigger_profiles"]["transport_drift"]
+    detector = RecoveryTriggerDetector(profile)
+    trigger = None
+    for step in range(profile["minimum_policy_steps"]):
+        trigger = detector.observe(
+            policy_step=step,
+            gripper_position_m=[0.0, 0.0, 0.1],
+            object_position_m=[0.1, 0.0, 0.02 if step == 0 else 0.035],
+            cube_lifted=step > 0,
+            hard_range_violation_count=1,
+            command_slew_limited_count=0,
+            contact_forces_n=[2.0, 2.0],
+            target_position_m=[0.2, 0.1, 0.03],
+        )
+    assert trigger is not None
+    assert trigger["lift_height_m"] == pytest.approx(0.015)
+
+
+@pytest.mark.parametrize(
+    ("evidence", "expected"),
+    [
+        ({"contact_forces_n": [0.0, 0.0]}, "approach"),
+        ({"contact_forces_n": [1.0, 0.0], "ever_contact": True}, "grasp"),
+        ({"contact_forces_n": [1.0, 1.0], "secure_grasp": True}, "lift"),
+        ({"contact_forces_n": [0.0, 0.0], "ever_lifted": True}, "transport"),
+        ({"contact_forces_n": [0.0, 0.0], "ever_near_target": True}, "place"),
+        ({"contact_forces_n": [0.0, 0.0], "cube_in_target": True}, "release"),
+        (
+            {
+                "contact_forces_n": [0.0, 0.0],
+                "cube_in_target": True,
+                "gripper_released": True,
+            },
+            "settle",
+        ),
+    ],
+)
+def test_handoff_stage_is_derived_from_measured_milestones(evidence, expected):
+    assert derive_handoff_stage(evidence) == expected
+
+
+def test_legacy_pre_lift_label_normalizes_to_audited_approach_stage():
+    normalized = normalize_handoff_stage(
+        {"stage": "pre_lift", "evidence": {"contact_forces_n": [0.0, 0.0]}},
+        observed_milestones={"ever_contact": False, "ever_lifted": False},
+    )
+    assert normalized == {
+        "handoff_stage_schema_version": "1",
+        "handoff_stage": "approach",
+        "source_stage_label": "pre_lift",
+    }
+
+
+def test_v2_runtime_accepts_explicit_admission_stage(tmp_path):
+    spec = multistage_runtime_spec()
+    profile = spec["trigger_profiles"]["transport_drift"]
+    profile["admission_stage"] = profile.pop("stage")
+    path = tmp_path / "runtime-v2-admission-stage.json"
+    path.write_text(json.dumps(spec))
+    loaded = load_recovery_runtime(path)
+    assert recovery_trigger_for_scene(loaded, "variation-0")["admission_stage"] == (
+        "transport"
+    )

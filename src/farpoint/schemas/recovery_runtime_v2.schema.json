@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://farpoint.dev/schemas/recovery_runtime_v2.schema.json",
+  "title": "Farpoint live multi-stage recovery runtime contract v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "runtime_id", "source_policy", "control", "trigger_profiles", "oracle_handoff_profile", "task_context", "scenes"],
+  "properties": {
+    "schema_version": {"const": "farpoint.recovery-runtime.v2"},
+    "runtime_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+    "source_policy": {"$ref": "#/$defs/source_policy"},
+    "control": {"$ref": "#/$defs/control"},
+    "trigger_profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/trigger_profile"}
+    },
+    "oracle_handoff_profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "descent_duration_seconds", "command_continuity", "strategy_id"],
+      "properties": {
+        "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+        "descent_duration_seconds": {"type": "number", "minimum": 2.3333333333, "maximum": 8.0},
+        "command_continuity": {"const": "action_safety_profile_control_rate_v1"},
+        "strategy_id": {
+          "enum": [
+            "regrasp_from_live_state_v2",
+            "stage_aware_live_state_v2",
+            "stage_aware_live_state_v3"
+          ]
+        }
+      }
+    },
+    "task_context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target"],
+      "properties": {"target": {"type": "object", "minProperties": 1}}
+    },
+    "scenes": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["variation_id", "source_rollout_id", "source_scene_id", "source_partition", "trigger_class"],
+        "properties": {
+          "variation_id": {"type": "string", "minLength": 1},
+          "source_rollout_id": {"type": "string", "minLength": 1},
+          "source_scene_id": {"type": "string", "minLength": 1},
+          "source_partition": {"const": "train"},
+          "trigger_class": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "source_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["policy_type", "checkpoint_step", "model_sha256", "training_run_id"],
+      "properties": {
+        "policy_type": {"const": "act"},
+        "checkpoint_step": {"type": "integer", "minimum": 1},
+        "model_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "training_run_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "control": {
+      "type": "object", "additionalProperties": false,
+      "required": ["physics_hz", "policy_hz", "replan_interval_steps", "action_safety_profile"],
+      "properties": {
+        "physics_hz": {"const": 120},
+        "policy_hz": {"const": 30},
+        "replan_interval_steps": {"type": "integer", "minimum": 1},
+        "action_safety_profile": {"$ref": "#/$defs/action_safety_profile"}
+      }
+    },
+    "action_safety_profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "profile_id", "joint_order", "arm_max_command_speed_deg_s", "gripper_max_command_slew_calibrated_per_step", "source"],
+      "properties": {
+        "schema_version": {"const": "farpoint.action-safety-profile.v1"},
+        "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+        "joint_order": {"const": ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos", "wrist_flex.pos", "wrist_roll.pos", "gripper.pos"]},
+        "arm_max_command_speed_deg_s": {"type": "number", "exclusiveMinimum": 0},
+        "gripper_max_command_slew_calibrated_per_step": {"type": "number", "exclusiveMinimum": 0},
+        "source": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "reference", "resolved_revision", "statistic"],
+          "properties": {
+            "kind": {"enum": ["open_source_hardware_default", "dataset_percentile"]},
+            "reference": {"type": "string", "minLength": 1},
+            "resolved_revision": {"type": "string", "minLength": 1},
+            "statistic": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "trigger_profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["trigger_id", "failure_class", "minimum_policy_steps", "maximum_policy_steps_before_handoff", "window_steps", "minimum_progress_m", "consecutive_safety_event_steps", "contact_force_threshold_n", "lift_threshold_m", "target_distance_threshold_m"],
+      "anyOf": [
+        {"required": ["admission_stage"]},
+        {"required": ["stage"]}
+      ],
+      "properties": {
+        "trigger_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+        "failure_class": {"enum": ["approach_miss", "contact_without_lift", "transport_drift", "place_release_failure"]},
+        "admission_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+        "stage": {"enum": ["approach", "grasp", "transport", "place_release"]},
+        "minimum_policy_steps": {"type": "integer", "minimum": 1},
+        "maximum_policy_steps_before_handoff": {"type": "integer", "minimum": 2},
+        "window_steps": {"type": "integer", "minimum": 2},
+        "minimum_progress_m": {"type": "number", "minimum": 0},
+        "consecutive_safety_event_steps": {"type": "integer", "minimum": 1},
+        "contact_force_threshold_n": {"type": "number", "minimum": 0},
+        "lift_threshold_m": {"type": "number", "exclusiveMinimum": 0},
+        "target_distance_threshold_m": {"type": "number", "exclusiveMinimum": 0}
+      }
+    }
+  }
+}

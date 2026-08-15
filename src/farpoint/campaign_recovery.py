@@ -747,6 +747,8 @@ def evaluate_self_healing_campaign(
     ):
         reasons.append(f"recent_success_rate:{recent_success_rate:.3f}")
 
+    live_execution_status = str(live_status.get("execution_status") or "RUNNING").upper()
+    enforce_live_liveness = live_execution_status == "RUNNING"
     successful_times = [
         _parse_timestamp(row.get("finished_at"))
         for row in all_attempts
@@ -757,15 +759,18 @@ def evaluate_self_healing_campaign(
         live_status.get("started_unix") or live_status.get("started_at")
     )
     no_success_age = None if reference is None else max(0.0, now - reference)
-    if no_success_age is not None and no_success_age > int(
-        policy.get("no_success_timeout_seconds", 1)
+    if (
+        enforce_live_liveness
+        and no_success_age is not None
+        and no_success_age > int(policy.get("no_success_timeout_seconds", 1))
     ):
         reasons.append(f"no_new_success:{no_success_age:.0f}s")
 
     heartbeat = _parse_timestamp(live_status.get("heartbeat_unix"))
     heartbeat_age = None if heartbeat is None else max(0.0, now - heartbeat)
-    if heartbeat_age is None or heartbeat_age > int(
-        policy.get("heartbeat_timeout_seconds", 1)
+    if enforce_live_liveness and (
+        heartbeat_age is None
+        or heartbeat_age > int(policy.get("heartbeat_timeout_seconds", 1))
     ):
         reasons.append(
             "heartbeat_missing_or_stale"

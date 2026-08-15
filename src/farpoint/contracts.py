@@ -9,6 +9,7 @@ from collections import Counter
 from importlib.resources import files
 from typing import Any
 
+from farpoint.handoff_stage import HANDOFF_STAGE_SCHEMA_VERSION, HANDOFF_STAGES
 from farpoint.scene_entities import validate_scene_entities
 
 
@@ -29,6 +30,7 @@ SCHEMA_FILES = {
     "farpoint.policy-training.v1": "policy_training_v1.schema.json",
     "farpoint.policy-rollout.v1": "policy_rollout_v1.schema.json",
     "farpoint.recovery-runtime.v1": "recovery_runtime_v1.schema.json",
+    "farpoint.recovery-runtime.v2": "recovery_runtime_v2.schema.json",
 }
 SPLITS = ("train", "validation", "test")
 SHAPE_TERMS = {
@@ -120,13 +122,30 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
             demonstration_type = demonstration.get("type")
             controller = demonstration.get("controller") or {}
             if demonstration_type == "recovery":
-                if identity.get("split") != "train":
-                    errors.append("recovery demonstrations must use the train split")
+                if identity.get("split") not in {"train", "validation"}:
+                    errors.append(
+                        "recovery demonstrations must use the train or validation split"
+                    )
                 if controller.get("type") != "oracle":
                     errors.append("recovery demonstration actions must be Oracle-authored")
                 intervention = demonstration.get("intervention") or {}
                 handoff = intervention.get("handoff") or {}
                 trigger = intervention.get("trigger") or {}
+                handoff_stage = trigger.get("handoff_stage")
+                if handoff_stage is not None:
+                    if trigger.get("handoff_stage_schema_version") != (
+                        HANDOFF_STAGE_SCHEMA_VERSION
+                    ):
+                        errors.append("recovery handoff stage schema version is unsupported")
+                    if handoff_stage not in HANDOFF_STAGES:
+                        errors.append("recovery handoff stage is unsupported")
+                    if trigger.get("stage") != handoff_stage:
+                        errors.append("legacy recovery stage alias does not match handoff_stage")
+                    evidence = trigger.get("evidence") or {}
+                    if evidence.get("handoff_stage") != handoff_stage:
+                        errors.append("recovery trigger evidence handoff_stage does not match")
+                    if evidence.get("trigger_reason") != trigger.get("trigger_reason"):
+                        errors.append("recovery trigger evidence trigger_reason does not match")
                 if handoff.get("source_control_step") != trigger.get("control_step"):
                     errors.append(
                         "recovery handoff source_control_step does not match trigger.control_step"

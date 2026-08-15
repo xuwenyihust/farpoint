@@ -9,6 +9,8 @@ import math
 from pathlib import PurePosixPath
 from typing import Any
 
+from farpoint.handoff_stage import HANDOFF_STAGE_SCHEMA_VERSION, HANDOFF_STAGES
+
 
 RECOVERY_FAILURE_CLASSES = frozenset(
     {
@@ -20,6 +22,8 @@ RECOVERY_FAILURE_CLASSES = frozenset(
         "release_instability",
         "action_saturation",
         "progress_stall",
+        "approach_miss",
+        "place_release_failure",
     }
 )
 
@@ -114,7 +118,8 @@ def recovery_demonstration(
     trigger_id: str,
     failure_class: str,
     control_step: int,
-    stage: str,
+    handoff_stage: str,
+    trigger_reason: str,
     trigger_evidence: dict[str, Any],
     source_rollout_id: str,
     source_scene_id: str,
@@ -141,7 +146,8 @@ def recovery_demonstration(
     values = {
         "oracle_profile_id": oracle_profile_id,
         "trigger_id": trigger_id,
-        "stage": stage,
+        "handoff_stage": handoff_stage,
+        "trigger_reason": trigger_reason,
         "source_rollout_id": source_rollout_id,
         "source_scene_id": source_scene_id,
         "recovery_strategy_id": recovery_strategy_id,
@@ -149,7 +155,19 @@ def recovery_demonstration(
     missing = sorted(key for key, value in values.items() if not value)
     if missing:
         raise ValueError("recovery metadata is missing: " + ", ".join(missing))
+    if handoff_stage not in HANDOFF_STAGES:
+        raise ValueError(f"unsupported recovery handoff stage: {handoff_stage}")
     _finite_json_value(trigger_evidence, path="trigger_evidence")
+    evidence = deepcopy(trigger_evidence)
+    explicit_evidence = {
+        "handoff_stage_schema_version": HANDOFF_STAGE_SCHEMA_VERSION,
+        "handoff_stage": handoff_stage,
+        "trigger_reason": trigger_reason,
+    }
+    for key, value in explicit_evidence.items():
+        if key in evidence and evidence[key] != value:
+            raise ValueError(f"trigger evidence {key} does not match recovery metadata")
+        evidence[key] = value
     return {
         "schema_version": "farpoint.demonstration.v1",
         "type": "recovery",
@@ -160,8 +178,12 @@ def recovery_demonstration(
                 "trigger_id": trigger_id,
                 "failure_class": failure_class,
                 "control_step": int(control_step),
-                "stage": stage,
-                "evidence": deepcopy(trigger_evidence),
+                # Kept as a reader-compatibility alias for published v1 records.
+                "stage": handoff_stage,
+                "handoff_stage_schema_version": HANDOFF_STAGE_SCHEMA_VERSION,
+                "handoff_stage": handoff_stage,
+                "trigger_reason": trigger_reason,
+                "evidence": evidence,
             },
             "handoff": {
                 "mode": "live_continuous_state",

@@ -23,7 +23,7 @@ def main() -> int:
     parser.add_argument("--source-plan", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--campaign-id", required=True)
-    parser.add_argument("--scene-count", type=int, choices=(6, 20), default=20)
+    parser.add_argument("--scene-count", type=int, choices=(6, 16, 20, 80), default=20)
     parser.add_argument("--git-commit", required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()

@@ -239,7 +239,9 @@ from farpoint.recovery_runtime import (  # noqa: E402
     load_recovery_runtime,
     recovery_descent_duration_seconds,
     recovery_oracle_command_continuity_enabled,
+    recovery_oracle_entry_phase,
     recovery_oracle_slew_limits,
+    recovery_trigger_for_scene,
     scene_binding,
     slew_recovery_oracle_target,
 )
@@ -488,7 +490,8 @@ def _run_recovery_handoff(
     body_index = _body_index(robot)
     control = runtime["control"]
     safety_profile = resolve_action_safety_profile(control)
-    detector = RecoveryTriggerDetector(runtime["trigger"])
+    trigger_profile = recovery_trigger_for_scene(runtime, trial["variation_id"])
+    detector = RecoveryTriggerDetector(trigger_profile)
     physics_steps = int(control["physics_hz"]) // int(control["policy_hz"])
     previous_applied = radians_to_lerobot(
         _numpy(robot.data.joint_pos[0]).astype(np.float32), clip=True
@@ -497,7 +500,13 @@ def _run_recovery_handoff(
     rows = []
     trigger = None
     snapshot = None
-    maximum_steps = int(runtime["trigger"]["maximum_policy_steps_before_handoff"])
+    maximum_steps = int(trigger_profile["maximum_policy_steps_before_handoff"])
+    target_spec = (runtime.get("task_context") or {}).get("target") or {
+        "position_m": [0.20, 0.10, 0.037],
+        "dimensions_m": [0.16, 0.14, 0.01],
+        "footprint_margin_m": 0.005,
+    }
+    object_spec = trial["resolved"]
     for policy_step in range(maximum_steps):
         images = {
             "front": _image(scene["front_camera"], env.device),
@@ -527,7 +536,23 @@ def _run_recovery_handoff(
             robot.data.body_link_pose_w.torch[0, body_index]
         ).astype(np.float32)
         forces = _cube_contact_forces(sensors)
-        lifted = max(forces) >= 0.1 and float(object_pose[2]) > initial_z + 0.005
+        lifted = max(forces) >= float(
+            trigger_profile.get("contact_force_threshold_n", 0.1)
+        ) and float(object_pose[2]) > initial_z + float(
+            trigger_profile.get("lift_threshold_m", 0.005)
+        )
+        cube_in_target = oriented_box_footprint_inside_target(
+            object_pose[:3],
+            object_spec["dimensions_m"],
+            object_pose[3:7],
+            target_spec["position_m"],
+            target_spec["dimensions_m"],
+            margin_m=float(target_spec.get("footprint_margin_m", 0.005)),
+        )
+        gripper_released = abs(
+            float(robot.data.joint_pos[0, 5].item()) - float(SO101_HOME_JOINTS[5])
+        ) < 0.08
+        cube_stable = float(np.linalg.norm(object_velocity)) < 0.03
         trigger = detector.observe(
             policy_step=policy_step,
             gripper_position_m=gripper_pose[:3],
@@ -535,6 +560,11 @@ def _run_recovery_handoff(
             cube_lifted=lifted,
             hard_range_violation_count=safety["hard_range_violation_count"],
             command_slew_limited_count=safety["command_slew_limited_count"],
+            contact_forces_n=forces,
+            target_position_m=target_spec["position_m"],
+            cube_in_target=cube_in_target,
+            gripper_released=gripper_released,
+            cube_stable=cube_stable,
         )
         rows.append(
             {
@@ -573,20 +603,27 @@ def _run_recovery_handoff(
     )
     if trigger is None or snapshot is None:
         raise RuntimeError(
-            "recovery handoff was not admitted before the bounded pre-lift deadline"
+            "recovery handoff was not admitted before the bounded stage deadline"
         )
+    trigger["oracle_entry_phase"] = recovery_oracle_entry_phase(trigger)
+    snapshot["trigger"] = copy.deepcopy(trigger)
     demonstration = recovery_demonstration(
         oracle_profile_id=oracle_profile_id,
         source_policy=policy_provenance,
-        trigger_id=runtime["trigger"]["trigger_id"],
+        trigger_id=trigger_profile["trigger_id"],
         failure_class=trigger["failure_class"],
         control_step=int(trigger["policy_step"]),
-        stage=trigger["stage"],
+        handoff_stage=trigger["handoff_stage"],
+        trigger_reason=trigger["trigger_reason"],
         trigger_evidence=trigger,
         source_rollout_id=binding["source_rollout_id"],
         source_scene_id=binding["source_scene_id"],
         state_snapshot=snapshot,
-        recovery_strategy_id=runtime["trigger"]["strategy_id"],
+        recovery_strategy_id=(
+            trigger_profile.get("strategy_id")
+            or runtime["oracle_handoff_profile"].get("strategy_id")
+            or "regrasp_from_live_state_v1"
+        ),
     )
     _write_json(
         root / "handoff.json",
@@ -2007,19 +2044,28 @@ def run_attempt(
     )
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
-    target_position = np.asarray([0.20, 0.10, 0.037], dtype=np.float32)
-    target_dimensions = np.asarray([0.16, 0.14, 0.01], dtype=np.float32)
+    target_spec = v010_context["plan"]["target"]
+    target_position = np.asarray(target_spec["position_m"], dtype=np.float32)
+    target_dimensions = np.asarray(target_spec["dimensions_m"], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
-    release_position = np.asarray([0.20, 0.10, 0.080], dtype=np.float32)
+    release_position = target_position.copy()
+    release_position[2] = float(target_position[2]) + 0.043
     # Separate capture admission from contact persistence. A 0.1 N bilateral
     # sample is enough to preserve an already captured cube, but it is too
     # weak to freeze the rotary jaw: light cubes can briefly touch both long
     # fingers while still sliding out of the aperture. Require the same 2 N,
     # three-tick confirmation used by CLOSE before entering bilateral settle.
     schedule = CONTROL_RECORDING_SCHEDULE
+    recovery_entry_phase = (
+        OraclePhase(recovery_snapshot["trigger"]["oracle_entry_phase"])
+        if recovery_snapshot is not None
+        and recovery_runtime.get("schema_version") == "farpoint.recovery-runtime.v2"
+        else (OraclePhase.PREGRASP if recovery_runtime is not None else OraclePhase.HOME)
+    )
     machine = OracleStateMachine(
+        phase=recovery_entry_phase,
         phase_timeout_steps=schedule.steps_for_seconds(40.0),
         required_contact_steps=1,
         required_stable_steps=schedule.steps_for_seconds(0.5),
@@ -2088,6 +2134,31 @@ def run_attempt(
     capture_object_minus_grasp = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
+    if recovery_entry_phase in {
+        OraclePhase.PREPLACE,
+        OraclePhase.OPEN,
+        OraclePhase.SETTLE,
+    }:
+        current_joints = _numpy(robot.data.joint_pos[0]).astype(np.float32)
+        gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, body_index])
+        live_object_position = _numpy(scene[active_name].data.root_pos_w[0])
+        grasp_hold_pose = gripper_pose[:3].copy()
+        grasp_hold_nominal_pose = grasp_hold_pose.copy()
+        grasp_hold_nominal_y = float(grasp_hold_pose[1])
+        grasp_hold_posture = current_joints[3:5].copy()
+        grasp_offset = grasp_hold_pose - live_object_position
+        grasp_jaw_hold = float(current_joints[5])
+        grasp_jaw_reference = grasp_jaw_hold
+        grasp_relative_reference = point_in_local_frame(
+            gripper_pose, live_object_position
+        )
+        previous_object_in_gripper = grasp_relative_reference.copy()
+        capture_object_minus_grasp = live_object_position - grasp_hold_pose
+        cube_was_lifted = bool(
+            recovery_snapshot["trigger"].get(
+                "ever_lifted", recovery_snapshot["trigger"].get("cube_lifted", False)
+            )
+        )
     rows = []
     physics_command_rows = []
     for control_step in range(schedule.steps_for_seconds(120.0)):
