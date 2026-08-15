@@ -28,9 +28,14 @@ def test_so101_release_spec_uses_extensible_repository_and_v3_contracts():
 
     assert spec["dataset_id"] == "farpoint_so101"
     assert spec["hf_repo_id"] == "wenyixu101/farpoint-so101"
-    assert spec["dataset_tag"] == "v0.0.3"
+    assert spec["dataset_tag"] == "v0.1.2"
     assert spec["dataset_schema"] == "farpoint.dataset.v3"
     assert spec["variation_schema"] == "farpoint.variation.v3"
+    assert spec["source_configs"] == [
+        "configs/variations/so101_v010_formal200.json",
+        "configs/recovery/so101_v011_recovery20.json",
+        "configs/recovery/so101_v012_grasp_recovery20.json",
+    ]
     assert check_versions(SO101_RELEASE_SPEC) == []
 
 
@@ -40,6 +45,9 @@ def test_so101_changelog_keeps_published_version_history():
         encoding="utf-8"
     )
 
+    assert "## v0.1.2" in changelog
+    assert "## v0.1.1" in changelog
+    assert "## v0.1.0" in changelog
     assert "## v0.0.3" in changelog
     assert "## v0.0.2" in changelog
     assert "## v0.0.1" in changelog
@@ -87,10 +95,33 @@ def test_code_and_dataset_versions_are_independent(tmp_path):
 
     assert spec["dataset_version"] == "9.4.1"
     assert spec["dataset_tag"] == "v9.4.1"
+    assert spec["source_configs"] == ["config.json"]
+
+
+def test_release_spec_rejects_invalid_source_configs(tmp_path):
+    path = tmp_path / "dataset-release.toml"
+    path.write_text(
+        "\n".join(
+            [
+                'schema_version = "farpoint.dataset-release.v1"',
+                'dataset_version = "1.2.0"',
+                'dataset_id = "dataset"',
+                'hf_repo_id = "owner/dataset"',
+                'dataset_schema = "farpoint.dataset.v3"',
+                'variation_schema = "farpoint.variation.v3"',
+                'lerobot_format = "v3"',
+                'variation_config = "primary.json"',
+                'source_configs = ["secondary.json"]',
+            ]
+        )
+    )
+    with pytest.raises(ValueError, match="variation_config must be included"):
+        load_release_spec(path)
 
 
 def test_version_check_does_not_require_code_to_match_dataset(tmp_path, monkeypatch):
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "2.0.0"\n')
+    (tmp_path / "config.json").write_text("{}\n")
     spec_path = tmp_path / "dataset-release.toml"
     spec_path.write_text(
         "\n".join(
