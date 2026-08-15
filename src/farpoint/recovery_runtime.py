@@ -212,6 +212,23 @@ class RecoveryTriggerDetector:
         self._ever_lifted = False
         self._ever_near_target = False
 
+    def _finalize_profile_trigger(
+        self, result: dict[str, Any], *, admission_stage: str | None
+    ) -> dict[str, Any] | None:
+        result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
+        result["handoff_stage"] = derive_handoff_stage(result)
+        result["stage"] = result["handoff_stage"]
+        result["reason"] = result["trigger_reason"]
+        if admission_stage:
+            result["source_stage_label"] = admission_stage
+        required_stage = self.config.get("required_handoff_stage")
+        if required_stage is not None and result["handoff_stage"] != required_stage:
+            return None
+        required_evidence = self.config.get("required_trigger_evidence") or {}
+        if any(result.get(key) != expected for key, expected in required_evidence.items()):
+            return None
+        return result
+
     def observe(
         self,
         *,
@@ -319,13 +336,11 @@ class RecoveryTriggerDetector:
                     "failure_class": failure_class,
                     "trigger_reason": "consecutive_action_safety_intervention",
                 }
-                result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
-                result["handoff_stage"] = derive_handoff_stage(result)
-                result["stage"] = result["handoff_stage"]
-                result["reason"] = result["trigger_reason"]
-                if admission_stage:
-                    result["source_stage_label"] = admission_stage
-                return result
+                finalized = self._finalize_profile_trigger(
+                    result, admission_stage=admission_stage
+                )
+                if finalized is not None:
+                    return finalized
             deadline = policy_step + 1 >= int(self.config["maximum_policy_steps_before_handoff"])
             progress = None
             if len(self._distance_history) == self._distance_history.maxlen:
@@ -353,13 +368,9 @@ class RecoveryTriggerDetector:
                 }
                 if progress is not None:
                     result["window_progress_m"] = progress
-                result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
-                result["handoff_stage"] = derive_handoff_stage(result)
-                result["stage"] = result["handoff_stage"]
-                result["reason"] = result["trigger_reason"]
-                if admission_stage:
-                    result["source_stage_label"] = admission_stage
-                return result
+                return self._finalize_profile_trigger(
+                    result, admission_stage=admission_stage
+                )
             return None
         if self._consecutive_safety >= int(self.config["consecutive_safety_event_steps"]):
             result = {

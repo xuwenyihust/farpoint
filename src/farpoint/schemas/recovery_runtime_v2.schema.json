@@ -104,6 +104,20 @@
         "trigger_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$"},
         "failure_class": {"enum": ["approach_miss", "contact_without_lift", "transport_drift", "place_release_failure"]},
         "admission_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+        "required_handoff_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+        "required_trigger_evidence": {
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": {
+            "ever_contact": {"type": "boolean"},
+            "ever_lifted": {"type": "boolean"},
+            "has_contact": {"type": "boolean"},
+            "cube_lifted": {"type": "boolean"},
+            "secure_grasp": {"type": "boolean"},
+            "cube_in_target": {"type": "boolean"},
+            "gripper_released": {"type": "boolean"},
+            "cube_stable": {"type": "boolean"}
+          }
+        },
         "stage": {"enum": ["approach", "grasp", "transport", "place_release"]},
         "minimum_policy_steps": {"type": "integer", "minimum": 1},
         "maximum_policy_steps_before_handoff": {"type": "integer", "minimum": 2},

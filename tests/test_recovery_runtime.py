@@ -440,3 +440,70 @@ def test_v2_runtime_accepts_explicit_admission_stage(tmp_path):
     assert recovery_trigger_for_scene(loaded, "variation-0")["admission_stage"] == (
         "transport"
     )
+
+
+def test_grasp_trigger_requires_current_contact_and_measured_grasp_stage():
+    profile = {
+        **multistage_runtime_spec()["trigger_profiles"]["transport_drift"],
+        "trigger_id": "grasp-v1",
+        "failure_class": "contact_without_lift",
+        "admission_stage": "grasp",
+        "required_handoff_stage": "grasp",
+        "required_trigger_evidence": {
+            "ever_contact": True,
+            "ever_lifted": False,
+            "has_contact": True,
+            "cube_lifted": False,
+        },
+        "minimum_policy_steps": 2,
+        "maximum_policy_steps_before_handoff": 8,
+        "window_steps": 2,
+        "minimum_progress_m": 0.001,
+        "consecutive_safety_event_steps": 20,
+    }
+    detector = RecoveryTriggerDetector(profile)
+
+    assert detector.observe(
+        policy_step=0,
+        gripper_position_m=[0.0, 0.0, 0.1],
+        object_position_m=[0.1, 0.0, 0.0],
+        cube_lifted=False,
+        hard_range_violation_count=0,
+        command_slew_limited_count=0,
+        contact_forces_n=[0.2, 0.0],
+    ) is None
+    trigger = detector.observe(
+        policy_step=1,
+        gripper_position_m=[0.0, 0.0, 0.1],
+        object_position_m=[0.1, 0.0, 0.0],
+        cube_lifted=False,
+        hard_range_violation_count=0,
+        command_slew_limited_count=0,
+        contact_forces_n=[0.2, 0.0],
+    )
+    assert trigger is not None
+    assert trigger["failure_class"] == "contact_without_lift"
+    assert trigger["handoff_stage"] == "grasp"
+    assert trigger["has_contact"] is True
+    assert trigger["ever_lifted"] is False
+
+    lost = RecoveryTriggerDetector(profile)
+    lost.observe(
+        policy_step=0,
+        gripper_position_m=[0.0, 0.0, 0.1],
+        object_position_m=[0.1, 0.0, 0.0],
+        cube_lifted=False,
+        hard_range_violation_count=0,
+        command_slew_limited_count=0,
+        contact_forces_n=[0.2, 0.0],
+    )
+    for step in range(1, 8):
+        assert lost.observe(
+            policy_step=step,
+            gripper_position_m=[0.0, 0.0, 0.1],
+            object_position_m=[0.1, 0.0, 0.0],
+            cube_lifted=False,
+            hard_range_violation_count=0,
+            command_slew_limited_count=0,
+            contact_forces_n=[0.0, 0.0],
+        ) is None

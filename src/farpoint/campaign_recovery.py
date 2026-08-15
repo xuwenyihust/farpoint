@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -17,6 +18,7 @@ from farpoint.campaign import (
 )
 from farpoint.so101_collection import validate_manifest
 from farpoint.so101_episode_analysis import classify_so101_failure
+from farpoint.recovery_episode_quality import validate_recovery_episode_eligibility
 
 
 POLICY_SCHEMA = "farpoint.self-healing-policy.v1"
@@ -643,6 +645,11 @@ def evaluate_self_healing_campaign(
         errors.append(f"invalid_quality_exclusions:{error}")
     all_attempts: list[dict[str, Any]] = []
     successful_quotas: dict[tuple[Any, ...], dict[str, Any]] = {}
+    eligible_failure_classes: Counter[str] = Counter()
+    eligible_handoff_stages: Counter[str] = Counter()
+    eligible_trigger_reasons: Counter[str] = Counter()
+    eligible_current_contact_count = 0
+    eligible_ever_lifted_count = 0
     previous_manifest = None
     latest_plan = None
     latest_manifest = None
@@ -673,6 +680,10 @@ def evaluate_self_healing_campaign(
             errors.append(f"segment[{index}]:invalid_manifest:{error}")
             continue
         trials = _trial_index(plan)
+        attempts_by_id = {
+            attempt.get("attempt_id"): attempt
+            for attempt in manifest.get("attempts") or []
+        }
         try:
             resolved_quotas = _resolved_trial_quota_identities(campaign, plan)
         except (KeyError, TypeError, ValueError) as error:
@@ -699,6 +710,51 @@ def evaluate_self_healing_campaign(
             if quota not in expected_quotas:
                 errors.append(f"segment[{index}]:success_outside_campaign_quota:{quota}")
                 continue
+            episode_eligibility = (
+                (campaign.get("variation_contract") or {}).get("episode_eligibility")
+            )
+            if episode_eligibility is not None:
+                attempt = attempts_by_id.get(attempt_id) or {}
+                episodes_root = row.get("episodes_root")
+                episode_id = attempt.get("episode_id")
+                if not episodes_root or not episode_id:
+                    errors.append(
+                        f"segment[{index}]:recovery_episode_eligibility_evidence_missing"
+                    )
+                    continue
+                metadata_path = Path(str(episodes_root)) / str(episode_id) / "metadata.json"
+                try:
+                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as error:
+                    errors.append(
+                        f"segment[{index}]:recovery_episode_metadata_unreadable:{error}"
+                    )
+                    continue
+                eligibility_errors = validate_recovery_episode_eligibility(
+                    metadata, trials[variation_id], episode_eligibility
+                )
+                if eligibility_errors:
+                    errors.extend(
+                        f"segment[{index}]:recovery_episode_ineligible:{error}"
+                        for error in eligibility_errors
+                    )
+                    continue
+                trigger = (
+                    ((metadata.get("demonstration") or {}).get("intervention") or {}).get(
+                        "trigger"
+                    )
+                    or {}
+                )
+                trigger_evidence = trigger.get("evidence") or {}
+                eligible_failure_classes[str(trigger.get("failure_class"))] += 1
+                eligible_handoff_stages[str(trigger.get("handoff_stage"))] += 1
+                eligible_trigger_reasons[str(trigger.get("trigger_reason"))] += 1
+                eligible_current_contact_count += int(
+                    bool(trigger_evidence.get("has_contact"))
+                )
+                eligible_ever_lifted_count += int(
+                    bool(trigger_evidence.get("ever_lifted"))
+                )
             selected = {
                 "quota": dict(zip(QUOTA_FIELDS, quota)),
                 "variation_id": variation_id,
@@ -852,6 +908,15 @@ def evaluate_self_healing_campaign(
         report["quality_exclusions_sha256"] = quality_exclusions.get(
             "quality_exclusions_sha256"
         )
+    if (campaign.get("variation_contract") or {}).get("episode_eligibility"):
+        report["recovery_episode_eligibility"] = {
+            "validated_selected_episodes": sum(eligible_handoff_stages.values()),
+            "failure_classes": dict(sorted(eligible_failure_classes.items())),
+            "handoff_stages": dict(sorted(eligible_handoff_stages.items())),
+            "trigger_reasons": dict(sorted(eligible_trigger_reasons.items())),
+            "current_contact_count": eligible_current_contact_count,
+            "ever_lifted_count": eligible_ever_lifted_count,
+        }
     if decision not in DECISIONS:
         raise AssertionError("invalid self-healing decision")
     return report
@@ -912,6 +977,42 @@ def build_campaign_export_selection(
             if quota in selected:
                 raise ValueError(f"multiple selected episodes for campaign quota: {quota}")
             attempt = attempts[attempt_id]
+            recovery_handoff = None
+            episode_eligibility = (
+                (campaign.get("variation_contract") or {}).get("episode_eligibility")
+            )
+            if episode_eligibility is not None:
+                metadata_path = (
+                    Path(episodes_root) / attempt["episode_id"] / "metadata.json"
+                )
+                try:
+                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as error:
+                    raise ValueError(
+                        f"recovery episode metadata is unreadable: {metadata_path}: {error}"
+                    ) from error
+                eligibility_errors = validate_recovery_episode_eligibility(
+                    metadata, trial, episode_eligibility
+                )
+                if eligibility_errors:
+                    raise ValueError(
+                        "selected recovery episode is ineligible: "
+                        + "; ".join(eligibility_errors)
+                    )
+                trigger = (
+                    ((metadata.get("demonstration") or {}).get("intervention") or {}).get(
+                        "trigger"
+                    )
+                    or {}
+                )
+                trigger_evidence = trigger.get("evidence") or {}
+                recovery_handoff = {
+                    "failure_class": trigger.get("failure_class"),
+                    "handoff_stage": trigger.get("handoff_stage"),
+                    "trigger_reason": trigger.get("trigger_reason"),
+                    "has_contact": trigger_evidence.get("has_contact"),
+                    "ever_lifted": trigger_evidence.get("ever_lifted"),
+                }
             selected[quota] = {
                 "episode_dir": str(Path(episodes_root) / attempt["episode_id"]),
                 "trial_id": trial["trial_id"],
@@ -922,6 +1023,11 @@ def build_campaign_export_selection(
                 "git_commit": segment["git_commit"],
                 "attempt_id": attempt_id,
                 "quota": dict(zip(QUOTA_FIELDS, quota)),
+                **(
+                    {"recovery_handoff": recovery_handoff}
+                    if recovery_handoff is not None
+                    else {}
+                ),
             }
         previous_manifest = manifest
     if set(selected) != expected_quotas:
