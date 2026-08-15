@@ -54,6 +54,7 @@ from PIL import Image  # noqa: E402
 import farpoint_so101_env  # noqa: E402,F401
 from farpoint.oracle import oriented_box_footprint_inside_target  # noqa: E402
 from farpoint.policy_rollout import (  # noqa: E402
+    RolloutStageTracker,
     constrain_policy_action,
     evaluate_rollout_acceptance,
     initial_command_slew_reference,
@@ -410,6 +411,13 @@ def _run_episode(env, scene_spec, spec, root):
     _policy_request("/reset", {"scene_id": scene_spec["scene_id"]})
     scene = env.scene
     robot = scene["robot"]
+    gripper_body_indexes, gripper_body_names = robot.find_bodies("gripper")
+    if len(gripper_body_indexes) != 1:
+        raise RuntimeError(
+            "expected one SO-101 gripper body, got "
+            f"indexes={gripper_body_indexes}, names={gripper_body_names}"
+        )
+    gripper_body_index = int(gripper_body_indexes[0])
     active = scene[active_name]
     obj = scene_spec["object"]
     control = spec["control"]
@@ -427,6 +435,7 @@ def _run_episode(env, scene_spec, spec, root):
     nonfinite = 0
     policy_steps = 0
     task_success = False
+    stage_tracker = RolloutStageTracker(policy_hz=int(control["policy_hz"]))
     previous_applied_action = None
     exact_physics_targets = 0
     camera_ids = [feature.rsplit(".", 1)[-1] for feature in spec["environment"]["camera_features"]]
@@ -495,6 +504,7 @@ def _run_episode(env, scene_spec, spec, root):
             forces = _cube_contact_forces(scene)
             cube_pose = _numpy(active.data.root_pose_w[0])
             cube_velocity = _numpy(active.data.root_lin_vel_w[0])
+            gripper_pose = _numpy(robot.data.body_link_pose_w.torch[0, gripper_body_index])
             contact = max(forces) >= 0.10
             bilateral = min(forces) >= 0.10
             lifted = contact and float(cube_pose[2]) > initial_z + 0.005
@@ -515,6 +525,17 @@ def _run_episode(env, scene_spec, spec, root):
             valid_settle = ever_lifted and in_target and released and stable
             stable_steps = stable_steps + 1 if valid_settle else 0
             task_success = stable_steps >= control["stable_steps"]
+            gripper_object_distance = float(np.linalg.norm(gripper_pose[:3] - cube_pose[:3]))
+            stage_tracker.observe(
+                policy_step=step,
+                contact=contact,
+                bilateral_contact=bilateral,
+                lifted=lifted,
+                entered_target=in_target,
+                released=released,
+                stable_release=task_success,
+                gripper_origin_to_object_center_distance_m=gripper_object_distance,
+            )
             trace_row = {
                 "policy_step": step,
                 "state_calibrated": state.tolist(),
@@ -525,7 +546,12 @@ def _run_episode(env, scene_spec, spec, root):
                 "policy_execution": policy_execution,
                 "cube_pose_xyzw": cube_pose.tolist(),
                 "cube_velocity_mps": cube_velocity.tolist(),
+                "gripper_pose_xyzw": gripper_pose.tolist(),
+                "gripper_origin_to_object_center_distance_m": gripper_object_distance,
                 "contact_forces_n": list(forces),
+                "cube_contact": contact,
+                "bilateral_cube_contact": bilateral,
+                "cube_lifted": lifted,
                 "cube_in_target": in_target,
                 "gripper_released": released,
                 "cube_stable": stable,
@@ -583,6 +609,15 @@ def _run_episode(env, scene_spec, spec, root):
         terminal_reason = "target_entry_without_stable_release"
     result = {
         "scene_id": scene_spec["scene_id"],
+        "scene_context": {
+            key: scene_spec[key]
+            for key in (
+                "object_variant_id",
+                "region_band",
+                "yaw_stratum_id",
+                "yaw_degrees",
+            )
+        },
         "execution_status": "FINISHED",
         "task_success": task_success,
         "terminal_reason": terminal_reason,
@@ -602,10 +637,7 @@ def _run_episode(env, scene_spec, spec, root):
         "trace": str((episode_root / "actions.jsonl").relative_to(root)),
         "reset_audit": reset_audit,
         "stage_evidence": {
-            "ever_cube_contact": ever_contact,
-            "ever_bilateral_contact": ever_bilateral,
-            "ever_lifted": ever_lifted,
-            "ever_entered_target": ever_in_target,
+            **stage_tracker.result(),
             "maximum_stable_release_steps": stable_steps,
         },
         "nonfinite_action_count": nonfinite,
