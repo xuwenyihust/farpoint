@@ -545,3 +545,41 @@ def test_campaign_dashboard_apis_and_sse(dashboard):
         assert response.headers["Accept-Ranges"] == "bytes"
         assert response.headers["Content-Range"] == "bytes 1-3/5"
         assert response.read() == b"ron"
+
+
+@pytest.mark.skipif(not RUN_BROWSER_QA, reason="set FARPOINT_RUN_BROWSER_QA=1")
+def test_dashboard_coalesces_overlapping_refresh_requests(dashboard):
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as engine:
+        browser = engine.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(dashboard["url"], wait_until="networkidle")
+        page.get_by_text("Registry online", exact=True).wait_for(timeout=15_000)
+        page.evaluate("campaignEvents.close()")
+        page.evaluate(
+            """
+            () => {
+              const originalFetch = window.fetch;
+              let releaseCollections;
+              const collectionsGate = new Promise(resolve => { releaseCollections = resolve; });
+              window.__collectionsRequests = 0;
+              window.__releaseCollections = releaseCollections;
+              window.fetch = (...args) => {
+                if (String(args[0]).includes('/api/collections')) {
+                  window.__collectionsRequests += 1;
+                  return collectionsGate.then(() => originalFetch(...args));
+                }
+                return originalFetch(...args);
+              };
+            }
+            """
+        )
+        page.evaluate(
+            "() => { window.__refreshBatch = Promise.all([loadAll(), loadAll(), loadAll()]); }"
+        )
+        page.wait_for_timeout(100)
+        assert page.evaluate("window.__collectionsRequests") == 1
+        page.evaluate("window.__releaseCollections()")
+        page.evaluate("window.__refreshBatch")
+        assert page.evaluate("window.__collectionsRequests") == 2
+        browser.close()

@@ -446,7 +446,9 @@
       if (!response.ok) throw new Error(payload.error || response.statusText);
       return payload;
     }
-    async function loadAll() {
+    let loadAllPromise = null;
+    let loadAllQueued = false;
+    async function refreshAll() {
       try {
         const [episodes, benchmarks, liveRuns, collections, policyRollouts, storage, quarantine, audit, health] = await Promise.all([
           api("/api/episodes?limit=2000"), api("/api/benchmarks"),
@@ -475,6 +477,20 @@
         $("health").classList.add("error");
         toast(error.message);
       }
+    }
+    function loadAll() {
+      if (loadAllPromise) {
+        loadAllQueued = true;
+        return loadAllPromise;
+      }
+      loadAllPromise = refreshAll().finally(async () => {
+        loadAllPromise = null;
+        if (loadAllQueued) {
+          loadAllQueued = false;
+          await loadAll();
+        }
+      });
+      return loadAllPromise;
     }
     function queryState() {
       const params = new URLSearchParams(window.location.search);
