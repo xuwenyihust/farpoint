@@ -1,4 +1,6 @@
 import copy
+import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -10,6 +12,12 @@ from farpoint.training_sampler import (
     selected_training_episodes,
     validate_sampling_contract,
 )
+
+
+SCRIPT = Path(__file__).parents[1] / "scripts" / "train_so101_act_grouped.py"
+SCRIPT_SPEC = importlib.util.spec_from_file_location("train_so101_act_grouped", SCRIPT)
+SCRIPT_MODULE = importlib.util.module_from_spec(SCRIPT_SPEC)
+SCRIPT_SPEC.loader.exec_module(SCRIPT_MODULE)
 
 
 def grouped_spec():
@@ -110,3 +118,33 @@ def test_sampler_plan_binds_selected_frame_count_and_dataset_order():
     }
     validate_sampling_contract(uniform)
     assert build_sampler_plan(uniform, lengths)["kind"] == "uniform_frames"
+
+
+def test_grouped_loader_preserves_type_semantics_for_accelerate():
+    class FakeDataLoader:
+        def __init__(self, dataset, *args, **kwargs):
+            self.dataset = dataset
+            self.args = args
+            self.kwargs = kwargs
+
+    class EpisodeRows:
+        def select_columns(self, _columns):
+            return [
+                {"episode_index": episode, "length": 5}
+                for episode in range(8)
+            ]
+
+    class Dataset:
+        episodes = list(range(8))
+        meta = type("Meta", (), {"episodes": EpisodeRows()})()
+
+    plan = build_sampler_plan(grouped_spec(), {episode: 5 for episode in range(10)})
+    state = {"used": False}
+    grouped_class = SCRIPT_MODULE.make_grouped_dataloader_class(FakeDataLoader, plan, state)
+    loader = grouped_class(Dataset(), batch_size=4, shuffle=True, drop_last=True)
+    assert isinstance(loader, grouped_class)
+    assert isinstance(loader, FakeDataLoader)
+    assert state["used"] is True
+    assert "batch_size" not in loader.kwargs
+    assert "shuffle" not in loader.kwargs
+    assert isinstance(loader.kwargs["batch_sampler"], DeterministicGroupedBatchSampler)
