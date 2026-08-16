@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from farpoint.contracts import validate_contract
+from farpoint.training_sampler import selected_training_episodes, validate_sampling_contract
 
 
 def canonical_sha256(payload: Any) -> str:
@@ -43,6 +44,7 @@ def load_training_spec(path: Path) -> dict[str, Any]:
     if errors:
         raise ValueError("invalid policy training contract:\n" + "\n".join(errors))
     validate_split_partition(payload)
+    validate_sampling_contract(payload)
     validate_training_profiles(payload)
     return payload
 
@@ -186,9 +188,21 @@ def training_arguments(
     if profile not in spec or profile not in {"training", "pilot", "smoke"}:
         raise ValueError(f"unsupported training profile: {profile}")
     run = spec[profile]
-    episodes = parse_episode_slice(spec["dataset"]["splits"]["train"])
+    episodes = selected_training_episodes(spec)
+    entrypoint = ["lerobot-train"]
+    sampling = spec.get("sampling")
+    if (
+        profile == "training"
+        and sampling is not None
+        and sampling["kind"] == "deterministic_grouped_batches"
+    ):
+        entrypoint = [
+            "python",
+            "/workspace/project/scripts/train_so101_act_grouped.py",
+            f"--farpoint-sampler-plan={dataset_root / 'meta' / 'farpoint_sampler.json'}",
+        ]
     arguments = [
-        "lerobot-train",
+        *entrypoint,
         f"--dataset.repo_id={spec['dataset']['repo_id']}",
         f"--dataset.revision={spec['dataset']['revision']}",
         f"--dataset.root={dataset_root}",

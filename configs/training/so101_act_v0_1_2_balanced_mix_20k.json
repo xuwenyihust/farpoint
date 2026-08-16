@@ -1,0 +1,67 @@
+{
+  "schema_version": "farpoint.policy-training.v1",
+  "experiment_id": "so101_act_v0_1_2_balanced_mix_20k",
+  "dataset": {
+    "repo_id": "wenyixu101/farpoint-so101",
+    "revision": "v0.1.2",
+    "resolved_commit": "5458c9b17e8fe85774f73aa03515cd6fc2127fda",
+    "codebase_version": "v3.0",
+    "splits": {"train": "0:220", "validation": "220:240"},
+    "metadata_splits": {"train": "0:220", "validation": "220:240", "test": "240:240"},
+    "expected": {
+      "total_episodes": 240,
+      "total_frames": 183914,
+      "fps": 30,
+      "selected_frames": {"train": 169113, "validation": 14801}
+    },
+    "video_backend": "pyav",
+    "required_features": {
+      "observation.state": {"dtype": "float32", "shape": [6]},
+      "observation.images.front": {"dtype": "video", "shape": [480, 640, 3]},
+      "observation.images.wrist": {"dtype": "video", "shape": [480, 640, 3]},
+      "action": {"dtype": "float32", "shape": [6]}
+    }
+  },
+  "environment": {"lerobot_version": "0.4.4", "requires_cuda": true, "architecture": "aarch64"},
+  "policy": {
+    "type": "act", "device": "cuda", "vision_backbone": "resnet18",
+    "pretrained_backbone_weights": "ResNet18_Weights.IMAGENET1K_V1",
+    "chunk_size": 100, "n_action_steps": 100
+  },
+  "sampling": {
+    "kind": "deterministic_grouped_batches",
+    "episode_slices": ["0:220"],
+    "expected_episode_count": 220,
+    "expected_frame_count": 169113,
+    "groups": [
+      {"group_id": "nominal_blue", "episode_slices": ["0:90"]},
+      {"group_id": "nominal_red", "episode_slices": ["90:180"]},
+      {"group_id": "approach_blue", "episode_slices": ["180:190"]},
+      {"group_id": "approach_red", "episode_slices": ["190:200"]},
+      {"group_id": "grasp_blue", "episode_slices": ["200:210"]},
+      {"group_id": "grasp_red", "episode_slices": ["210:220"]}
+    ],
+    "batch_cycle": [
+      {"nominal_blue": 3, "nominal_red": 3, "approach_blue": 1, "grasp_blue": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "approach_red": 1, "grasp_red": 1},
+      {"nominal_blue": 3, "nominal_red": 4, "approach_blue": 1},
+      {"nominal_blue": 4, "nominal_red": 3, "grasp_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "approach_red": 1, "grasp_blue": 1}
+    ]
+  },
+  "training": {
+    "seed": 1010, "batch_size": 8, "steps": 20000, "num_workers": 4,
+    "save_checkpoint": true, "save_freq": 5000, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 100
+  },
+  "validation": {
+    "profile": "training", "split": "validation", "sample_count": 128,
+    "batch_size": 8, "num_workers": 2, "seed": 1010,
+    "minimum_relative_improvement": 0.05
+  },
+  "smoke": {
+    "seed": 1010, "batch_size": 2, "steps": 1, "num_workers": 0,
+    "save_checkpoint": false, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 1
+  }
+}

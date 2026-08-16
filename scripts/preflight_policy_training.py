@@ -17,10 +17,14 @@ from farpoint.policy_training import (
     canonical_sha256,
     create_training_view,
     load_training_spec,
-    parse_episode_slice,
     training_arguments,
     unflatten_episode_stats,
     validate_dataset_info,
+)
+from farpoint.training_sampler import (
+    build_sampler_plan,
+    expected_group_sample_counts,
+    selected_training_episodes,
 )
 
 
@@ -93,17 +97,20 @@ def main() -> int:
     info = json.loads((args.source_root / "meta" / "info.json").read_text(encoding="utf-8"))
     validate_dataset_info(spec, info)
 
-    train_episodes = parse_episode_slice(dataset_spec["splits"]["train"])
+    train_episodes = selected_training_episodes(spec)
     all_episode_rows = load_nested_dataset(args.source_root / "meta" / "episodes")
+    episode_lengths = {
+        int(row["episode_index"]): int(row["length"]) for row in all_episode_rows
+    }
+    sampler_plan = build_sampler_plan(spec, episode_lengths)
     selected_rows = [all_episode_rows[index] for index in train_episodes]
-    selected_frames = sum(int(row["length"]) for row in selected_rows)
-    expected_frames = dataset_spec["expected"]["selected_frames"]["train"]
-    if selected_frames != expected_frames:
-        raise RuntimeError(f"train frame count mismatch: {selected_frames} != {expected_frames}")
+    selected_frames = int(sampler_plan["selected_frame_count"])
     train_stats = aggregate_stats([unflatten_episode_stats(row) for row in selected_rows])
     source_stats_sha, view_stats_sha = create_training_view(
         args.source_root, args.view_root, train_stats, write_stats
     )
+    sampler_plan_path = args.view_root / "meta" / "farpoint_sampler.json"
+    sampler_plan_path.write_text(json.dumps(sampler_plan, indent=2) + "\n", encoding="utf-8")
 
     dataset = LeRobotDataset(
         dataset_spec["repo_id"],
@@ -112,8 +119,8 @@ def main() -> int:
         episodes=train_episodes,
         video_backend=dataset_spec["video_backend"],
     )
-    if len(dataset) != expected_frames:
-        raise RuntimeError(f"loaded train length mismatch: {len(dataset)} != {expected_frames}")
+    if len(dataset) != selected_frames:
+        raise RuntimeError(f"loaded train length mismatch: {len(dataset)} != {selected_frames}")
     sample = dataset[0]
     required_shapes = {}
     for feature, contract in dataset_spec["required_features"].items():
@@ -159,6 +166,9 @@ def main() -> int:
             "selected_episode_expression": dataset_spec["splits"]["train"],
             "selected_episode_count": len(train_episodes),
             "selected_frame_count": selected_frames,
+            "sampler_kind": sampler_plan["kind"],
+            "sampler_plan_sha256": canonical_sha256(sampler_plan),
+            "expected_group_sample_counts": expected_group_sample_counts(sampler_plan),
             "excluded_episode_expressions": {
                 name: expression
                 for name, expression in dataset_spec["splits"].items()
