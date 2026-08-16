@@ -43,6 +43,18 @@ def _write(path: Path, value: dict | list) -> None:
     temporary.replace(path)
 
 
+def _resolve_episodes_root(base: Path, row: dict, manifest_path: Path) -> Path:
+    """Resolve episode evidence, including the legacy segment-000 index alias."""
+    value = row.get("episodes_root") or str(Path(row["manifest"]).parent / "episodes")
+    resolved = _resolve(base, value)
+    if resolved.exists() or Path(value) != Path("episodes"):
+        return resolved
+    segment_root = (manifest_path.parent / "episodes").resolve()
+    if segment_root.exists():
+        return segment_root
+    return resolved
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -89,13 +101,7 @@ def _load_evidence(index_path: Path) -> list[dict]:
                 "segment": _read(_resolve(base, row["segment"])),
                 "plan": _read(_resolve(base, row["plan"])),
                 "manifest": _read(manifest_path),
-                "episodes_root": str(
-                    _resolve(
-                        base,
-                        row.get("episodes_root")
-                        or str(Path(row["manifest"]).parent / "episodes"),
-                    )
-                ),
+                "episodes_root": str(_resolve_episodes_root(base, row, manifest_path)),
             }
         )
     return evidence
