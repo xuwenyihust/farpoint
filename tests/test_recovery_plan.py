@@ -78,6 +78,12 @@ def grasp_recovery_config():
     )
 
 
+def approach_recovery_config():
+    return json.loads(
+        (ROOT / "configs/recovery/so101_v013_approach_recovery40.json").read_text()
+    )
+
+
 def multistage_source_plan():
     source = source_plan()
     expanded = []
@@ -270,6 +276,87 @@ def test_v012_grasp_recovery20_freezes_train_only_crossed_coverage(tmp_path):
     runtime_path = tmp_path / "grasp-runtime-v2.json"
     runtime_path.write_text(json.dumps(runtime))
     assert load_recovery_runtime(runtime_path) == runtime
+
+
+def test_v013_approach_recovery40_freezes_strict_train_only_coverage(tmp_path):
+    config_value = approach_recovery_config()
+    plan, runtime = build_recovery_plan(
+        multistage_source_plan(),
+        config_value,
+        campaign_id="approach-recovery40-test",
+        scene_count=40,
+    )
+
+    assert plan["coverage"] == {
+        "objects": {"blue-30mm-30g": 20, "red-40mm-40g": 20},
+        "recovery_triggers": {"approach_miss": 40},
+        "regions": {"core": 10, "middle": 20, "outer": 10},
+        "splits": {"train": 40},
+        "yaw_strata": {
+            "yaw00_18": 8,
+            "yaw18_36": 8,
+            "yaw36_54": 8,
+            "yaw54_72": 8,
+            "yaw72_90": 8,
+        },
+    }
+    assert plan["campaign_contract"]["target"] == {
+        "successful_episodes": 40,
+        "splits": {"train": 40},
+    }
+    assert plan["campaign_contract"]["variation_contract"][
+        "episode_eligibility"
+    ] == {
+        "schema_version": "farpoint.recovery-episode-eligibility.v1",
+        "by_trigger_class": {
+            "approach_miss": {
+                "handoff_stage": "approach",
+                "trigger_evidence": {
+                    "ever_contact": False,
+                    "ever_lifted": False,
+                    "has_contact": False,
+                    "cube_lifted": False,
+                },
+                "handoff": {
+                    "physics_state_continuous": True,
+                    "reset_performed": False,
+                },
+            }
+        },
+    }
+    assert runtime["schema_version"] == "farpoint.recovery-runtime.v2"
+    assert set(runtime["trigger_profiles"]) == {"approach_miss"}
+    runtime_path = tmp_path / "runtime-v013-approach.json"
+    runtime_path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(runtime_path) == runtime
+
+
+def test_v013_approach_recovery_pilot_is_object_yaw_and_region_stratified():
+    plan, runtime = build_recovery_plan(
+        multistage_source_plan(),
+        approach_recovery_config(),
+        campaign_id="approach-recovery40-pilot",
+        scene_count=10,
+    )
+
+    assert plan["campaign_contract"]["campaign_kind"] == "pilot"
+    assert plan["coverage"] == {
+        "objects": {"blue-30mm-30g": 5, "red-40mm-40g": 5},
+        "recovery_triggers": {"approach_miss": 10},
+        "regions": {"core": 2, "middle": 4, "outer": 4},
+        "splits": {"train": 10},
+        "yaw_strata": {
+            "yaw00_18": 2,
+            "yaw18_36": 2,
+            "yaw36_54": 2,
+            "yaw54_72": 2,
+            "yaw72_90": 2,
+        },
+    }
+    assert len(runtime["scenes"]) == 10
+    assert {row["trigger_class"] for row in runtime["scenes"]} == {
+        "approach_miss"
+    }
 
 
 def test_v012_grasp_pilot6_covers_both_objects_regions_and_every_yaw():
