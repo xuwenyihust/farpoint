@@ -32,7 +32,7 @@
     "kind": "uniform_frames",
     "episode_slices": ["0:180"],
     "expected_episode_count": 180,
-    "expected_frame_count": 135147
+    "expected_frame_count": 136814
   },
   "training": {
     "seed": 1010, "batch_size": 8, "steps": 20000, "num_workers": 4,

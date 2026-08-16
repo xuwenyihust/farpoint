@@ -173,7 +173,7 @@ def test_v012_nominal_only_ablation_keeps_runtime_policy_identical(tmp_path):
         "kind": "uniform_frames",
         "episode_slices": ["0:180"],
         "expected_episode_count": 180,
-        "expected_frame_count": 135147,
+        "expected_frame_count": 136814,
     }
     arguments = training_arguments(nominal, tmp_path / "view", tmp_path / "out", "training")
     assert arguments[0] == "lerobot-train"
