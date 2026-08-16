@@ -61,6 +61,8 @@ def main() -> int:
     preflight = json.loads(args.preflight_report.read_text(encoding="utf-8"))
     if preflight.get("status") != "PASS" or preflight["execution"]["profile"] != profile:
         raise ValueError(f"{profile} preflight/training evidence is not PASS")
+    if preflight.get("config_sha256") != canonical_sha256(spec):
+        raise ValueError("preflight report does not bind the requested training config")
 
     import torch
     from lerobot.configs.policies import PreTrainedConfig
@@ -188,7 +190,7 @@ def main() -> int:
         "dataset": {
             "repo_id": spec["dataset"]["repo_id"],
             "revision": spec["dataset"]["revision"],
-            "resolved_commit": spec["dataset"]["resolved_commit"],
+            "source": preflight["dataset"]["source"],
             "selected_split": validation["split"],
             "selected_episode_expression": spec["dataset"]["splits"][validation["split"]],
             "selected_episode_count": len(validation_episodes),
@@ -215,6 +217,10 @@ def main() -> int:
             "this is not simulator rollout success."
         ),
     }
+    if preflight["dataset"]["source"]["kind"] == "hub":
+        report["dataset"]["resolved_commit"] = preflight["dataset"]["source"][
+            "resolved_commit"
+        ]
     # Preserve the published v0.0.3 report field while allowing later datasets
     # to use train/validation without inventing demonstration test episodes.
     if "test" in spec["dataset"]["splits"]:

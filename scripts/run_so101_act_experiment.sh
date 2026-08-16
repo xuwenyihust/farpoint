@@ -25,7 +25,15 @@ if [[ -z "${SOURCE_REVISION}" || ! "${SOURCE_REVISION}" =~ ^[a-zA-Z0-9._-]+$ ]];
 fi
 
 CONFIG="/workspace/project/configs/training/${CONFIG_NAME}"
-SOURCE_ROOT="/workspace/datasets/source/wenyixu101/farpoint-so101/${SOURCE_REVISION}"
+if [[ -n "${FARPOINT_TRAINING_IMMUTABLE_SOURCE_ROOT:-}" ]]; then
+  SOURCE_ROOT="/workspace/source-dataset"
+else
+  SOURCE_ROOT="/workspace/datasets/source/wenyixu101/farpoint-so101/${SOURCE_REVISION}"
+fi
+if [[ ! "${SOURCE_ROOT}" =~ ^/workspace/datasets/[a-zA-Z0-9._/-]+$ ]] || [[ "${SOURCE_ROOT}" == *".."* ]]; then
+  echo "FARPOINT_TRAINING_SOURCE_ROOT must be a safe absolute path under /workspace/datasets" >&2
+  exit 2
+fi
 VIEW_ROOT="/workspace/datasets/views/${RUN_ID}"
 OUTPUT_DIR="/workspace/models/${RUN_ID}"
 PREFLIGHT_REPORT="/workspace/logs/${RUN_ID}/preflight.json"

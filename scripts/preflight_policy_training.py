@@ -16,6 +16,7 @@ from pathlib import Path
 from farpoint.policy_training import (
     canonical_sha256,
     create_training_view,
+    directory_tree_sha256,
     load_training_spec,
     training_arguments,
     unflatten_episode_stats,
@@ -82,18 +83,38 @@ def main() -> int:
         raise RuntimeError("CUDA matrix operation returned non-finite values")
     av.codec.Codec("av1", "r")
 
-    hub_info = HfApi().dataset_info(dataset_spec["repo_id"], revision=dataset_spec["revision"])
-    if hub_info.sha != dataset_spec["resolved_commit"]:
-        raise RuntimeError(
-            f"dataset tag moved: {hub_info.sha} != {dataset_spec['resolved_commit']}"
+    source_spec = dataset_spec.get("source", {"kind": "hub"})
+    if source_spec["kind"] == "hub":
+        hub_info = HfApi().dataset_info(
+            dataset_spec["repo_id"], revision=dataset_spec["revision"]
         )
-    args.source_root.mkdir(parents=True, exist_ok=True)
-    snapshot_download(
-        dataset_spec["repo_id"],
-        repo_type="dataset",
-        revision=dataset_spec["resolved_commit"],
-        local_dir=args.source_root,
-    )
+        if hub_info.sha != dataset_spec["resolved_commit"]:
+            raise RuntimeError(
+                f"dataset tag moved: {hub_info.sha} != {dataset_spec['resolved_commit']}"
+            )
+        args.source_root.mkdir(parents=True, exist_ok=True)
+        snapshot_download(
+            dataset_spec["repo_id"],
+            repo_type="dataset",
+            revision=dataset_spec["resolved_commit"],
+            local_dir=args.source_root,
+        )
+        source_binding = {
+            "kind": "hub",
+            "resolved_commit": hub_info.sha,
+        }
+    else:
+        actual_tree_sha256, file_count = directory_tree_sha256(args.source_root)
+        if actual_tree_sha256 != source_spec["tree_sha256"]:
+            raise RuntimeError(
+                "local dataset tree hash mismatch: "
+                f"{actual_tree_sha256} != {source_spec['tree_sha256']}"
+            )
+        source_binding = {
+            "kind": "local_snapshot",
+            "tree_sha256": actual_tree_sha256,
+            "file_count": file_count,
+        }
     info = json.loads((args.source_root / "meta" / "info.json").read_text(encoding="utf-8"))
     validate_dataset_info(spec, info)
 
@@ -161,7 +182,7 @@ def main() -> int:
         "dataset": {
             "repo_id": dataset_spec["repo_id"],
             "revision": dataset_spec["revision"],
-            "resolved_commit": hub_info.sha,
+            "source": source_binding,
             "selected_split": "train",
             "selected_episode_expression": dataset_spec["splits"]["train"],
             "selected_episode_count": len(train_episodes),
@@ -192,6 +213,8 @@ def main() -> int:
             "command": command,
         },
     }
+    if source_binding["kind"] == "hub":
+        report["dataset"]["resolved_commit"] = source_binding["resolved_commit"]
     if args.profile == "smoke":
         report["act_smoke"] = {
             "requested": should_run,
