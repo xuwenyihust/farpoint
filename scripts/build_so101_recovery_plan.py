@@ -23,17 +23,28 @@ def main() -> int:
     parser.add_argument("--source-plan", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--campaign-id", required=True)
-    parser.add_argument("--scene-count", type=int, choices=(6, 16, 20, 80), default=20)
+    parser.add_argument(
+        "--scene-count",
+        type=int,
+        help="pilot scene count; defaults to the config-owned formal target",
+    )
     parser.add_argument("--git-commit", required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
     source = json.loads(args.source_plan.read_text(encoding="utf-8"))
     config = json.loads(args.config.read_text(encoding="utf-8"))
+    scene_count = (
+        int(args.scene_count)
+        if args.scene_count is not None
+        else int(config["target_successes"])
+    )
+    if scene_count <= 0:
+        parser.error("--scene-count must be positive")
     plan, runtime = build_recovery_plan(
         source,
         config,
         campaign_id=args.campaign_id,
-        scene_count=args.scene_count,
+        scene_count=scene_count,
     )
     initialized = initialize_recovery_campaign(
         args.output_root,
