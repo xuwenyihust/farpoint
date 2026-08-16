@@ -667,7 +667,7 @@ def initialize_recovery_campaign(
                 "segment": "segments/segment-000/segment.json",
                 "plan": "segments/segment-000/plan.json",
                 "manifest": "segments/segment-000/manifest.json",
-                "episodes_root": "episodes",
+                "episodes_root": "segments/segment-000/episodes",
                 "recovery_runtime": "segments/segment-000/recovery-runtime.json",
             }
         ],
