@@ -79,6 +79,48 @@
         "n_action_steps": {"type": "integer", "minimum": 1}
       }
     },
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "episode_slices", "expected_episode_count", "expected_frame_count"],
+      "properties": {
+        "kind": {"enum": ["uniform_frames", "deterministic_grouped_batches"]},
+        "episode_slices": {
+          "type": "array", "minItems": 1,
+          "items": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
+        },
+        "expected_episode_count": {"type": "integer", "minimum": 1},
+        "expected_frame_count": {"type": "integer", "minimum": 1},
+        "groups": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["group_id", "episode_slices"],
+            "properties": {
+              "group_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]+$"},
+              "episode_slices": {
+                "type": "array", "minItems": 1,
+                "items": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
+              }
+            }
+          }
+        },
+        "batch_cycle": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "minProperties": 1,
+            "propertyNames": {"pattern": "^[a-z0-9][a-z0-9_-]+$"},
+            "additionalProperties": {"type": "integer", "minimum": 1}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "deterministic_grouped_batches"}}},
+          "then": {"required": ["groups", "batch_cycle"]}
+        }
+      ]
+    },
     "training": {"$ref": "#/$defs/run"},
     "pilot": {"$ref": "#/$defs/run"},
     "validation": {

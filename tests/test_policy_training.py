@@ -33,6 +33,12 @@ V011_RECOVERY20_20K_CONFIG = (
 V012_GRASP20_20K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_1_2_grasp20_20k.json"
 )
+V012_NOMINAL_ONLY_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_2_nominal_only_20k.json"
+)
+V012_BALANCED_MIX_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_2_balanced_mix_20k.json"
+)
 
 
 def test_frozen_act_contract_is_valid_and_partitions_all_episodes():
@@ -155,6 +161,45 @@ def test_v012_grasp20_contract_is_a_dataset_only_v011_delta():
     assert dataset["required_features"] == recovery20["dataset"]["required_features"]
     assert parse_episode_slice(dataset["splits"]["train"]) == list(range(220))
     assert parse_episode_slice(dataset["splits"]["validation"]) == list(range(220, 240))
+
+
+def test_v012_nominal_only_ablation_keeps_runtime_policy_identical(tmp_path):
+    full = load_training_spec(V012_GRASP20_20K_CONFIG)
+    nominal = load_training_spec(V012_NOMINAL_ONLY_20K_CONFIG)
+
+    for field in ("dataset", "environment", "policy", "training", "validation", "smoke"):
+        assert nominal[field] == full[field]
+    assert nominal["sampling"] == {
+        "kind": "uniform_frames",
+        "episode_slices": ["0:180"],
+        "expected_episode_count": 180,
+        "expected_frame_count": 135147,
+    }
+    arguments = training_arguments(nominal, tmp_path / "view", tmp_path / "out", "training")
+    assert arguments[0] == "lerobot-train"
+    episode_arg = next(arg for arg in arguments if arg.startswith("--dataset.episodes="))
+    assert episode_arg.endswith(",179]")
+
+
+def test_v012_balanced_mix_ablation_uses_grouped_entrypoint(tmp_path):
+    full = load_training_spec(V012_GRASP20_20K_CONFIG)
+    balanced = load_training_spec(V012_BALANCED_MIX_20K_CONFIG)
+
+    for field in ("dataset", "environment", "policy", "training", "validation", "smoke"):
+        assert balanced[field] == full[field]
+    assert balanced["sampling"]["episode_slices"] == ["0:220"]
+    arguments = training_arguments(
+        balanced, tmp_path / "balanced-view", tmp_path / "out", "training"
+    )
+    assert arguments[:2] == [
+        "python",
+        "/workspace/project/scripts/train_so101_act_grouped.py",
+    ]
+    assert arguments[2].endswith("/meta/farpoint_sampler.json")
+    smoke_arguments = training_arguments(
+        balanced, tmp_path / "balanced-view", tmp_path / "out", "smoke"
+    )
+    assert smoke_arguments[0] == "lerobot-train"
 
 
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):
