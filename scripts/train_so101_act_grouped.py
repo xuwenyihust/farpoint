@@ -19,30 +19,34 @@ def extract_sampler_plan_argument(arguments: list[str]) -> tuple[Path, list[str]
     return path, [argument for argument in arguments if not argument.startswith(prefix)]
 
 
-def make_grouped_dataloader_class(original_dataloader, plan, state):
+def make_grouped_dataloader_class(original_dataloader, plan, state, restore=None):
     """Create a real DataLoader subclass so Accelerate type checks remain valid."""
 
     class GroupedDataLoader(original_dataloader):
         def __init__(self, dataset, *args, **kwargs):
-            if state["used"]:
-                super().__init__(dataset, *args, **kwargs)
-                return
-            if kwargs.get("sampler") is not None:
-                raise ValueError("Farpoint grouped sampling cannot be combined with another sampler")
-            if kwargs.get("batch_size") != int(plan["batch_size"]):
-                raise ValueError("LeRobot batch size does not match the frozen sampler plan")
+            try:
+                if state["used"]:
+                    super().__init__(dataset, *args, **kwargs)
+                    return
+                if kwargs.get("sampler") is not None:
+                    raise ValueError("Farpoint grouped sampling cannot be combined with another sampler")
+                if kwargs.get("batch_size") != int(plan["batch_size"]):
+                    raise ValueError("LeRobot batch size does not match the frozen sampler plan")
 
-            episode_rows = dataset.meta.episodes
-            episode_lengths = {
-                int(row["episode_index"]): int(row["length"])
-                for row in episode_rows.select_columns(["episode_index", "length"])
-            }
-            sampler = DeterministicGroupedBatchSampler(plan, dataset.episodes, episode_lengths)
-            state["used"] = True
-            options = dict(kwargs)
-            for key in ("batch_size", "shuffle", "sampler", "drop_last"):
-                options.pop(key, None)
-            super().__init__(dataset, *args, batch_sampler=sampler, **options)
+                episode_rows = dataset.meta.episodes
+                episode_lengths = {
+                    int(row["episode_index"]): int(row["length"])
+                    for row in episode_rows.select_columns(["episode_index", "length"])
+                }
+                sampler = DeterministicGroupedBatchSampler(plan, dataset.episodes, episode_lengths)
+                state["used"] = True
+                options = dict(kwargs)
+                for key in ("batch_size", "shuffle", "sampler", "drop_last"):
+                    options.pop(key, None)
+                super().__init__(dataset, *args, batch_sampler=sampler, **options)
+            finally:
+                if restore is not None:
+                    restore()
 
     return GroupedDataLoader
 
@@ -60,12 +64,21 @@ def main() -> None:
 
     original_dataloader = torch.utils.data.DataLoader
     state = {"used": False}
-    GroupedDataLoader = make_grouped_dataloader_class(original_dataloader, plan, state)
+
+    def restore():
+        torch.utils.data.DataLoader = original_dataloader
+
+    GroupedDataLoader = make_grouped_dataloader_class(
+        original_dataloader,
+        plan,
+        state,
+        restore=restore,
+    )
     torch.utils.data.DataLoader = GroupedDataLoader
     try:
         lerobot_train.train()
     finally:
-        torch.utils.data.DataLoader = original_dataloader
+        restore()
     if not state["used"]:
         raise RuntimeError("LeRobot training did not construct the grouped DataLoader")
 

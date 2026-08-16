@@ -140,7 +140,13 @@ def test_grouped_loader_preserves_type_semantics_for_accelerate():
 
     plan = build_sampler_plan(grouped_spec(), {episode: 5 for episode in range(10)})
     state = {"used": False}
-    grouped_class = SCRIPT_MODULE.make_grouped_dataloader_class(FakeDataLoader, plan, state)
+    restored = []
+    grouped_class = SCRIPT_MODULE.make_grouped_dataloader_class(
+        FakeDataLoader,
+        plan,
+        state,
+        restore=lambda: restored.append(True),
+    )
     loader = grouped_class(Dataset(), batch_size=4, shuffle=True, drop_last=True)
     assert isinstance(loader, grouped_class)
     assert isinstance(loader, FakeDataLoader)
@@ -148,3 +154,4 @@ def test_grouped_loader_preserves_type_semantics_for_accelerate():
     assert "batch_size" not in loader.kwargs
     assert "shuffle" not in loader.kwargs
     assert isinstance(loader.kwargs["batch_sampler"], DeterministicGroupedBatchSampler)
+    assert restored == [True]
