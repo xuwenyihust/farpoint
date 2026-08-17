@@ -28,6 +28,34 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def directory_tree_sha256(root: Path) -> tuple[str, int]:
+    """Hash every regular file in a local immutable dataset snapshot."""
+    if not root.is_dir():
+        raise FileNotFoundError(root)
+    records: list[dict[str, Any]] = []
+    for path in sorted(root.rglob("*"), key=lambda candidate: candidate.relative_to(root).as_posix()):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            raise ValueError(f"local dataset snapshot must not contain symlinks: {relative}")
+        if path.is_file():
+            before = path.stat()
+            content_sha256 = file_sha256(path)
+            after = path.stat()
+            if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                raise RuntimeError(f"local dataset file changed while hashing: {relative}")
+            records.append(
+                {
+                    "path": relative,
+                    "size_bytes": before.st_size,
+                    "sha256": content_sha256,
+                }
+            )
+    if not records:
+        raise ValueError(f"local dataset snapshot contains no files: {root}")
+    payload = {"schema_version": "farpoint.directory-tree.v1", "files": records}
+    return canonical_sha256(payload), len(records)
+
+
 def parse_episode_slice(expression: str, *, allow_empty: bool = False) -> list[int]:
     parts = expression.split(":")
     if len(parts) != 2 or not all(part.isdigit() for part in parts):

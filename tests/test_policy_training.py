@@ -6,6 +6,7 @@ import pytest
 from farpoint.contracts import load_schema, validate_contract
 from farpoint.policy_training import (
     create_training_view,
+    directory_tree_sha256,
     evenly_spaced_indices,
     load_training_spec,
     parse_episode_slice,
@@ -15,6 +16,7 @@ from farpoint.policy_training import (
     validate_dataset_info,
     validation_profile,
 )
+from farpoint.training_sampler import expected_group_sample_counts, parse_episode_slices
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +41,41 @@ V012_NOMINAL_ONLY_20K_CONFIG = (
 V012_BALANCED_MIX_20K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_1_2_balanced_mix_20k.json"
 )
+V013_BALANCED_MIX_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_3_balanced_mix_20k.json"
+)
+
+
+def test_local_snapshot_tree_hash_binds_paths_sizes_and_contents(tmp_path):
+    snapshot = tmp_path / "snapshot"
+    (snapshot / "meta").mkdir(parents=True)
+    (snapshot / "meta" / "info.json").write_text("{}\n", encoding="utf-8")
+    first, count = directory_tree_sha256(snapshot)
+    assert len(first) == 64
+    assert count == 1
+
+    (snapshot / "meta" / "info.json").write_text('{"changed": true}\n', encoding="utf-8")
+    second, second_count = directory_tree_sha256(snapshot)
+    assert second != first
+    assert second_count == 1
+
+    (snapshot / "alias").symlink_to(snapshot / "meta", target_is_directory=True)
+    with pytest.raises(ValueError, match="must not contain symlinks"):
+        directory_tree_sha256(snapshot)
+
+
+def test_local_snapshot_contract_does_not_require_a_hub_commit():
+    spec = load_training_spec(V012_BALANCED_MIX_20K_CONFIG)
+    dataset = spec["dataset"]
+    dataset.pop("resolved_commit")
+    dataset["source"] = {"kind": "local_snapshot", "tree_sha256": "a" * 64}
+    assert validate_contract(spec) == []
+
+    dataset["source"] = {"kind": "hub"}
+    assert any("resolved_commit" in error for error in validate_contract(spec))
+    dataset["resolved_commit"] = "b" * 40
+    dataset["source"]["tree_sha256"] = "a" * 64
+    assert any("tree_sha256" in error for error in validate_contract(spec))
 
 
 def test_frozen_act_contract_is_valid_and_partitions_all_episodes():
@@ -115,6 +152,8 @@ def test_v010_formal_contract_selects_validation_without_dataset_test_split():
     assert "CONFIG_NAME must be a basename" in runner
     assert "--profile \"${PROFILE}\"" in runner
     assert "evaluate_act_checkpoints.py" in runner
+    container_runner = (ROOT / "scripts" / "run_so101_training.sh").read_text()
+    assert '"${IMMUTABLE_SOURCE_ROOT}:/workspace/source-dataset:ro"' in container_runner
 
 
 def test_v011_recovery20_contract_is_a_dataset_only_baseline_delta():
@@ -200,6 +239,53 @@ def test_v012_balanced_mix_ablation_uses_grouped_entrypoint(tmp_path):
         balanced, tmp_path / "balanced-view", tmp_path / "out", "smoke"
     )
     assert smoke_arguments[0] == "lerobot-train"
+
+
+def test_v013_balanced_mix_binds_local_candidate_and_exact_group_draws():
+    previous = load_training_spec(V012_BALANCED_MIX_20K_CONFIG)
+    candidate = load_training_spec(V013_BALANCED_MIX_20K_CONFIG)
+
+    for field in ("environment", "policy", "training", "validation", "smoke"):
+        assert candidate[field] == previous[field]
+    dataset = candidate["dataset"]
+    assert "resolved_commit" not in dataset
+    assert dataset["source"] == {
+        "kind": "local_snapshot",
+        "tree_sha256": "631031a0fe36969d2be6f23e243ac9fd55bfe79b465472147bcb65461c240ce2",
+    }
+    assert dataset["expected"] == {
+        "total_episodes": 260,
+        "total_frames": 198571,
+        "fps": 30,
+        "selected_frames": {"train": 183770, "validation": 14801},
+    }
+    sampling = candidate["sampling"]
+    group_counts = {
+        group["group_id"]: len(parse_episode_slices(group["episode_slices"]))
+        for group in sampling["groups"]
+    }
+    assert group_counts == {
+        "nominal_blue": 90,
+        "nominal_red": 90,
+        "approach_blue": 20,
+        "approach_red": 20,
+        "grasp_blue": 10,
+        "grasp_red": 10,
+    }
+    plan = {
+        "kind": sampling["kind"],
+        "steps": candidate["training"]["steps"],
+        "groups": sampling["groups"],
+        "batch_cycle": sampling["batch_cycle"],
+    }
+    assert expected_group_sample_counts(plan) == {
+        "nominal_blue": 64000,
+        "nominal_red": 64000,
+        "approach_blue": 8000,
+        "approach_red": 8000,
+        "grasp_blue": 8000,
+        "grasp_red": 8000,
+    }
 
 
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):
