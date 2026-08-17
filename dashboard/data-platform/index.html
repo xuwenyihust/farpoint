@@ -97,6 +97,7 @@
     .toast.show { display: block; }
     .player-backdrop { position: fixed; inset: 0; z-index: 20; display: none; place-items: center; padding: 24px; background: rgba(10, 18, 22, .72); }
     .player-backdrop.open { display: grid; }
+    #playerBackdrop, #detailsBackdrop { z-index: 30; }
     .player-dialog { width: min(1040px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: var(--panel); border: 1px solid #59686e; border-radius: 6px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
     .player-head { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
     .player-title { min-width: 0; }
@@ -105,6 +106,10 @@
     .player-close { flex: 0 0 auto; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 4px; background: white; font-size: 20px; line-height: 1; }
     .player-stage { display: grid; place-items: center; min-height: 320px; background: #10181c; }
     .player-stage img { display: block; width: 100%; max-height: calc(100vh - 230px); aspect-ratio: 16 / 9; object-fit: contain; }
+    .episode-cameras { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #27363c; }
+    .episode-cameras.single { grid-template-columns: minmax(0, 1fr); }
+    .episode-camera { min-width: 0; margin: 0; background: #10181c; }
+    .episode-camera figcaption { padding: 7px 10px; color: #d4dfe2; background: #17252b; font-size: 12px; font-weight: 700; }
     .player-empty { color: #b9c8cc; }
     .player-controls { display: grid; grid-template-columns: auto auto auto minmax(140px, 1fr) auto auto; gap: 8px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); }
     .player-controls .button { min-width: 42px; box-shadow: none; }
@@ -147,6 +152,7 @@
       .player-dialog { width: 100%; max-height: 100vh; border-radius: 0; }
       .player-stage { min-height: 220px; }
       .player-stage img { max-height: calc(100vh - 250px); }
+      .episode-cameras { grid-template-columns: minmax(0, 1fr); }
       .player-controls { grid-template-columns: auto auto auto 1fr; }
       .player-speed, #playerCounter { grid-column: span 2; }
       .details-grid { grid-template-columns: 1fr; }
@@ -365,7 +371,10 @@
         <button class="player-close" id="playerClose" type="button" title="Close playback" aria-label="Close playback">&times;</button>
       </div>
       <div class="player-stage">
-        <img id="playerImage" alt="Simulation playback frame">
+        <div class="episode-cameras" id="episodeCameras">
+          <figure class="episode-camera" id="playerFrontPane"><img id="playerImage" alt="Front camera playback frame"><figcaption>Front camera</figcaption></figure>
+          <figure class="episode-camera" id="playerWristPane"><img id="playerWristImage" alt="Wrist camera playback frame"><figcaption>Wrist camera</figcaption></figure>
+        </div>
         <div class="player-empty" id="playerEmpty" hidden>No preview frames are available.</div>
       </div>
       <div class="player-controls">
@@ -382,6 +391,21 @@
         </select>
         <select class="player-speed" id="playerCamera" aria-label="Preview camera"></select>
       </div>
+    </div>
+  </div>
+  <div class="player-backdrop" id="collectionBackdrop" role="dialog" aria-modal="true" aria-labelledby="collectionTitle">
+    <div class="player-dialog">
+      <div class="player-head">
+        <div class="player-title"><strong id="collectionTitle">Collection episodes</strong><span id="collectionStatus">Loading episodes</span></div>
+        <button class="player-close" id="collectionClose" type="button" title="Close collection" aria-label="Close collection">&times;</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Preview</th><th>Episode</th><th>Status</th><th>Task</th><th>Variation</th><th>Split</th><th>Outcome</th><th>Started</th><th>Details</th></tr></thead>
+          <tbody id="collectionEpisodeRows"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="collectionEpisodeEmpty" hidden>No episodes are registered for this collection.</div>
     </div>
   </div>
   <div class="player-backdrop" id="detailsBackdrop" role="dialog" aria-modal="true" aria-labelledby="detailsEpisode">
@@ -411,7 +435,8 @@
       collections: [],
       policyRollouts: [],
       storage: null,
-      player: { frames: [], cameraFrames: {}, camera: "front", frame: 0, timer: null, playing: false }
+      player: { frames: [], cameraFrames: {}, frameCount: 0, frame: 0, timer: null, playing: false },
+      collectionEpisodes: []
     };
     const titles = {
       overview: ["Overview", "Farpoint artifacts and experiment health"],
@@ -648,11 +673,56 @@
       $("collectionCount").textContent = `${state.collections.length} campaigns`;
       $("collectionEmpty").hidden = state.collections.length > 0;
       $("collectionRows").innerHTML = state.collections.map(row => `<tr>
-        <td><strong>${esc(row.campaign_id)}</strong></td><td>${esc(row.campaign_version || "-")}</td>
+        <td><button class="button" type="button" title="Open all episodes in ${esc(row.campaign_id)}" onclick="openCollection('${esc(row.campaign_id)}')"><strong>${esc(row.campaign_id)}</strong></button></td><td>${esc(row.campaign_version || "-")}</td>
         <td><span class="status ${campaignStatusClass(row.execution_status)}">${esc(row.execution_status)}</span></td>
         <td><span class="status ${row.quality_status === "PASS" ? "PASS" : row.quality_status === "FAIL" ? "FAIL" : "INCOMPLETE"}">${esc(row.quality_status)}</span></td>
         <td>${esc(row.task_id || "-")}</td><td>${row.successful_episodes} / ${row.target_successful_episodes}</td>
         <td>${row.completed_attempts}</td><td>${unixDate(row.updated_unix)}</td></tr>`).join("");
+    }
+    function collectionEpisodeRow(row) {
+      const preview = row.preview_url
+        ? `<button class="preview-button" type="button" aria-label="Play preview for ${esc(row.episode_id)}" onclick="openPreview('${esc(row.episode_id)}')"><img class="preview" src="${esc(row.preview_url)}" loading="lazy" decoding="async" alt=""><span class="preview-play">Play</span></button>`
+        : '<div class="preview-button"></div>';
+      const outcome = row.dataset_valid === 1 ? "valid" : row.failure_category || row.failure_reason || "-";
+      return `<tr><td>${preview}</td><td><button class="button" type="button" onclick="openDetails('${esc(row.episode_id)}')">${esc(row.episode_id)}</button></td>
+        <td><span class="status ${esc(row.status)}">${esc(row.status)}</span></td><td>${esc(row.task_name || "-")}</td>
+        <td>${esc(row.variation_id || "-")}</td><td>${esc(row.split || "-")}</td><td>${esc(outcome)}</td>
+        <td>${date(row.started_at || row.updated_at)}</td><td><button class="icon-button" type="button" aria-label="View metadata for ${esc(row.episode_id)}" onclick="openDetails('${esc(row.episode_id)}')">D</button></td></tr>`;
+    }
+    async function openCollection(collectionId) {
+      state.collectionEpisodes = [];
+      $("collectionTitle").textContent = collectionId;
+      $("collectionStatus").textContent = "Loading all episodes";
+      $("collectionEpisodeRows").innerHTML = "";
+      $("collectionEpisodeEmpty").hidden = true;
+      $("collectionBackdrop").classList.add("open");
+      document.body.style.overflow = "hidden";
+      try {
+        const pageSize = 2000;
+        let offset = 0;
+        while (true) {
+          const result = await api(`/api/episodes?collection=${encodeURIComponent(collectionId)}&limit=${pageSize}&offset=${offset}`);
+          const rows = result.episodes || [];
+          state.collectionEpisodes.push(...rows);
+          if (rows.length < pageSize) break;
+          offset += rows.length;
+        }
+        $("collectionStatus").textContent = `${state.collectionEpisodes.length} episodes · front + wrist playback`;
+        $("collectionEpisodeRows").innerHTML = state.collectionEpisodes.map(collectionEpisodeRow).join("");
+        $("collectionEpisodeEmpty").hidden = state.collectionEpisodes.length > 0;
+      } catch (error) {
+        $("collectionStatus").textContent = "Episodes unavailable";
+        $("collectionEpisodeEmpty").textContent = error.message;
+        $("collectionEpisodeEmpty").hidden = false;
+        toast(error.message);
+      }
+    }
+    function syncBodyOverflow() {
+      document.body.style.overflow = document.querySelector(".player-backdrop.open") ? "hidden" : "";
+    }
+    function closeCollection() {
+      $("collectionBackdrop").classList.remove("open");
+      syncBodyOverflow();
     }
     const stageLabel = evidence => evidence?.ever_entered_target ? "target" : evidence?.ever_lifted ? "lift" : evidence?.ever_bilateral_contact ? "bilateral" : evidence?.ever_cube_contact ? "contact" : "none";
     function renderPolicyRollouts() {
@@ -769,16 +839,22 @@
       $("playerToggle").textContent = "Play";
     }
     function renderPreviewFrame(nextFrame) {
-      const frames = state.player.frames;
-      if (!frames.length) return;
-      state.player.frame = Math.max(0, Math.min(frames.length - 1, Number(nextFrame)));
-      $("playerImage").src = frames[state.player.frame];
+      if (!state.player.frameCount) return;
+      state.player.frame = Math.max(0, Math.min(state.player.frameCount - 1, Number(nextFrame)));
+      const renderCamera = (camera, imageId, paneId) => {
+        const frames = state.player.cameraFrames[camera] || [];
+        $(paneId).hidden = frames.length === 0;
+        $(imageId).hidden = frames.length === 0;
+        if (frames.length) $(imageId).src = frames[Math.min(state.player.frame, frames.length - 1)];
+      };
+      renderCamera("front", "playerImage", "playerFrontPane");
+      renderCamera("wrist", "playerWristImage", "playerWristPane");
       $("playerSlider").value = state.player.frame;
-      $("playerCounter").textContent = `${state.player.frame + 1} / ${frames.length}`;
+      $("playerCounter").textContent = `${state.player.frame + 1} / ${state.player.frameCount}`;
     }
     function startPreview() {
       stopPreview();
-      if (state.player.frames.length < 2) return;
+      if (state.player.frameCount < 2) return;
       state.player.playing = true;
       $("playerToggle").textContent = "Pause";
       const interval = 1000 / Number($("playerSpeed").value);
@@ -790,11 +866,13 @@
       stopPreview();
       state.player.frames = [];
       state.player.cameraFrames = {};
-      state.player.camera = "front";
+      state.player.frameCount = 0;
       state.player.frame = 0;
       $("playerEpisode").textContent = episodeId;
       $("playerStatus").textContent = "Loading frames";
       $("playerImage").hidden = true;
+      $("playerWristImage").hidden = true;
+      $("episodeCameras").hidden = true;
       $("playerEmpty").hidden = true;
       $("playerBackdrop").classList.add("open");
       document.body.style.overflow = "hidden";
@@ -802,16 +880,17 @@
         const result = await api(`/api/episodes/${encodeURIComponent(episodeId)}/preview`);
         state.player.cameraFrames = result.camera_frames || {front: result.frames};
         const cameras = result.cameras || Object.keys(state.player.cameraFrames);
-        state.player.camera = cameras.includes("front") ? "front" : cameras[0];
-        state.player.frames = state.player.cameraFrames[state.player.camera] || [];
-        $("playerCamera").innerHTML = cameras.map(camera => `<option value="${esc(camera)}">${esc(camera)} camera</option>`).join("");
-        $("playerCamera").value = state.player.camera;
-        $("playerCamera").hidden = cameras.length < 2;
-        $("playerStatus").textContent = `${state.player.frames.length} ${state.player.camera} frames`;
-        $("playerSlider").max = Math.max(0, state.player.frames.length - 1);
-        $("playerEmpty").hidden = state.player.frames.length > 0;
-        $("playerImage").hidden = state.player.frames.length === 0;
-        if (state.player.frames.length) {
+        state.player.frames = state.player.cameraFrames.front || state.player.cameraFrames[cameras[0]] || [];
+        state.player.frameCount = Math.max(0, ...cameras.map(camera => (state.player.cameraFrames[camera] || []).length));
+        $("playerCamera").hidden = true;
+        $("episodeCameras").classList.toggle("single", cameras.length < 2);
+        $("episodeCameras").hidden = state.player.frameCount === 0;
+        $("playerStatus").textContent = cameras.length > 1
+          ? `${state.player.frameCount} synchronized frames · front + wrist`
+          : `${state.player.frameCount} ${cameras[0] || "preview"} frames`;
+        $("playerSlider").max = Math.max(0, state.player.frameCount - 1);
+        $("playerEmpty").hidden = state.player.frameCount > 0;
+        if (state.player.frameCount) {
           renderPreviewFrame(0);
           startPreview();
         } else {
@@ -821,14 +900,16 @@
         $("playerStatus").textContent = "Playback unavailable";
         $("playerEmpty").textContent = error.message;
         $("playerEmpty").hidden = false;
+        $("episodeCameras").hidden = true;
         toast(error.message);
       }
     }
     function closePreview() {
       stopPreview();
       $("playerBackdrop").classList.remove("open");
-      document.body.style.overflow = "";
+      syncBodyOverflow();
       $("playerImage").removeAttribute("src");
+      $("playerWristImage").removeAttribute("src");
     }
     const entityById = (entities, id) => Array.isArray(entities) ? entities.find(entity => entity.entity_id === id) : null;
     const value = item => item == null ? "-" : Array.isArray(item) ? item.join(", ") : String(item);
@@ -866,7 +947,7 @@
     }
     function closeDetails() {
       $("detailsBackdrop").classList.remove("open");
-      document.body.style.overflow = "";
+      syncBodyOverflow();
     }
     document.querySelectorAll("nav button").forEach(button => button.addEventListener("click", () => activateView(button.dataset.view, true)));
     ["search","taskFilter","statusFilter","benchmarkFilter","collectionFilter","variationFilter","splitFilter","seedFilter","dateFilter","sortFilter","directionFilter"].forEach(id => $(id).addEventListener("input", () => { renderEpisodes(); syncUrl(); }));
@@ -875,16 +956,7 @@
     $("scan").addEventListener("click", async () => { await api("/api/refresh", {method:"POST", body:"{}"}); toast("Artifacts scanned."); await loadAll(); });
     $("previewRetention").addEventListener("click", renderRetention);
     $("playerClose").addEventListener("click", closePreview);
-    $("playerCamera").addEventListener("change", () => {
-      stopPreview();
-      state.player.camera = $("playerCamera").value;
-      state.player.frames = state.player.cameraFrames[state.player.camera] || [];
-      $("playerStatus").textContent = `${state.player.frames.length} ${state.player.camera} frames`;
-      $("playerSlider").max = Math.max(0, state.player.frames.length - 1);
-      $("playerEmpty").hidden = state.player.frames.length > 0;
-      $("playerImage").hidden = state.player.frames.length === 0;
-      if (state.player.frames.length) { renderPreviewFrame(0); startPreview(); }
-    });
+    $("collectionClose").addEventListener("click", closeCollection);
     $("detailsClose").addEventListener("click", closeDetails);
     $("rolloutVideoClose").addEventListener("click", closeRolloutVideo);
     let synchronizingRolloutVideos = false;
@@ -903,6 +975,9 @@
     $("rolloutWristVideo").addEventListener("pause", () => synchronizeRolloutVideos(() => $("rolloutFrontVideo").pause()));
     $("playerBackdrop").addEventListener("click", event => {
       if (event.target === $("playerBackdrop")) closePreview();
+    });
+    $("collectionBackdrop").addEventListener("click", event => {
+      if (event.target === $("collectionBackdrop")) closeCollection();
     });
     $("detailsBackdrop").addEventListener("click", event => {
       if (event.target === $("detailsBackdrop")) closeDetails();
