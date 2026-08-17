@@ -261,7 +261,7 @@ def dashboard(tmp_path):
     old = time.time() - 3600
     os.utime(so101_incomplete, (old, old))
 
-    campaign_id = "so101_v010_dashboard_live"
+    campaign_id = collection_id
     campaign = tmp_path / "campaigns" / campaign_id
     write_json(
         campaign / "campaign.json",
@@ -439,6 +439,21 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         page.get_by_role("button", name="Collections").click()
         collection_row = page.locator("#collectionRows tr", has_text=dashboard["campaign_id"])
         assert collection_row.get_by_text("2 / 200", exact=True).count() == 1
+        collection_row.get_by_role("button", name=dashboard["campaign_id"]).click()
+        page.get_by_text("3 episodes · front + wrist playback", exact=True).wait_for()
+        assert page.locator("#collectionEpisodeRows tr").count() == 3
+        collection_preview = page.locator(
+            "#collectionEpisodeRows tr", has_text=dashboard["so101_success"]
+        )
+        collection_preview.get_by_role(
+            "button", name=f"Play preview for {dashboard['so101_success']}"
+        ).click()
+        page.get_by_text("2 synchronized frames · front + wrist", exact=True).wait_for()
+        playwright.expect(page.locator("#playerImage")).to_have_js_property("naturalWidth", 1)
+        playwright.expect(page.locator("#playerWristImage")).to_have_js_property("naturalWidth", 1)
+        page.get_by_role("button", name="Close playback").click()
+        assert page.locator("#collectionBackdrop").get_attribute("class").endswith("open")
+        page.get_by_role("button", name="Close collection").click()
         page.get_by_role("button", name="Policy Rollouts").click()
         page.get_by_role("button", name="so101_act_v0_1_0_holdout20").click()
         page.get_by_text(dashboard["rollout_scene_id"], exact=True).wait_for()
@@ -453,11 +468,11 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
         page.get_by_role("button", name="Close playback").click()
 
         page.get_by_placeholder("Search episode or task").fill("episode_so101")
-        page.get_by_text(dashboard["so101_success"], exact=True).wait_for()
-        page.get_by_text(dashboard["so101_failure"], exact=True).wait_for()
-        page.get_by_text(dashboard["so101_incomplete"], exact=True).wait_for()
+        page.locator("#episodeRows").get_by_text(dashboard["so101_success"], exact=True).wait_for()
+        page.locator("#episodeRows").get_by_text(dashboard["so101_failure"], exact=True).wait_for()
+        page.locator("#episodeRows").get_by_text(dashboard["so101_incomplete"], exact=True).wait_for()
         page.get_by_role("button", name=f"Play preview for {dashboard['so101_success']}").click()
-        page.get_by_text("2 front frames").wait_for()
+        page.get_by_text("2 synchronized frames · front + wrist", exact=True).wait_for()
         player_source = page.locator("#playerImage").get_attribute("src")
         assert any(
             frame in player_source
@@ -466,10 +481,9 @@ def test_dashboard_navigation_preview_and_mobile_layout(dashboard):
                 "/rgb/front_000001.png",
             )
         )
-        page.get_by_label("Preview camera").select_option("wrist")
-        page.get_by_text("2 wrist frames").wait_for()
-        assert "/rgb/wrist_" in page.locator("#playerImage").get_attribute("src")
+        assert "/rgb/wrist_" in page.locator("#playerWristImage").get_attribute("src")
         playwright.expect(page.locator("#playerImage")).to_have_js_property("naturalWidth", 1)
+        playwright.expect(page.locator("#playerWristImage")).to_have_js_property("naturalWidth", 1)
         page.get_by_role("button", name="Close playback").click()
         page.get_by_role("button", name=f"View metadata for {dashboard['so101_success']}").click()
         page.get_by_text("Manipulated object", exact=True).wait_for()
