@@ -152,6 +152,7 @@ def test_v010_formal_contract_selects_validation_without_dataset_test_split():
     assert "CONFIG_NAME must be a basename" in runner
     assert "--profile \"${PROFILE}\"" in runner
     assert "evaluate_act_checkpoints.py" in runner
+    assert '"${SOURCE_ROOT}" != "/workspace/source-dataset"' in runner
     container_runner = (ROOT / "scripts" / "run_so101_training.sh").read_text()
     assert '"${IMMUTABLE_SOURCE_ROOT}:/workspace/source-dataset:ro"' in container_runner
 
