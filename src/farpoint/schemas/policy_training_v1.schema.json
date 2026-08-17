@@ -160,7 +160,8 @@
         "batch_size": {"type": "integer", "minimum": 1},
         "num_workers": {"type": "integer", "minimum": 0},
         "seed": {"type": "integer", "minimum": 0},
-        "minimum_relative_improvement": {"type": "number", "minimum": 0, "exclusiveMaximum": 1}
+        "minimum_relative_improvement": {"type": "number", "minimum": 0, "exclusiveMaximum": 1},
+        "require_later_improvement": {"type": "boolean"}
       }
     },
     "smoke": {"$ref": "#/$defs/run"}
@@ -176,6 +177,7 @@
         "num_workers": {"type": "integer", "minimum": 0},
         "save_checkpoint": {"type": "boolean"},
         "save_freq": {"type": "integer", "minimum": 1},
+        "resume": {"const": false},
         "push_to_hub": {"const": false},
         "wandb_enable": {"type": "boolean"},
         "log_freq": {"type": "integer", "minimum": 1}
