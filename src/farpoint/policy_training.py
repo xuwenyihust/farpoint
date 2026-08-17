@@ -251,6 +251,8 @@ def training_arguments(
     ]
     if run.get("save_freq") is not None:
         arguments.append(f"--save_freq={run['save_freq']}")
+    if "resume" in run:
+        arguments.append(f"--resume={str(run['resume']).lower()}")
     for name in (
         "vision_backbone",
         "pretrained_backbone_weights",
@@ -276,9 +278,12 @@ def evenly_spaced_indices(length: int, sample_count: int) -> list[int]:
 
 
 def select_validation_checkpoint(
-    checkpoints: list[dict[str, Any]], minimum_relative_improvement: float
+    checkpoints: list[dict[str, Any]],
+    minimum_relative_improvement: float,
+    *,
+    require_later_improvement: bool = True,
 ) -> tuple[dict[str, Any], float]:
-    """Select the lowest-loss checkpoint and enforce a meaningful pilot trend."""
+    """Select the lowest-loss checkpoint and optionally enforce a later trend."""
     if len(checkpoints) < 2:
         raise ValueError("at least two validation checkpoints are required")
     if not 0 <= minimum_relative_improvement < 1:
@@ -292,7 +297,7 @@ def select_validation_checkpoint(
         raise ValueError("first validation loss must be positive")
     best = min(ordered, key=lambda result: float(result["mean_loss"]))
     improvement = (first - float(best["mean_loss"])) / first
-    if int(best["step"]) <= int(ordered[0]["step"]):
+    if require_later_improvement and int(best["step"]) <= int(ordered[0]["step"]):
         raise ValueError("no later checkpoint improves on the first checkpoint")
     if improvement < minimum_relative_improvement:
         raise ValueError(

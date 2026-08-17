@@ -172,7 +172,9 @@ def main() -> int:
         torch.cuda.empty_cache()
 
     best, improvement = select_validation_checkpoint(
-        results, validation["minimum_relative_improvement"]
+        results,
+        validation["minimum_relative_improvement"],
+        require_later_improvement=validation.get("require_later_improvement", True),
     )
     report = {
         "schema_version": "farpoint.policy-validation.v1",
@@ -211,6 +213,9 @@ def main() -> int:
             "best_mean_loss": best["mean_loss"],
             "relative_improvement_from_first": improvement,
             "minimum_relative_improvement": validation["minimum_relative_improvement"],
+            "require_later_improvement": validation.get(
+                "require_later_improvement", True
+            ),
         },
         "interpretation": (
             "Offline teacher-forced ACT loss on a fixed validation sample; "

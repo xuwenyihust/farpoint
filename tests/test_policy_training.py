@@ -44,6 +44,9 @@ V012_BALANCED_MIX_20K_CONFIG = (
 V013_BALANCED_MIX_20K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_1_3_balanced_mix_20k.json"
 )
+V013_BALANCED_MIX_200K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_3_balanced_mix_200k.json"
+)
 
 
 def test_local_snapshot_tree_hash_binds_paths_sizes_and_contents(tmp_path):
@@ -289,6 +292,44 @@ def test_v013_balanced_mix_binds_local_candidate_and_exact_group_draws():
     }
 
 
+def test_v013_balanced_mix_200k_is_fresh_and_reuses_exact_grouping(tmp_path):
+    baseline = load_training_spec(V013_BALANCED_MIX_20K_CONFIG)
+    curve = load_training_spec(V013_BALANCED_MIX_200K_CONFIG)
+
+    for field in ("dataset", "environment", "policy", "sampling", "smoke"):
+        assert curve[field] == baseline[field] or field == "smoke"
+    assert curve["training"] == {
+        **baseline["training"],
+        "steps": 200000,
+        "save_freq": 20000,
+        "resume": False,
+    }
+    assert curve["smoke"] == {**baseline["smoke"], "resume": False}
+    assert curve["validation"] == {
+        **baseline["validation"],
+        "minimum_relative_improvement": 0,
+        "require_later_improvement": False,
+    }
+    arguments = training_arguments(curve, tmp_path / "view", tmp_path / "out", "training")
+    assert "--steps=200000" in arguments
+    assert "--save_freq=20000" in arguments
+    assert "--resume=false" in arguments
+    plan = {
+        "kind": curve["sampling"]["kind"],
+        "steps": curve["training"]["steps"],
+        "groups": curve["sampling"]["groups"],
+        "batch_cycle": curve["sampling"]["batch_cycle"],
+    }
+    assert expected_group_sample_counts(plan) == {
+        "nominal_blue": 640000,
+        "nominal_red": 640000,
+        "approach_blue": 80000,
+        "approach_red": 80000,
+        "grasp_blue": 80000,
+        "grasp_red": 80000,
+    }
+
+
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):
     source = tmp_path / "source"
     (source / "meta").mkdir(parents=True)
@@ -385,6 +426,17 @@ def test_validation_selection_requires_a_later_meaningful_improvement():
         select_validation_checkpoint(
             [{"step": 250, "mean_loss": 10.0}, {"step": 500, "mean_loss": 9.8}], 0.05
         )
+
+
+def test_validation_curve_can_report_overfitting_without_failing_execution():
+    first = {"step": 20000, "mean_loss": 8.0}
+    best, improvement = select_validation_checkpoint(
+        [first, {"step": 40000, "mean_loss": 8.5}],
+        0,
+        require_later_improvement=False,
+    )
+    assert best == first
+    assert improvement == 0
 
 
 def test_training_image_preserves_ngc_cuda_torch_builds():

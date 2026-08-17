@@ -1,0 +1,71 @@
+{
+  "schema_version": "farpoint.policy-training.v1",
+  "experiment_id": "so101_act_v0_1_3_balanced_mix_200k",
+  "dataset": {
+    "repo_id": "wenyixu101/farpoint-so101",
+    "revision": "v0.1.3-candidate",
+    "source": {
+      "kind": "local_snapshot",
+      "tree_sha256": "631031a0fe36969d2be6f23e243ac9fd55bfe79b465472147bcb65461c240ce2"
+    },
+    "codebase_version": "v3.0",
+    "splits": {"train": "0:240", "validation": "240:260"},
+    "metadata_splits": {"train": "0:240", "validation": "240:260", "test": "260:260"},
+    "expected": {
+      "total_episodes": 260,
+      "total_frames": 198571,
+      "fps": 30,
+      "selected_frames": {"train": 183770, "validation": 14801}
+    },
+    "video_backend": "pyav",
+    "required_features": {
+      "observation.state": {"dtype": "float32", "shape": [6]},
+      "observation.images.front": {"dtype": "video", "shape": [480, 640, 3]},
+      "observation.images.wrist": {"dtype": "video", "shape": [480, 640, 3]},
+      "action": {"dtype": "float32", "shape": [6]}
+    }
+  },
+  "environment": {"lerobot_version": "0.4.4", "requires_cuda": true, "architecture": "aarch64"},
+  "policy": {
+    "type": "act", "device": "cuda", "vision_backbone": "resnet18",
+    "pretrained_backbone_weights": "ResNet18_Weights.IMAGENET1K_V1",
+    "chunk_size": 100, "n_action_steps": 100
+  },
+  "sampling": {
+    "kind": "deterministic_grouped_batches",
+    "episode_slices": ["0:240"],
+    "expected_episode_count": 240,
+    "expected_frame_count": 183770,
+    "groups": [
+      {"group_id": "nominal_blue", "episode_slices": ["0:5", "6:9", "10:13", "14:16", "17:22", "23:29", "30:31", "32:40", "41:42", "44:51", "53:57", "58:62", "63:66", "67:75", "76:77", "78:82", "84:89", "90:91", "92:96", "97:101", "103:104", "220:222", "223:229", "233:235"]},
+      {"group_id": "nominal_red", "episode_slices": ["104:108", "109:114", "116:126", "127:130", "131:132", "133:135", "136:139", "140:145", "146:147", "148:153", "154:155", "156:157", "158:166", "167:174", "175:176", "178:180", "181:182", "183:185", "186:187", "188:192", "193:196", "197:201", "206:208", "209:211", "212:214", "215:219", "230:233", "235:236", "238:240"]},
+      {"group_id": "approach_blue", "episode_slices": ["5:6", "9:10", "13:14", "16:17", "22:23", "31:32", "40:41", "43:44", "52:53", "57:58", "62:63", "66:67", "75:76", "77:78", "83:84", "89:90", "96:97", "102:103", "205:206", "222:223"]},
+      {"group_id": "approach_red", "episode_slices": ["108:109", "114:116", "126:127", "132:133", "135:136", "139:140", "145:146", "147:148", "153:154", "157:158", "166:167", "174:175", "177:178", "182:183", "187:188", "192:193", "196:197", "201:202", "208:209"]},
+      {"group_id": "grasp_blue", "episode_slices": ["29:30", "42:43", "51:52", "82:83", "91:92", "101:102", "202:205", "229:230"]},
+      {"group_id": "grasp_red", "episode_slices": ["130:131", "155:156", "176:177", "180:181", "185:186", "211:212", "214:215", "219:220", "236:238"]}
+    ],
+    "batch_cycle": [
+      {"nominal_blue": 3, "nominal_red": 3, "approach_blue": 1, "grasp_blue": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "approach_red": 1, "grasp_red": 1},
+      {"nominal_blue": 3, "nominal_red": 4, "approach_blue": 1},
+      {"nominal_blue": 4, "nominal_red": 3, "grasp_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "approach_red": 1, "grasp_blue": 1}
+    ]
+  },
+  "training": {
+    "seed": 1010, "batch_size": 8, "steps": 200000, "num_workers": 4,
+    "save_checkpoint": true, "save_freq": 20000, "resume": false,
+    "push_to_hub": false, "wandb_enable": false, "log_freq": 100
+  },
+  "validation": {
+    "profile": "training", "split": "validation", "sample_count": 128,
+    "batch_size": 8, "num_workers": 2, "seed": 1010,
+    "minimum_relative_improvement": 0,
+    "require_later_improvement": false
+  },
+  "smoke": {
+    "seed": 1010, "batch_size": 2, "steps": 1, "num_workers": 0,
+    "save_checkpoint": false, "resume": false, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 1
+  }
+}
