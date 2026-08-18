@@ -452,18 +452,19 @@ def build_so101_pilot_report(
         selected_evidence.append(episode)
         episode_root = root / attempt["episode_id"]
         metadata = json.loads((episode_root / "metadata.json").read_text(encoding="utf-8"))
+        is_recovery = (metadata.get("demonstration") or {}).get("type") == "recovery"
         if not episode["success"] or not episode["dataset_valid"]:
             errors.append(f"{attempt['episode_id']}:selected_episode_not_eligible")
         if episode["terminal_phase"] != "retreat":
             errors.append(f"{attempt['episode_id']}:selected_episode_not_retreat")
-        if episode["terminal_grasp_phase"] != "validated":
+        if not is_recovery and episode["terminal_grasp_phase"] != "validated":
             errors.append(f"{attempt['episode_id']}:selected_grasp_not_validated")
         settle_frames = sum(
             phase["frame_count"] for phase in episode["phase_ranges"] if phase["phase"] == "settle"
         )
         if settle_frames < 15:
             errors.append(f"{attempt['episode_id']}:insufficient_settle_frames")
-        if (metadata.get("demonstration") or {}).get("type") == "recovery":
+        if is_recovery:
             selected_recovery_count += 1
             trial = trials.get(attempt.get("variation_id"))
             if trial is None or recovery_eligibility is None:

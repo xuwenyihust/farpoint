@@ -353,6 +353,7 @@ def test_pilot_report_accepts_bound_zero_frame_runner_failure(tmp_path):
             ]
             for row in rows:
                 row.pop("grasp_evidence", None)
+                row["grasp_phase"] = "recovery_handoff"
                 (row.get("truth") or {}).pop("proof_lift_target_m", None)
                 (row.get("truth") or {}).pop("gripper_link_pose_xyzw", None)
             (episode_root / "observations.jsonl").write_text(
