@@ -13,6 +13,7 @@ from typing import Any
 from farpoint.so101_collection import validate_manifest
 from farpoint.so101_episode_analysis import analyze_so101_episodes, classify_so101_failure
 from farpoint.so101_gate_report import so101_episode_evidence_errors
+from farpoint.recovery_episode_quality import validate_recovery_episode_eligibility
 
 
 def _v010_video_errors(episode_root: Path, metadata: dict[str, Any]) -> list[str]:
@@ -436,11 +437,21 @@ def build_so101_pilot_report(
             errors.extend(_v010_video_errors(episode_root, metadata))
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
+    selected_nominal_proof_lifts = []
+    selected_recovery_count = 0
+    trials = {trial["variation_id"]: trial for trial in plan.get("trials") or []}
+    recovery_eligibility = (
+        ((plan.get("campaign_contract") or {}).get("variation_contract") or {}).get(
+            "episode_eligibility"
+        )
+    )
     for attempt in selected:
         episode = by_name.get(attempt.get("episode_id"))
         if episode is None:
             continue
         selected_evidence.append(episode)
+        episode_root = root / attempt["episode_id"]
+        metadata = json.loads((episode_root / "metadata.json").read_text(encoding="utf-8"))
         if not episode["success"] or not episode["dataset_valid"]:
             errors.append(f"{attempt['episode_id']}:selected_episode_not_eligible")
         if episode["terminal_phase"] != "retreat":
@@ -452,9 +463,24 @@ def build_so101_pilot_report(
         )
         if settle_frames < 15:
             errors.append(f"{attempt['episode_id']}:insufficient_settle_frames")
-        proof = episode.get("proof_lift_tracking") or {}
-        if float(proof.get("actual_max_m", 0.0)) < 0.005:
-            errors.append(f"{attempt['episode_id']}:insufficient_proof_lift")
+        if (metadata.get("demonstration") or {}).get("type") == "recovery":
+            selected_recovery_count += 1
+            trial = trials.get(attempt.get("variation_id"))
+            if trial is None or recovery_eligibility is None:
+                errors.append(f"{attempt['episode_id']}:recovery_eligibility_missing")
+            else:
+                errors.extend(
+                    f"{attempt['episode_id']}:{error}"
+                    for error in validate_recovery_episode_eligibility(
+                        metadata, trial, recovery_eligibility
+                    )
+                )
+        else:
+            proof = episode.get("proof_lift_tracking") or {}
+            actual_proof_lift = float(proof.get("actual_max_m", 0.0))
+            selected_nominal_proof_lifts.append(actual_proof_lift)
+            if actual_proof_lift < 0.005:
+                errors.append(f"{attempt['episode_id']}:insufficient_proof_lift")
 
     attempt_seed_count = len({attempt["attempt_seed"] for attempt in attempts})
     attempted_ids = {attempt["variation_id"] for attempt in attempts}
@@ -509,6 +535,7 @@ def build_so101_pilot_report(
         "attempt_seed_count": attempt_seed_count,
         "variation_seed_count": variation_seed_count,
         "terminal_runner_attempts": sorted(terminal_runner_attempts),
+        "selected_recovery_count": selected_recovery_count,
         "independent_episode_identity_count": len(
             {episode["metadata_sha256"] for episode in analysis["episodes"]}
         ),
@@ -517,11 +544,9 @@ def build_so101_pilot_report(
         "yaw_audits": yaw_audits,
         "evidence_errors": sorted(set(errors)),
         "acceptance_errors": sorted(set(acceptance_errors)),
-        "minimum_selected_proof_lift_m": min(
-            episode["proof_lift_tracking"]["actual_max_m"] for episode in selected_evidence
-        )
-        if selected_evidence
-        else None,
+        "minimum_selected_proof_lift_m": (
+            min(selected_nominal_proof_lifts) if selected_nominal_proof_lifts else None
+        ),
         "minimum_selected_settle_frames": min(
             sum(
                 phase["frame_count"]

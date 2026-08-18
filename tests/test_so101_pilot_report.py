@@ -239,6 +239,33 @@ def test_pilot_report_accepts_bound_zero_frame_runner_failure(tmp_path):
         "maximum_attempts": 30,
         "attempt_policy": {"maximum_attempts_per_variation": 3},
     }
+    for trial in plan["trials"]:
+        trial["recovery_trigger_class"] = "transport_drift"
+    plan["campaign_contract"] = {
+        "variation_contract": {
+            "episode_eligibility": {
+                "schema_version": "farpoint.recovery-episode-eligibility.v1",
+                "by_trigger_class": {
+                    "transport_drift": {
+                        "handoff_stage": "transport",
+                        "trigger_fields": {
+                            "failure_stage": "transport",
+                            "last_completed_stage": "lift",
+                        },
+                        "allowed_failure_subclasses": ["transport_stall"],
+                        "trigger_evidence": {
+                            "ever_lifted": True,
+                            "ever_near_target": False,
+                        },
+                        "handoff": {
+                            "physics_state_continuous": True,
+                            "reset_performed": False,
+                        },
+                    }
+                },
+            }
+        }
+    }
     plan["plan_sha256"] = canonical_sha256(plan, omit=("plan_sha256",))
     manifest = create_manifest(
         plan, collection_id=plan["plan_id"], git_commit="a" * 40
@@ -289,9 +316,48 @@ def test_pilot_report_accepts_bound_zero_frame_runner_failure(tmp_path):
     for index in range(10):
         attempt = next_attempt(manifest, plan)
         episode_id = f"episode_success_{index}"
-        _write_success_episode(
-            tmp_path / episode_id, attempt["variation_id"], index / 1000
-        )
+        episode_root = tmp_path / episode_id
+        _write_success_episode(episode_root, attempt["variation_id"], index / 1000)
+        if index == 0:
+            metadata = json.loads(
+                (episode_root / "metadata.json").read_text(encoding="utf-8")
+            )
+            metadata["demonstration"] = {
+                "type": "recovery",
+                "intervention": {
+                    "trigger": {
+                        "failure_class": "transport_drift",
+                        "handoff_stage": "transport",
+                        "failure_stage": "transport",
+                        "last_completed_stage": "lift",
+                        "failure_subclass": "transport_stall",
+                        "evidence": {
+                            "ever_lifted": True,
+                            "ever_near_target": False,
+                        },
+                    },
+                    "handoff": {
+                        "physics_state_continuous": True,
+                        "reset_performed": False,
+                    },
+                },
+            }
+            (episode_root / "metadata.json").write_text(
+                json.dumps(metadata), encoding="utf-8"
+            )
+            rows = [
+                json.loads(line)
+                for line in (episode_root / "observations.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            for row in rows:
+                row.pop("grasp_evidence", None)
+                (row.get("truth") or {}).pop("proof_lift_target_m", None)
+                (row.get("truth") or {}).pop("gripper_link_pose_xyzw", None)
+            (episode_root / "observations.jsonl").write_text(
+                "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+            )
         record_attempt(
             manifest,
             plan,
@@ -303,10 +369,12 @@ def test_pilot_report_accepts_bound_zero_frame_runner_failure(tmp_path):
 
     report = build_so101_pilot_report(plan, manifest, tmp_path)
 
-    assert report["pilot_status"] == "PASS"
     assert report["evidence_errors"] == []
+    assert report["pilot_status"] == "PASS"
     assert report["terminal_runner_attempts"] == [failed_episode_id]
     assert report["episode_evidence"]["episode_count"] == 10
+    assert report["selected_recovery_count"] == 1
+    assert report["minimum_selected_proof_lift_m"] == 0.006
 
     run_state_path = failed_root / "run-state.json"
     run_state = json.loads(run_state_path.read_text(encoding="utf-8"))
