@@ -79,6 +79,18 @@ def _rollout(root: Path):
     return rollout, scene_id
 
 
+def _flat_rollout(root: Path):
+    rollout, scene_id = _rollout(root)
+    spec = json.loads((rollout / "spec.json").read_text(encoding="utf-8"))
+    report = json.loads((rollout / "run" / "report.json").read_text(encoding="utf-8"))
+    flat = root / "act-v013-balanced200k-step200k"
+    _write(root / "specs" / f"{flat.name}.spec.json", spec)
+    _write(flat / "report.json", report)
+    _write(flat / "episodes" / scene_id / "front.mp4", b"flat-front-video")
+    _write(flat / "episodes" / scene_id / "wrist.mp4", b"flat-wrist-video")
+    return flat, scene_id
+
+
 def test_policy_rollout_index_exposes_failed_evaluation_and_dual_video(tmp_path):
     rollout, scene_id = _rollout(tmp_path)
     index = PolicyRolloutDashboardIndex([tmp_path])
@@ -96,6 +108,19 @@ def test_policy_rollout_index_exposes_failed_evaluation_and_dual_video(tmp_path)
     assert set(episode["videos"]) == {"front", "wrist"}
     assert episode["videos"]["front"]["url"].endswith(f"/{scene_id}/front.mp4")
     assert index.video_path(rollout.name, scene_id, "wrist").read_bytes() == b"wrist-video"
+
+
+def test_policy_rollout_index_supports_flat_evidence_with_external_spec(tmp_path):
+    rollout, scene_id = _flat_rollout(tmp_path)
+    index = PolicyRolloutDashboardIndex([tmp_path])
+
+    detail = index.detail(rollout.name)
+
+    assert detail["status"] == "FAIL"
+    assert set(detail["episodes"][0]["videos"]) == {"front", "wrist"}
+    assert index.video_path(rollout.name, scene_id, "front").read_bytes() == (
+        b"flat-front-video"
+    )
 
 
 def test_policy_rollout_index_rejects_asset_traversal_and_unreported_video(tmp_path):
