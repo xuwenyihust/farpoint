@@ -19,6 +19,25 @@ def _read_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def _layout_paths(root: Path) -> tuple[Path, Path, Path] | None:
+    """Resolve supported immutable rollout layouts without modifying evidence."""
+    legacy = (
+        root / "spec.json",
+        root / "run" / "report.json",
+        root / "run" / "episodes",
+    )
+    if legacy[0].is_file() and legacy[1].is_file():
+        return legacy
+    flat = (
+        root.parent / "specs" / f"{root.name}.spec.json",
+        root / "report.json",
+        root / "episodes",
+    )
+    if flat[0].is_file() and flat[1].is_file():
+        return flat
+    return None
+
+
 class PolicyRolloutDashboardIndex:
     """Discover rollout suites without mutating their frozen evidence."""
 
@@ -30,20 +49,23 @@ class PolicyRolloutDashboardIndex:
         for root in self.roots:
             if not root.is_dir():
                 continue
-            candidates = [root] if (root / "spec.json").is_file() else root.iterdir()
+            candidates = [root] if _layout_paths(root) is not None else root.iterdir()
             for candidate in candidates:
                 if (
                     candidate.is_dir()
                     and SAFE_ID.fullmatch(candidate.name)
-                    and (candidate / "spec.json").is_file()
-                    and (candidate / "run" / "report.json").is_file()
+                    and _layout_paths(candidate) is not None
                 ):
                     runs.append(candidate.resolve())
         return sorted(set(runs), key=lambda path: path.stat().st_mtime, reverse=True)
 
     def _record(self, root: Path, *, include_episodes: bool) -> dict[str, Any]:
-        spec = _read_json(root / "spec.json")
-        report = _read_json(root / "run" / "report.json")
+        layout = _layout_paths(root)
+        if layout is None:
+            raise FileNotFoundError(root)
+        spec_path, report_path, _ = layout
+        spec = _read_json(spec_path)
+        report = _read_json(report_path)
         if report.get("suite_id") != spec.get("suite_id"):
             raise ValueError(f"rollout suite identity mismatch: {root}")
         source = report.get("holdout_source") or spec.get("holdout_source") or {}
@@ -141,12 +163,16 @@ class PolicyRolloutDashboardIndex:
         if not SAFE_ID.fullmatch(scene_id or "") or camera_id not in {"front", "wrist"}:
             raise FileNotFoundError(scene_id)
         root = self.rollout_root(rollout_id)
+        layout = _layout_paths(root)
+        if layout is None:
+            raise FileNotFoundError(root)
+        _, _, episodes_root = layout
         detail = self._record(root, include_episodes=True)
         episode = next((row for row in detail["episodes"] if row["scene_id"] == scene_id), None)
         if episode is None or camera_id not in episode["videos"]:
             raise FileNotFoundError(scene_id)
-        path = (root / "run" / "episodes" / scene_id / f"{camera_id}.mp4").resolve()
-        evidence_root = (root / "run" / "episodes" / scene_id).resolve()
+        path = (episodes_root / scene_id / f"{camera_id}.mp4").resolve()
+        evidence_root = (episodes_root / scene_id).resolve()
         if evidence_root not in path.parents or not path.is_file():
             raise FileNotFoundError(path)
         return path
