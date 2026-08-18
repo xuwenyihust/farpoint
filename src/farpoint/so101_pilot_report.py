@@ -148,6 +148,77 @@ def _required_object_region_errors(
     ]
 
 
+def _terminal_runner_sidecar_errors(
+    attempt: dict[str, Any], episode_root: Path, manifest: dict[str, Any]
+) -> list[str] | None:
+    """Validate a zero-frame runner failure, or return None for a full episode.
+
+    Recovery admission can fail before recording starts.  Those attempts have
+    immutable terminal sidecars but intentionally do not have the three core
+    dataset artifacts.  Only that exact, non-selected runner outcome may be
+    excluded from frame-level analysis.
+    """
+    core_names = ("observations.jsonl", "metadata.json", "metrics.json")
+    present = [name for name in core_names if (episode_root / name).is_file()]
+    if len(present) == len(core_names):
+        return None
+    episode_id = str(attempt.get("episode_id") or episode_root.name)
+    errors = []
+    if present:
+        errors.append(f"{episode_id}:partial_episode_artifacts")
+        return errors
+    if (
+        attempt.get("selected_for_dataset")
+        or attempt.get("success")
+        or attempt.get("dataset_valid")
+        or attempt.get("failure_category") != "runner"
+    ):
+        return [f"{episode_id}:missing_core_episode_artifacts"]
+
+    run_state_path = episode_root / "run-state.json"
+    runner_error_path = episode_root / "runner_error.json"
+    try:
+        run_state = json.loads(run_state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        errors.append(f"{episode_id}:runner_run_state_unreadable")
+        run_state = {}
+    try:
+        runner_error = json.loads(runner_error_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        errors.append(f"{episode_id}:runner_error_unreadable")
+        runner_error = {}
+
+    identity = run_state.get("identity") or {}
+    outcome = run_state.get("outcome") or {}
+    provenance = run_state.get("provenance") or {}
+    recording = run_state.get("recording") or {}
+    expected_outcome = {
+        "success": False,
+        "dataset_valid": False,
+        "failure_category": "runner",
+        "failure_reason": attempt.get("failure_reason"),
+    }
+    if run_state.get("schema_version") != "farpoint.episode-run.v1":
+        errors.append(f"{episode_id}:runner_run_state_schema_mismatch")
+    if run_state.get("execution_status") != "FAILED":
+        errors.append(f"{episode_id}:runner_run_state_not_failed")
+    if identity.get("episode_id") != episode_id:
+        errors.append(f"{episode_id}:runner_episode_identity_mismatch")
+    if identity.get("trial_id") != attempt.get("trial_id"):
+        errors.append(f"{episode_id}:runner_trial_identity_mismatch")
+    if any(outcome.get(key) != value for key, value in expected_outcome.items()):
+        errors.append(f"{episode_id}:runner_outcome_mismatch")
+    if provenance.get("collection_id") != manifest.get("collection_id"):
+        errors.append(f"{episode_id}:runner_collection_identity_mismatch")
+    if provenance.get("git_commit") != manifest.get("git_commit"):
+        errors.append(f"{episode_id}:runner_git_commit_mismatch")
+    if recording.get("frame_count") != 0:
+        errors.append(f"{episode_id}:runner_zero_frame_contract_mismatch")
+    if not runner_error.get("error") or not runner_error.get("traceback"):
+        errors.append(f"{episode_id}:runner_error_evidence_incomplete")
+    return errors
+
+
 def _quaternion_error_degrees(actual: list[float], expected: list[float]) -> float:
     if len(actual) != 4 or len(expected) != 4:
         return math.inf
@@ -301,7 +372,7 @@ def audit_yaw_mass_episodes(
                 "mass_verified": mass_verified,
             }
         )
-    if len(audits) != len([attempt for attempt in attempts if attempt.get("episode_id")]):
+    if len(audits) != len(by_name):
         errors.append("yaw_audit_count_mismatch")
     return audits, errors
 
@@ -318,20 +389,29 @@ def build_so101_pilot_report(
     attempts = manifest.get("attempts") or []
     root = Path(episodes_root)
     episode_attempts = [attempt for attempt in attempts if attempt.get("episode_id")]
-    episode_dirs = [
-        root / attempt["episode_id"]
-        for attempt in episode_attempts
-        if (root / attempt["episode_id"]).is_dir()
-    ]
+    evidence_errors = []
+    analyzable_attempts = []
+    terminal_runner_attempts = []
+    for attempt in episode_attempts:
+        episode_root = root / attempt["episode_id"]
+        if not episode_root.is_dir():
+            evidence_errors.append(f"missing_episode:{attempt['episode_id']}")
+            continue
+        runner_errors = _terminal_runner_sidecar_errors(attempt, episode_root, manifest)
+        if runner_errors is None:
+            analyzable_attempts.append(attempt)
+            continue
+        evidence_errors.extend(runner_errors)
+        if not runner_errors:
+            terminal_runner_attempts.append(attempt["episode_id"])
+    episode_dirs = [root / attempt["episode_id"] for attempt in analyzable_attempts]
     analysis = analyze_so101_episodes(episode_dirs, verify_images=True)
     errors = so101_episode_evidence_errors(
         analysis,
-        len(episode_attempts),
+        len(analyzable_attempts),
         required_cameras=required_cameras,
     )
-    for attempt in episode_attempts:
-        if not (root / attempt["episode_id"]).is_dir():
-            errors.append(f"missing_episode:{attempt['episode_id']}")
+    errors.extend(evidence_errors)
     by_name = {Path(item["episode_dir"]).name: item for item in analysis["episodes"]}
     for attempt in episode_attempts:
         episode = by_name.get(attempt["episode_id"])
@@ -428,6 +508,7 @@ def build_so101_pilot_report(
         "required_successes": int(manifest["required_successes"]),
         "attempt_seed_count": attempt_seed_count,
         "variation_seed_count": variation_seed_count,
+        "terminal_runner_attempts": sorted(terminal_runner_attempts),
         "independent_episode_identity_count": len(
             {episode["metadata_sha256"] for episode in analysis["episodes"]}
         ),

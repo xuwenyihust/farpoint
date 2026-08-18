@@ -225,6 +225,100 @@ def test_pilot_report_allows_retry_to_reuse_frozen_variation_seed(tmp_path):
     assert report["variation_seed_count"] == 10
 
 
+def test_pilot_report_accepts_bound_zero_frame_runner_failure(tmp_path):
+    plan = build_so101_pilot_plan(_config(), pilot_id="runner_failure_report")
+    plan["trials"] = plan["trials"][:10]
+    plan["pilot"]["maximum_attempts"] = 30
+    plan["pilot"]["primary_trial_ids"] = [
+        trial["trial_id"] for trial in plan["trials"]
+    ]
+    plan["pilot"]["fallback_trial_ids"] = []
+    plan["collection"] = {
+        "kind": "self_healing_campaign_segment",
+        "required_successes": 10,
+        "maximum_attempts": 30,
+        "attempt_policy": {"maximum_attempts_per_variation": 3},
+    }
+    plan["plan_sha256"] = canonical_sha256(plan, omit=("plan_sha256",))
+    manifest = create_manifest(
+        plan, collection_id=plan["plan_id"], git_commit="a" * 40
+    )
+    failed = next_attempt(manifest, plan)
+    failed_episode_id = "episode_runner_failure"
+    failed_root = tmp_path / failed_episode_id
+    failed_root.mkdir()
+    failure_reason = "RuntimeError: recovery handoff deadline"
+    (failed_root / "run-state.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "farpoint.episode-run.v1",
+                "execution_status": "FAILED",
+                "identity": {
+                    "episode_id": failed_episode_id,
+                    "trial_id": failed["trial_id"],
+                },
+                "outcome": {
+                    "success": False,
+                    "dataset_valid": False,
+                    "failure_category": "runner",
+                    "failure_reason": failure_reason,
+                },
+                "provenance": {
+                    "collection_id": manifest["collection_id"],
+                    "git_commit": manifest["git_commit"],
+                },
+                "recording": {"frame_count": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (failed_root / "runner_error.json").write_text(
+        json.dumps({"error": "RuntimeError(...)" , "traceback": "trace"}),
+        encoding="utf-8",
+    )
+    record_attempt(
+        manifest,
+        plan,
+        failed,
+        episode_id=failed_episode_id,
+        success=False,
+        dataset_valid=False,
+        failure_category="runner",
+        failure_reason=failure_reason,
+    )
+    for index in range(10):
+        attempt = next_attempt(manifest, plan)
+        episode_id = f"episode_success_{index}"
+        _write_success_episode(
+            tmp_path / episode_id, attempt["variation_id"], index / 1000
+        )
+        record_attempt(
+            manifest,
+            plan,
+            attempt,
+            episode_id=episode_id,
+            success=True,
+            dataset_valid=True,
+        )
+
+    report = build_so101_pilot_report(plan, manifest, tmp_path)
+
+    assert report["pilot_status"] == "PASS"
+    assert report["evidence_errors"] == []
+    assert report["terminal_runner_attempts"] == [failed_episode_id]
+    assert report["episode_evidence"]["episode_count"] == 10
+
+    run_state_path = failed_root / "run-state.json"
+    run_state = json.loads(run_state_path.read_text(encoding="utf-8"))
+    run_state["outcome"]["failure_reason"] = "different runner failure"
+    run_state_path.write_text(json.dumps(run_state), encoding="utf-8")
+
+    invalid = build_so101_pilot_report(plan, manifest, tmp_path)
+
+    assert invalid["pilot_status"] == "INVALID_EVIDENCE"
+    assert f"{failed_episode_id}:runner_outcome_mismatch" in invalid["evidence_errors"]
+
+
 def test_pilot_report_accepts_explicit_dual_camera_contract(tmp_path):
     plan = build_so101_pilot_plan(_config(), pilot_id="dual_camera_report")
     manifest = create_pilot_manifest(
