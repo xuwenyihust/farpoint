@@ -294,6 +294,42 @@ def test_episode_v4_validates_explicit_recovery_handoff_stage_contract():
     )
 
 
+def test_episode_v4_validates_canonical_transport_failure_taxonomy():
+    episode = episode_v4()
+    episode["demonstration"] = recovery_demonstration(
+        oracle_profile_id="recovery-v1",
+        source_policy={
+            "policy_type": "act",
+            "checkpoint_step": 200_000,
+            "model_sha256": SHA,
+            "training_run_id": "act-v013-balanced-200k",
+            "rollout_git_commit": "b" * 40,
+        },
+        trigger_id="transport-stall-v1",
+        failure_class="transport_drift",
+        control_step=700,
+        handoff_stage="transport",
+        trigger_reason="stage_progress_stall",
+        trigger_evidence={
+            "failure_stage": "transport",
+            "last_completed_stage": "lift",
+            "failure_subclass": "transport_stall",
+        },
+        source_rollout_id="rollout-1",
+        source_scene_id="scene-1",
+        state_snapshot={"joint_positions_rad": [0.0] * 6},
+        recovery_strategy_id="stage-aware-v3",
+    )
+    assert validate_contract(episode) == []
+    assert validate_episode_semantics(episode) == []
+
+    mismatched = deepcopy(episode)
+    mismatched["demonstration"]["intervention"]["trigger"]["failure_stage"] = "place"
+    errors = validate_episode_semantics(mismatched)
+    assert "recovery trigger evidence failure_stage does not match" in errors
+    assert "transport recovery taxonomy has inconsistent stages" in errors
+
+
 def test_episode_v4_validates_live_recovery_intervention_metadata():
     episode = episode_v4()
     episode["demonstration"] = {

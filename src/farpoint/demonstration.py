@@ -168,6 +168,11 @@ def recovery_demonstration(
         if key in evidence and evidence[key] != value:
             raise ValueError(f"trigger evidence {key} does not match recovery metadata")
         evidence[key] = value
+    canonical_taxonomy = {
+        key: evidence[key]
+        for key in ("failure_stage", "last_completed_stage", "failure_subclass")
+        if key in evidence
+    }
     return {
         "schema_version": "farpoint.demonstration.v1",
         "type": "recovery",
@@ -183,6 +188,7 @@ def recovery_demonstration(
                 "handoff_stage_schema_version": HANDOFF_STAGE_SCHEMA_VERSION,
                 "handoff_stage": handoff_stage,
                 "trigger_reason": trigger_reason,
+                **canonical_taxonomy,
                 "evidence": evidence,
             },
             "handoff": {

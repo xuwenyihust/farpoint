@@ -56,6 +56,62 @@ def _metadata(*, stage="grasp", has_contact=True):
     }
 
 
+def test_transport_eligibility_enforces_canonical_subclass_and_stages():
+    eligibility = {
+        "schema_version": "farpoint.recovery-episode-eligibility.v1",
+        "by_trigger_class": {
+            "transport_drift": {
+                "handoff_stage": "transport",
+                "trigger_fields": {
+                    "failure_stage": "transport",
+                    "last_completed_stage": "lift",
+                },
+                "allowed_failure_subclasses": [
+                    "transport_drop",
+                    "transport_stall",
+                    "premature_release_outside_target",
+                ],
+                "trigger_evidence": {
+                    "ever_lifted": True,
+                    "ever_near_target": False,
+                },
+                "handoff": {
+                    "physics_state_continuous": True,
+                    "reset_performed": False,
+                },
+            }
+        },
+    }
+    metadata = {
+        "demonstration": {
+            "type": "recovery",
+            "intervention": {
+                "trigger": {
+                    "failure_class": "transport_drift",
+                    "handoff_stage": "transport",
+                    "failure_stage": "transport",
+                    "last_completed_stage": "lift",
+                    "failure_subclass": "transport_drop",
+                    "evidence": {"ever_lifted": True, "ever_near_target": False},
+                },
+                "handoff": {
+                    "physics_state_continuous": True,
+                    "reset_performed": False,
+                },
+            },
+        }
+    }
+    trial = {"recovery_trigger_class": "transport_drift"}
+    assert validate_recovery_episode_eligibility(metadata, trial, eligibility) == []
+
+    metadata["demonstration"]["intervention"]["trigger"][
+        "failure_subclass"
+    ] = "contact_without_lift"
+    assert validate_recovery_episode_eligibility(metadata, trial, eligibility) == [
+        "recovery failure_subclass is not allowed by campaign eligibility"
+    ]
+
+
 def _evidence(tmp_path, metadata):
     campaign = create_campaign(
         {

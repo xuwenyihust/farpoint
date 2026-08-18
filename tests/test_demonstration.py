@@ -43,7 +43,13 @@ def test_recovery_demonstration_binds_live_handoff_and_snapshot_deterministicall
         "control_step": 684,
         "handoff_stage": "transport",
         "trigger_reason": "stage_progress_stall",
-        "trigger_evidence": {"window_steps": 90, "progress_m": 0.0},
+        "trigger_evidence": {
+            "window_steps": 90,
+            "progress_m": 0.0,
+            "failure_stage": "transport",
+            "last_completed_stage": "lift",
+            "failure_subclass": "transport_stall",
+        },
         "source_rollout_id": "rollout-1",
         "source_scene_id": "train-scene-1",
         "state_snapshot": SNAPSHOT,
@@ -53,7 +59,13 @@ def test_recovery_demonstration_binds_live_handoff_and_snapshot_deterministicall
     second = recovery_demonstration(
         **{
             **arguments,
-            "trigger_evidence": {"progress_m": 0.0, "window_steps": 90},
+            "trigger_evidence": {
+                "progress_m": 0.0,
+                "window_steps": 90,
+                "failure_stage": "transport",
+                "last_completed_stage": "lift",
+                "failure_subclass": "transport_stall",
+            },
             "state_snapshot": dict(reversed(SNAPSHOT.items())),
         }
     )
@@ -68,6 +80,9 @@ def test_recovery_demonstration_binds_live_handoff_and_snapshot_deterministicall
     assert trigger["handoff_stage_schema_version"] == "1"
     assert trigger["handoff_stage"] == "transport"
     assert trigger["trigger_reason"] == "stage_progress_stall"
+    assert trigger["failure_stage"] == "transport"
+    assert trigger["last_completed_stage"] == "lift"
+    assert trigger["failure_subclass"] == "transport_stall"
     assert trigger["evidence"]["handoff_stage"] == "transport"
 
 

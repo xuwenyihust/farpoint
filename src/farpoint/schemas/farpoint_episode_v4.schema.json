@@ -186,6 +186,9 @@
             "handoff_stage_schema_version": {"const": "1"},
             "handoff_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
             "trigger_reason": {"type": "string", "minLength": 1},
+            "failure_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+            "last_completed_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+            "failure_subclass": {"enum": ["transport_drop", "transport_stall", "premature_release_outside_target"]},
             "evidence": {"type": "object", "minProperties": 1}
           }
         },

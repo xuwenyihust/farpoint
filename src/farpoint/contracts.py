@@ -146,6 +146,30 @@ def validate_episode_semantics(record: dict[str, Any]) -> list[str]:
                         errors.append("recovery trigger evidence handoff_stage does not match")
                     if evidence.get("trigger_reason") != trigger.get("trigger_reason"):
                         errors.append("recovery trigger evidence trigger_reason does not match")
+                    taxonomy_fields = (
+                        "failure_stage",
+                        "last_completed_stage",
+                        "failure_subclass",
+                    )
+                    present_taxonomy = [
+                        field for field in taxonomy_fields if field in trigger
+                    ]
+                    if present_taxonomy and len(present_taxonomy) != len(taxonomy_fields):
+                        errors.append("recovery canonical failure taxonomy is incomplete")
+                    for field in present_taxonomy:
+                        if evidence.get(field) != trigger.get(field):
+                            errors.append(
+                                f"recovery trigger evidence {field} does not match"
+                            )
+                    if trigger.get("failure_subclass") in {
+                        "transport_drop",
+                        "transport_stall",
+                        "premature_release_outside_target",
+                    } and (
+                        trigger.get("failure_stage") != "transport"
+                        or trigger.get("last_completed_stage") != "lift"
+                    ):
+                        errors.append("transport recovery taxonomy has inconsistent stages")
                 if handoff.get("source_control_step") != trigger.get("control_step"):
                     errors.append(
                         "recovery handoff source_control_step does not match trigger.control_step"

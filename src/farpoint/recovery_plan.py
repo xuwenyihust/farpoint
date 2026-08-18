@@ -77,6 +77,7 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
     policy = config.get("quota_policy") or {}
     common_region_slots = tuple(policy.get("region_slots") or ())
     region_slots_by_class = policy.get("region_slots_by_trigger_class") or {}
+    object_slots_by_class = policy.get("object_slots_by_trigger_class") or {}
     region_slot_count = _v012_region_slot_count(config)
     resolved_region_slots = {
         trigger_class: tuple(
@@ -91,6 +92,8 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
     pilot_slots_by_class = policy.get("pilot_slots_by_trigger_class") or {}
     if pilot_slots_by_class and set(pilot_slots_by_class) != set(trigger_classes):
         raise ValueError("per-trigger pilot slots must match trigger classes exactly")
+    if object_slots_by_class and set(object_slots_by_class) != set(trigger_classes):
+        raise ValueError("per-trigger object slots must match trigger classes exactly")
     full_count = len(trigger_classes) * len(yaw_strata) * region_slot_count
     pilot_count = len(trigger_classes) * pilot_per_class
     if scene_count not in (pilot_count, full_count):
@@ -105,9 +108,23 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
     for class_index, trigger_class in enumerate(trigger_classes):
         class_requests = []
         region_slots = resolved_region_slots[trigger_class]
+        configured_object_slots = object_slots_by_class.get(trigger_class)
+        if configured_object_slots is not None:
+            if len(configured_object_slots) != len(yaw_strata) * region_slot_count:
+                raise ValueError("declared object slots do not match full class slot count")
+            unknown_objects = sorted(set(configured_object_slots) - set(objects))
+            if unknown_objects:
+                raise ValueError(
+                    "object slots reference unknown objects: " + ", ".join(unknown_objects)
+                )
         for yaw_index, yaw_id in enumerate(yaw_strata):
             for slot_index, region in enumerate(region_slots):
-                object_id = objects[(yaw_index + slot_index + class_index) % len(objects)]
+                flat_index = yaw_index * region_slot_count + slot_index
+                object_id = (
+                    configured_object_slots[flat_index]
+                    if configured_object_slots is not None
+                    else objects[(yaw_index + slot_index + class_index) % len(objects)]
+                )
                 split = "validation" if (yaw_index, slot_index) in validation_slots else "train"
                 class_requests.append(
                     {
@@ -199,11 +216,28 @@ def _episode_eligibility(config: dict[str, Any]) -> dict[str, Any] | None:
     for trigger_class, profile in (config.get("trigger_profiles") or {}).items():
         handoff_stage = profile.get("required_handoff_stage")
         evidence = profile.get("required_trigger_evidence")
-        if handoff_stage is None and evidence is None:
+        trigger_fields = {
+            key.removeprefix("required_"): value
+            for key in ("required_failure_stage", "required_last_completed_stage")
+            if (value := profile.get(key)) is not None
+        }
+        allowed_subclasses = profile.get("allowed_failure_subclasses")
+        if (
+            handoff_stage is None
+            and evidence is None
+            and not trigger_fields
+            and allowed_subclasses is None
+        ):
             continue
         by_trigger_class[trigger_class] = {
             **({"handoff_stage": handoff_stage} if handoff_stage is not None else {}),
             **({"trigger_evidence": deepcopy(evidence)} if evidence is not None else {}),
+            **({"trigger_fields": trigger_fields} if trigger_fields else {}),
+            **(
+                {"allowed_failure_subclasses": deepcopy(allowed_subclasses)}
+                if allowed_subclasses is not None
+                else {}
+            ),
             "handoff": {
                 "physics_state_continuous": True,
                 "reset_performed": False,

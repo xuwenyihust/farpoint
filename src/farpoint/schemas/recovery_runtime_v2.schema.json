@@ -105,11 +105,18 @@
         "failure_class": {"enum": ["approach_miss", "contact_without_lift", "transport_drift", "place_release_failure"]},
         "admission_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
         "required_handoff_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+        "required_failure_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+        "required_last_completed_stage": {"enum": ["approach", "grasp", "lift", "transport", "place", "release", "settle"]},
+        "allowed_failure_subclasses": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"enum": ["transport_drop", "transport_stall", "premature_release_outside_target"]}
+        },
         "required_trigger_evidence": {
           "type": "object", "additionalProperties": false, "minProperties": 1,
           "properties": {
             "ever_contact": {"type": "boolean"},
             "ever_lifted": {"type": "boolean"},
+            "ever_near_target": {"type": "boolean"},
             "has_contact": {"type": "boolean"},
             "cube_lifted": {"type": "boolean"},
             "secure_grasp": {"type": "boolean"},

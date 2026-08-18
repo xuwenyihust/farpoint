@@ -84,6 +84,12 @@ def approach_recovery_config():
     )
 
 
+def transport_recovery_config():
+    return json.loads(
+        (ROOT / "configs/recovery/so101_v014_transport_recovery20.json").read_text()
+    )
+
+
 def multistage_source_plan():
     source = source_plan()
     expanded = []
@@ -357,6 +363,65 @@ def test_v013_approach_recovery_pilot_is_object_yaw_and_region_stratified():
     assert {row["trigger_class"] for row in runtime["scenes"]} == {
         "approach_miss"
     }
+
+
+def test_v014_transport_recovery20_freezes_strict_train_only_coverage(tmp_path):
+    plan, runtime = build_recovery_plan(
+        multistage_source_plan(),
+        transport_recovery_config(),
+        campaign_id="transport-recovery20-test",
+        scene_count=20,
+    )
+
+    assert plan["coverage"] == {
+        "objects": {"blue-30mm-30g": 8, "red-40mm-40g": 12},
+        "recovery_triggers": {"transport_drift": 20},
+        "regions": {"core": 5, "middle": 10, "outer": 5},
+        "splits": {"train": 20},
+        "yaw_strata": {
+            "yaw00_18": 4,
+            "yaw18_36": 4,
+            "yaw36_54": 4,
+            "yaw54_72": 4,
+            "yaw72_90": 4,
+        },
+    }
+    eligibility = plan["campaign_contract"]["variation_contract"][
+        "episode_eligibility"
+    ]["by_trigger_class"]["transport_drift"]
+    assert eligibility["handoff_stage"] == "transport"
+    assert eligibility["trigger_fields"] == {
+        "failure_stage": "transport",
+        "last_completed_stage": "lift",
+    }
+    assert set(eligibility["allowed_failure_subclasses"]) == {
+        "transport_drop",
+        "transport_stall",
+        "premature_release_outside_target",
+    }
+    runtime_path = tmp_path / "runtime-v014-transport.json"
+    runtime_path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(runtime_path) == runtime
+
+
+def test_v014_transport_recovery_pilot_is_balanced_and_stratified():
+    plan, _runtime = build_recovery_plan(
+        multistage_source_plan(),
+        transport_recovery_config(),
+        campaign_id="transport-recovery8-pilot",
+        scene_count=8,
+    )
+
+    assert plan["campaign_contract"]["campaign_kind"] == "pilot"
+    assert plan["coverage"]["objects"] == {
+        "blue-30mm-30g": 4,
+        "red-40mm-40g": 4,
+    }
+    assert plan["coverage"]["recovery_triggers"] == {"transport_drift": 8}
+    assert plan["coverage"]["splits"] == {"train": 8}
+    assert set(plan["coverage"]["yaw_strata"]) == set(
+        transport_recovery_config()["yaw_strata"]
+    )
 
 
 def test_v012_grasp_pilot6_covers_both_objects_regions_and_every_yaw():
