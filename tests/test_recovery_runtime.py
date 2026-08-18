@@ -280,6 +280,49 @@ def test_v2_runtime_resolves_scene_trigger_and_detects_transport_loss(tmp_path):
     assert not trigger["has_contact"]
 
 
+@pytest.mark.parametrize(
+    ("overrides", "expected_subclass", "expected_entry"),
+    [
+        ({"has_contact": False, "cube_lifted": False}, "transport_drop", "home"),
+        (
+            {"has_contact": True, "cube_lifted": True, "secure_grasp": True},
+            "transport_stall",
+            "preplace",
+        ),
+        (
+            {"gripper_released": True, "cube_in_target": False},
+            "premature_release_outside_target",
+            "home",
+        ),
+    ],
+)
+def test_transport_taxonomy_and_oracle_entry_are_stage_consistent(
+    overrides, expected_subclass, expected_entry
+):
+    from farpoint.recovery_runtime import canonical_recovery_failure_taxonomy
+
+    evidence = {
+        "ever_lifted": True,
+        "has_contact": True,
+        "cube_lifted": True,
+        "secure_grasp": True,
+        "gripper_released": False,
+        "cube_in_target": False,
+        "lift_height_m": 0.02,
+        "contact_forces_n": [2.0, 2.0],
+        **overrides,
+    }
+    taxonomy = canonical_recovery_failure_taxonomy("transport_drift", evidence)
+    assert taxonomy == {
+        "failure_stage": "transport",
+        "last_completed_stage": "lift",
+        "failure_subclass": expected_subclass,
+    }
+    assert recovery_oracle_entry_phase(
+        {"failure_class": "transport_drift", "handoff_stage": "transport", **evidence}
+    ) == expected_entry
+
+
 def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
     spec = multistage_runtime_spec()
     spec["scenes"][0]["trigger_class"] = "missing"

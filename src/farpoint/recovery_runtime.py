@@ -16,6 +16,29 @@ from farpoint.policy_rollout import resolve_action_safety_profile
 from farpoint.so101 import lerobot_to_radians, radians_to_lerobot
 
 
+def canonical_recovery_failure_taxonomy(
+    failure_class: str, evidence: dict[str, Any]
+) -> dict[str, str]:
+    """Derive canonical stage taxonomy without rewriting legacy failure labels."""
+    if failure_class != "transport_drift":
+        return {}
+    if evidence.get("gripper_released") and not evidence.get("cube_in_target"):
+        subclass = "premature_release_outside_target"
+    elif (
+        not evidence.get("has_contact")
+        or not evidence.get("cube_lifted")
+        or not evidence.get("secure_grasp")
+    ):
+        subclass = "transport_drop"
+    else:
+        subclass = "transport_stall"
+    return {
+        "failure_stage": "transport",
+        "last_completed_stage": "lift",
+        "failure_subclass": subclass,
+    }
+
+
 def load_recovery_runtime(path: Path) -> dict[str, Any]:
     """Load and semantically validate an immutable recovery runtime spec."""
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -96,6 +119,7 @@ def recovery_oracle_entry_phase(trigger: dict[str, Any]) -> str:
         has_contact
         and bilateral_contact
         and bool(trigger.get("cube_lifted", False))
+        and not bool(trigger.get("gripper_released", False))
         and lift_height_m >= 0.010
     )
     if handoff_stage == "grasp":
@@ -215,6 +239,9 @@ class RecoveryTriggerDetector:
     def _finalize_profile_trigger(
         self, result: dict[str, Any], *, admission_stage: str | None
     ) -> dict[str, Any] | None:
+        result.update(
+            canonical_recovery_failure_taxonomy(str(result["failure_class"]), result)
+        )
         result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
         result["handoff_stage"] = derive_handoff_stage(result)
         result["stage"] = result["handoff_stage"]
@@ -226,6 +253,20 @@ class RecoveryTriggerDetector:
             return None
         required_evidence = self.config.get("required_trigger_evidence") or {}
         if any(result.get(key) != expected for key, expected in required_evidence.items()):
+            return None
+        required_fields = {
+            "failure_stage": self.config.get("required_failure_stage"),
+            "last_completed_stage": self.config.get("required_last_completed_stage"),
+        }
+        if any(
+            expected is not None and result.get(key) != expected
+            for key, expected in required_fields.items()
+        ):
+            return None
+        allowed_subclasses = self.config.get("allowed_failure_subclasses")
+        if allowed_subclasses is not None and result.get("failure_subclass") not in set(
+            allowed_subclasses
+        ):
             return None
         return result
 

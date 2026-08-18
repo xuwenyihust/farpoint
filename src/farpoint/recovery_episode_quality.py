@@ -34,6 +34,14 @@ def validate_recovery_episode_eligibility(
     expected_stage = requirements.get("handoff_stage")
     if expected_stage is not None and trigger.get("handoff_stage") != expected_stage:
         errors.append("recovery handoff_stage does not match campaign eligibility")
+    for field, expected in (requirements.get("trigger_fields") or {}).items():
+        if trigger.get(field) != expected:
+            errors.append(f"recovery trigger {field} does not match campaign eligibility")
+    allowed_subclasses = requirements.get("allowed_failure_subclasses")
+    if allowed_subclasses is not None and trigger.get("failure_subclass") not in set(
+        allowed_subclasses
+    ):
+        errors.append("recovery failure_subclass is not allowed by campaign eligibility")
     for field, expected in (requirements.get("trigger_evidence") or {}).items():
         if evidence.get(field) != expected:
             errors.append(

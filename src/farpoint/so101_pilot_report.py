@@ -13,6 +13,7 @@ from typing import Any
 from farpoint.so101_collection import validate_manifest
 from farpoint.so101_episode_analysis import analyze_so101_episodes, classify_so101_failure
 from farpoint.so101_gate_report import so101_episode_evidence_errors
+from farpoint.recovery_episode_quality import validate_recovery_episode_eligibility
 
 
 def _v010_video_errors(episode_root: Path, metadata: dict[str, Any]) -> list[str]:
@@ -146,6 +147,77 @@ def _required_object_region_errors(
         for pair in (plan.get("pilot") or {}).get("required_object_region_pairs") or []
         if pair not in successful_pairs
     ]
+
+
+def _terminal_runner_sidecar_errors(
+    attempt: dict[str, Any], episode_root: Path, manifest: dict[str, Any]
+) -> list[str] | None:
+    """Validate a zero-frame runner failure, or return None for a full episode.
+
+    Recovery admission can fail before recording starts.  Those attempts have
+    immutable terminal sidecars but intentionally do not have the three core
+    dataset artifacts.  Only that exact, non-selected runner outcome may be
+    excluded from frame-level analysis.
+    """
+    core_names = ("observations.jsonl", "metadata.json", "metrics.json")
+    present = [name for name in core_names if (episode_root / name).is_file()]
+    if len(present) == len(core_names):
+        return None
+    episode_id = str(attempt.get("episode_id") or episode_root.name)
+    errors = []
+    if present:
+        errors.append(f"{episode_id}:partial_episode_artifacts")
+        return errors
+    if (
+        attempt.get("selected_for_dataset")
+        or attempt.get("success")
+        or attempt.get("dataset_valid")
+        or attempt.get("failure_category") != "runner"
+    ):
+        return [f"{episode_id}:missing_core_episode_artifacts"]
+
+    run_state_path = episode_root / "run-state.json"
+    runner_error_path = episode_root / "runner_error.json"
+    try:
+        run_state = json.loads(run_state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        errors.append(f"{episode_id}:runner_run_state_unreadable")
+        run_state = {}
+    try:
+        runner_error = json.loads(runner_error_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        errors.append(f"{episode_id}:runner_error_unreadable")
+        runner_error = {}
+
+    identity = run_state.get("identity") or {}
+    outcome = run_state.get("outcome") or {}
+    provenance = run_state.get("provenance") or {}
+    recording = run_state.get("recording") or {}
+    expected_outcome = {
+        "success": False,
+        "dataset_valid": False,
+        "failure_category": "runner",
+        "failure_reason": attempt.get("failure_reason"),
+    }
+    if run_state.get("schema_version") != "farpoint.episode-run.v1":
+        errors.append(f"{episode_id}:runner_run_state_schema_mismatch")
+    if run_state.get("execution_status") != "FAILED":
+        errors.append(f"{episode_id}:runner_run_state_not_failed")
+    if identity.get("episode_id") != episode_id:
+        errors.append(f"{episode_id}:runner_episode_identity_mismatch")
+    if identity.get("trial_id") != attempt.get("trial_id"):
+        errors.append(f"{episode_id}:runner_trial_identity_mismatch")
+    if any(outcome.get(key) != value for key, value in expected_outcome.items()):
+        errors.append(f"{episode_id}:runner_outcome_mismatch")
+    if provenance.get("collection_id") != manifest.get("collection_id"):
+        errors.append(f"{episode_id}:runner_collection_identity_mismatch")
+    if provenance.get("git_commit") != manifest.get("git_commit"):
+        errors.append(f"{episode_id}:runner_git_commit_mismatch")
+    if recording.get("frame_count") != 0:
+        errors.append(f"{episode_id}:runner_zero_frame_contract_mismatch")
+    if not runner_error.get("error") or not runner_error.get("traceback"):
+        errors.append(f"{episode_id}:runner_error_evidence_incomplete")
+    return errors
 
 
 def _quaternion_error_degrees(actual: list[float], expected: list[float]) -> float:
@@ -301,7 +373,7 @@ def audit_yaw_mass_episodes(
                 "mass_verified": mass_verified,
             }
         )
-    if len(audits) != len([attempt for attempt in attempts if attempt.get("episode_id")]):
+    if len(audits) != len(by_name):
         errors.append("yaw_audit_count_mismatch")
     return audits, errors
 
@@ -318,20 +390,29 @@ def build_so101_pilot_report(
     attempts = manifest.get("attempts") or []
     root = Path(episodes_root)
     episode_attempts = [attempt for attempt in attempts if attempt.get("episode_id")]
-    episode_dirs = [
-        root / attempt["episode_id"]
-        for attempt in episode_attempts
-        if (root / attempt["episode_id"]).is_dir()
-    ]
+    evidence_errors = []
+    analyzable_attempts = []
+    terminal_runner_attempts = []
+    for attempt in episode_attempts:
+        episode_root = root / attempt["episode_id"]
+        if not episode_root.is_dir():
+            evidence_errors.append(f"missing_episode:{attempt['episode_id']}")
+            continue
+        runner_errors = _terminal_runner_sidecar_errors(attempt, episode_root, manifest)
+        if runner_errors is None:
+            analyzable_attempts.append(attempt)
+            continue
+        evidence_errors.extend(runner_errors)
+        if not runner_errors:
+            terminal_runner_attempts.append(attempt["episode_id"])
+    episode_dirs = [root / attempt["episode_id"] for attempt in analyzable_attempts]
     analysis = analyze_so101_episodes(episode_dirs, verify_images=True)
     errors = so101_episode_evidence_errors(
         analysis,
-        len(episode_attempts),
+        len(analyzable_attempts),
         required_cameras=required_cameras,
     )
-    for attempt in episode_attempts:
-        if not (root / attempt["episode_id"]).is_dir():
-            errors.append(f"missing_episode:{attempt['episode_id']}")
+    errors.extend(evidence_errors)
     by_name = {Path(item["episode_dir"]).name: item for item in analysis["episodes"]}
     for attempt in episode_attempts:
         episode = by_name.get(attempt["episode_id"])
@@ -356,25 +437,51 @@ def build_so101_pilot_report(
             errors.extend(_v010_video_errors(episode_root, metadata))
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
+    selected_nominal_proof_lifts = []
+    selected_recovery_count = 0
+    trials = {trial["variation_id"]: trial for trial in plan.get("trials") or []}
+    recovery_eligibility = (
+        ((plan.get("campaign_contract") or {}).get("variation_contract") or {}).get(
+            "episode_eligibility"
+        )
+    )
     for attempt in selected:
         episode = by_name.get(attempt.get("episode_id"))
         if episode is None:
             continue
         selected_evidence.append(episode)
+        episode_root = root / attempt["episode_id"]
+        metadata = json.loads((episode_root / "metadata.json").read_text(encoding="utf-8"))
+        is_recovery = (metadata.get("demonstration") or {}).get("type") == "recovery"
         if not episode["success"] or not episode["dataset_valid"]:
             errors.append(f"{attempt['episode_id']}:selected_episode_not_eligible")
         if episode["terminal_phase"] != "retreat":
             errors.append(f"{attempt['episode_id']}:selected_episode_not_retreat")
-        if episode["terminal_grasp_phase"] != "validated":
+        if not is_recovery and episode["terminal_grasp_phase"] != "validated":
             errors.append(f"{attempt['episode_id']}:selected_grasp_not_validated")
         settle_frames = sum(
             phase["frame_count"] for phase in episode["phase_ranges"] if phase["phase"] == "settle"
         )
         if settle_frames < 15:
             errors.append(f"{attempt['episode_id']}:insufficient_settle_frames")
-        proof = episode.get("proof_lift_tracking") or {}
-        if float(proof.get("actual_max_m", 0.0)) < 0.005:
-            errors.append(f"{attempt['episode_id']}:insufficient_proof_lift")
+        if is_recovery:
+            selected_recovery_count += 1
+            trial = trials.get(attempt.get("variation_id"))
+            if trial is None or recovery_eligibility is None:
+                errors.append(f"{attempt['episode_id']}:recovery_eligibility_missing")
+            else:
+                errors.extend(
+                    f"{attempt['episode_id']}:{error}"
+                    for error in validate_recovery_episode_eligibility(
+                        metadata, trial, recovery_eligibility
+                    )
+                )
+        else:
+            proof = episode.get("proof_lift_tracking") or {}
+            actual_proof_lift = float(proof.get("actual_max_m", 0.0))
+            selected_nominal_proof_lifts.append(actual_proof_lift)
+            if actual_proof_lift < 0.005:
+                errors.append(f"{attempt['episode_id']}:insufficient_proof_lift")
 
     attempt_seed_count = len({attempt["attempt_seed"] for attempt in attempts})
     attempted_ids = {attempt["variation_id"] for attempt in attempts}
@@ -428,6 +535,8 @@ def build_so101_pilot_report(
         "required_successes": int(manifest["required_successes"]),
         "attempt_seed_count": attempt_seed_count,
         "variation_seed_count": variation_seed_count,
+        "terminal_runner_attempts": sorted(terminal_runner_attempts),
+        "selected_recovery_count": selected_recovery_count,
         "independent_episode_identity_count": len(
             {episode["metadata_sha256"] for episode in analysis["episodes"]}
         ),
@@ -436,11 +545,9 @@ def build_so101_pilot_report(
         "yaw_audits": yaw_audits,
         "evidence_errors": sorted(set(errors)),
         "acceptance_errors": sorted(set(acceptance_errors)),
-        "minimum_selected_proof_lift_m": min(
-            episode["proof_lift_tracking"]["actual_max_m"] for episode in selected_evidence
-        )
-        if selected_evidence
-        else None,
+        "minimum_selected_proof_lift_m": (
+            min(selected_nominal_proof_lifts) if selected_nominal_proof_lifts else None
+        ),
         "minimum_selected_settle_frames": min(
             sum(
                 phase["frame_count"]
