@@ -2,6 +2,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from farpoint.campaign import validate_campaign_semantics
 from farpoint.recovery_plan import (
     REGION_PATTERN,
@@ -73,20 +75,22 @@ def multistage_config():
 
 
 def grasp_recovery_config():
-    return json.loads(
-        (ROOT / "configs/recovery/so101_v012_grasp_recovery20.json").read_text()
-    )
+    return json.loads((ROOT / "configs/recovery/so101_v012_grasp_recovery20.json").read_text())
 
 
 def approach_recovery_config():
-    return json.loads(
-        (ROOT / "configs/recovery/so101_v013_approach_recovery40.json").read_text()
-    )
+    return json.loads((ROOT / "configs/recovery/so101_v013_approach_recovery40.json").read_text())
 
 
 def transport_recovery_config():
+    return json.loads((ROOT / "configs/recovery/so101_v014_transport_recovery20.json").read_text())
+
+
+def subclass_balanced_transport_recovery_config():
     return json.loads(
-        (ROOT / "configs/recovery/so101_v014_transport_recovery20.json").read_text()
+        (
+            ROOT / "configs/recovery/so101_v014_transport_recovery20_subclass_balanced.json"
+        ).read_text()
     )
 
 
@@ -209,9 +213,9 @@ def test_v012_multistage_recovery80_has_exact_marginals_and_runtime_v2(tmp_path)
             for key in ("core", "middle", "outer")
         }
         expected_regions = {
-            key: multistage_config()["quota_policy"]["regions_by_trigger_class"][
-                trigger_class
-            ].get(key, 0)
+            key: multistage_config()["quota_policy"]["regions_by_trigger_class"][trigger_class].get(
+                key, 0
+            )
             for key in ("core", "middle", "outer")
         }
         assert observed_regions == expected_regions
@@ -252,9 +256,7 @@ def test_v012_grasp_recovery20_freezes_train_only_crossed_coverage(tmp_path):
         "successful_episodes": 20,
         "splits": {"train": 20},
     }
-    eligibility = plan["campaign_contract"]["variation_contract"][
-        "episode_eligibility"
-    ]
+    eligibility = plan["campaign_contract"]["variation_contract"]["episode_eligibility"]
     assert eligibility == {
         "schema_version": "farpoint.recovery-episode-eligibility.v1",
         "by_trigger_class": {
@@ -276,9 +278,7 @@ def test_v012_grasp_recovery20_freezes_train_only_crossed_coverage(tmp_path):
     assert runtime["source_policy"]["model_sha256"] == (
         "2752a1ce2f2a71787215eba39c57d8b87946df5ba3ebaae1f80be8bdc6e5681b"
     )
-    assert runtime["trigger_profiles"]["contact_without_lift"][
-        "required_handoff_stage"
-    ] == "grasp"
+    assert runtime["trigger_profiles"]["contact_without_lift"]["required_handoff_stage"] == "grasp"
     runtime_path = tmp_path / "grasp-runtime-v2.json"
     runtime_path.write_text(json.dumps(runtime))
     assert load_recovery_runtime(runtime_path) == runtime
@@ -310,9 +310,7 @@ def test_v013_approach_recovery40_freezes_strict_train_only_coverage(tmp_path):
         "successful_episodes": 40,
         "splits": {"train": 40},
     }
-    assert plan["campaign_contract"]["variation_contract"][
-        "episode_eligibility"
-    ] == {
+    assert plan["campaign_contract"]["variation_contract"]["episode_eligibility"] == {
         "schema_version": "farpoint.recovery-episode-eligibility.v1",
         "by_trigger_class": {
             "approach_miss": {
@@ -360,9 +358,7 @@ def test_v013_approach_recovery_pilot_is_object_yaw_and_region_stratified():
         },
     }
     assert len(runtime["scenes"]) == 10
-    assert {row["trigger_class"] for row in runtime["scenes"]} == {
-        "approach_miss"
-    }
+    assert {row["trigger_class"] for row in runtime["scenes"]} == {"approach_miss"}
 
 
 def test_v014_transport_recovery20_freezes_strict_train_only_coverage(tmp_path):
@@ -386,9 +382,9 @@ def test_v014_transport_recovery20_freezes_strict_train_only_coverage(tmp_path):
             "yaw72_90": 4,
         },
     }
-    eligibility = plan["campaign_contract"]["variation_contract"][
-        "episode_eligibility"
-    ]["by_trigger_class"]["transport_drift"]
+    eligibility = plan["campaign_contract"]["variation_contract"]["episode_eligibility"][
+        "by_trigger_class"
+    ]["transport_drift"]
     assert eligibility["handoff_stage"] == "transport"
     assert eligibility["trigger_fields"] == {
         "failure_stage": "transport",
@@ -419,9 +415,63 @@ def test_v014_transport_recovery_pilot_is_balanced_and_stratified():
     }
     assert plan["coverage"]["recovery_triggers"] == {"transport_drift": 8}
     assert plan["coverage"]["splits"] == {"train": 8}
-    assert set(plan["coverage"]["yaw_strata"]) == set(
-        transport_recovery_config()["yaw_strata"]
+    assert set(plan["coverage"]["yaw_strata"]) == set(transport_recovery_config()["yaw_strata"])
+
+
+def test_v014_subclass_balanced_transport_plan_freezes_exact_trial_targets(tmp_path):
+    config = subclass_balanced_transport_recovery_config()
+    plan, runtime = build_recovery_plan(
+        multistage_source_plan(),
+        config,
+        campaign_id="transport-subclass-balanced20",
+        scene_count=20,
     )
+    expected = {
+        "transport_drop": 6,
+        "transport_stall": 7,
+        "premature_release_outside_target": 7,
+    }
+    assert plan["coverage"]["failure_subclasses"] == expected
+    assert Counter(trial["required_failure_subclass"] for trial in plan["trials"]) == Counter(
+        expected
+    )
+    assert {
+        scene["variation_id"]: scene["required_failure_subclass"] for scene in runtime["scenes"]
+    } == {trial["variation_id"]: trial["required_failure_subclass"] for trial in plan["trials"]}
+    runtime_path = tmp_path / "runtime-v014-subclass-balanced.json"
+    runtime_path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(runtime_path) == runtime
+
+    pilot, pilot_runtime = build_recovery_plan(
+        multistage_source_plan(),
+        config,
+        campaign_id="transport-subclass-balanced8-pilot",
+        scene_count=8,
+    )
+    assert pilot["coverage"]["failure_subclasses"] == {
+        "premature_release_outside_target": 3,
+        "transport_drop": 3,
+        "transport_stall": 2,
+    }
+    assert len(pilot_runtime["scenes"]) == 8
+
+
+def test_v014_subclass_slots_reject_unfrozen_or_unknown_values():
+    config = subclass_balanced_transport_recovery_config()
+    config["quota_policy"]["failure_subclass_slots_by_trigger_class"]["transport_drift"].pop()
+    with pytest.raises(ValueError, match="slots do not match"):
+        build_recovery_plan(
+            multistage_source_plan(), config, campaign_id="bad-subclass-count", scene_count=20
+        )
+
+    config = subclass_balanced_transport_recovery_config()
+    config["quota_policy"]["failure_subclass_slots_by_trigger_class"]["transport_drift"][0] = (
+        "unknown"
+    )
+    with pytest.raises(ValueError, match="unknown subclasses"):
+        build_recovery_plan(
+            multistage_source_plan(), config, campaign_id="bad-subclass", scene_count=20
+        )
 
 
 def test_v012_grasp_pilot6_covers_both_objects_regions_and_every_yaw():
@@ -450,9 +500,7 @@ def test_v012_grasp_pilot6_covers_both_objects_regions_and_every_yaw():
 
 def test_v012_rejects_duplicate_configured_pilot_slots():
     broken = grasp_recovery_config()
-    slots = broken["quota_policy"]["pilot_slots_by_trigger_class"][
-        "contact_without_lift"
-    ]
+    slots = broken["quota_policy"]["pilot_slots_by_trigger_class"]["contact_without_lift"]
     slots[-1] = dict(slots[0])
     try:
         build_recovery_plan(
@@ -480,21 +528,13 @@ def test_v012_pilot16_covers_every_trigger_object_region_and_yaw():
     assert set(plan["coverage"]["regions"]) == {"core", "middle", "outer"}
     assert set(plan["coverage"]["yaw_strata"]) == set(multistage_config()["yaw_strata"])
     for trigger_class in multistage_config()["trigger_classes"]:
-        rows = [
-            row
-            for row in plan["trials"]
-            if row["recovery_trigger_class"] == trigger_class
-        ]
+        rows = [row for row in plan["trials"] if row["recovery_trigger_class"] == trigger_class]
         allowed = set(
-            multistage_config()["quota_policy"]["region_slots_by_trigger_class"][
-                trigger_class
-            ]
+            multistage_config()["quota_policy"]["region_slots_by_trigger_class"][trigger_class]
         )
         assert {row["region_band"] for row in rows} <= allowed
         assert Counter(row["region_band"] for row in rows) == Counter(
-            multistage_config()["quota_policy"]["region_slots_by_trigger_class"][
-                trigger_class
-            ]
+            multistage_config()["quota_policy"]["region_slots_by_trigger_class"][trigger_class]
         )
 
 
@@ -549,6 +589,60 @@ def test_v012_continuation_preserves_trigger_class_and_validation_split(tmp_path
     assert continuation["coverage"]["splits"] == {"validation": 1}
     assert runtime["scenes"][0]["trigger_class"] == source["recovery_trigger_class"]
     path = tmp_path / "runtime-v2-continuation.json"
+    path.write_text(json.dumps(runtime))
+    assert load_recovery_runtime(path) == runtime
+
+
+def test_v014_subclass_target_survives_replacement_materialization(tmp_path):
+    config_value = subclass_balanced_transport_recovery_config()
+    parent, _runtime = build_recovery_plan(
+        multistage_source_plan(),
+        config_value,
+        campaign_id="transport-subclass-continuation",
+        scene_count=20,
+    )
+    source = parent["trials"][0]
+    request = {
+        "request_kind": "replacement",
+        "source_segment_id": "segment-000",
+        "source_variation_id": source["variation_id"],
+        "quota": {
+            "object_variant_id": source["object_variant_id"],
+            "yaw_stratum_id": source["yaw_stratum_id"],
+            "region_band": source["region_band"],
+            "split": source["split"],
+            "quota_ordinal": source["quota_ordinal"],
+        },
+        "replacement_index": 1,
+        "variation_seed": source["seed"] + 1_000_000,
+        "prior_attempt_count": 0,
+        "remaining_attempt_count": 3,
+    }
+
+    def materialize(row):
+        return {
+            **source,
+            "trial_id": f"{source['trial_id']}-replacement",
+            "variation_id": f"{source['variation_id']}-replacement",
+            "seed": row["variation_seed"],
+            "replacement_index": row["replacement_index"],
+        }
+
+    continuation, runtime = build_recovery_continuation_plan(
+        parent,
+        config_value,
+        parent["campaign_contract"],
+        [request],
+        segment_id="segment-001",
+        replacement_materializer=materialize,
+    )
+    replacement = continuation["trials"][0]
+    assert replacement["required_failure_subclass"] == source["required_failure_subclass"]
+    assert continuation["coverage"]["failure_subclasses"] == {
+        source["required_failure_subclass"]: 1
+    }
+    assert runtime["scenes"][0]["required_failure_subclass"] == source["required_failure_subclass"]
+    path = tmp_path / "runtime-v014-subclass-continuation.json"
     path.write_text(json.dumps(runtime))
     assert load_recovery_runtime(path) == runtime
 

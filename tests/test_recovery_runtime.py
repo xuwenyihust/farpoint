@@ -253,11 +253,13 @@ def multistage_runtime_spec():
 def test_v2_runtime_resolves_scene_trigger_and_detects_transport_loss(tmp_path):
     spec = multistage_runtime_spec()
     spec["trigger_profiles"]["transport_drift"]["minimum_progress_m"] = 0.0
+    spec["scenes"][0]["required_failure_subclass"] = "transport_drop"
     path = tmp_path / "runtime-v2.json"
     path.write_text(json.dumps(spec))
     loaded = load_recovery_runtime(path)
     profile = recovery_trigger_for_scene(loaded, "variation-0")
     assert profile["failure_class"] == "transport_drift"
+    assert profile["required_failure_subclass"] == "transport_drop"
     detector = RecoveryTriggerDetector(profile)
     trigger = None
     for step in range(8):
@@ -278,6 +280,41 @@ def test_v2_runtime_resolves_scene_trigger_and_detects_transport_loss(tmp_path):
     assert trigger["handoff_stage"] == "transport"
     assert trigger["source_stage_label"] == "transport"
     assert not trigger["has_contact"]
+
+
+def test_required_transport_subclass_ignores_an_earlier_stall():
+    profile = {
+        **multistage_runtime_spec()["trigger_profiles"]["transport_drift"],
+        "required_failure_subclass": "premature_release_outside_target",
+    }
+    detector = RecoveryTriggerDetector(profile)
+    for step in range(4):
+        assert (
+            detector.observe(
+                policy_step=step,
+                gripper_position_m=[0.0, 0.0, 0.1],
+                object_position_m=[0.1, 0.0, 0.02],
+                cube_lifted=True,
+                hard_range_violation_count=0,
+                command_slew_limited_count=0,
+                contact_forces_n=[1.0, 1.0],
+                target_position_m=[0.2, 0.1, 0.03],
+            )
+            is None
+        )
+    trigger = detector.observe(
+        policy_step=4,
+        gripper_position_m=[0.0, 0.0, 0.1],
+        object_position_m=[0.1, 0.0, 0.02],
+        cube_lifted=True,
+        hard_range_violation_count=0,
+        command_slew_limited_count=0,
+        contact_forces_n=[0.0, 0.0],
+        target_position_m=[0.2, 0.1, 0.03],
+        gripper_released=True,
+    )
+    assert trigger is not None
+    assert trigger["failure_subclass"] == "premature_release_outside_target"
 
 
 @pytest.mark.parametrize(
@@ -318,9 +355,12 @@ def test_transport_taxonomy_and_oracle_entry_are_stage_consistent(
         "last_completed_stage": "lift",
         "failure_subclass": expected_subclass,
     }
-    assert recovery_oracle_entry_phase(
-        {"failure_class": "transport_drift", "handoff_stage": "transport", **evidence}
-    ) == expected_entry
+    assert (
+        recovery_oracle_entry_phase(
+            {"failure_class": "transport_drift", "handoff_stage": "transport", **evidence}
+        )
+        == expected_entry
+    )
 
 
 def test_v2_runtime_rejects_unknown_scene_trigger(tmp_path):
@@ -480,9 +520,7 @@ def test_v2_runtime_accepts_explicit_admission_stage(tmp_path):
     path = tmp_path / "runtime-v2-admission-stage.json"
     path.write_text(json.dumps(spec))
     loaded = load_recovery_runtime(path)
-    assert recovery_trigger_for_scene(loaded, "variation-0")["admission_stage"] == (
-        "transport"
-    )
+    assert recovery_trigger_for_scene(loaded, "variation-0")["admission_stage"] == ("transport")
 
 
 def test_grasp_trigger_requires_current_contact_and_measured_grasp_stage():
@@ -506,15 +544,18 @@ def test_grasp_trigger_requires_current_contact_and_measured_grasp_stage():
     }
     detector = RecoveryTriggerDetector(profile)
 
-    assert detector.observe(
-        policy_step=0,
-        gripper_position_m=[0.0, 0.0, 0.1],
-        object_position_m=[0.1, 0.0, 0.0],
-        cube_lifted=False,
-        hard_range_violation_count=0,
-        command_slew_limited_count=0,
-        contact_forces_n=[0.2, 0.0],
-    ) is None
+    assert (
+        detector.observe(
+            policy_step=0,
+            gripper_position_m=[0.0, 0.0, 0.1],
+            object_position_m=[0.1, 0.0, 0.0],
+            cube_lifted=False,
+            hard_range_violation_count=0,
+            command_slew_limited_count=0,
+            contact_forces_n=[0.2, 0.0],
+        )
+        is None
+    )
     trigger = detector.observe(
         policy_step=1,
         gripper_position_m=[0.0, 0.0, 0.1],
@@ -541,12 +582,15 @@ def test_grasp_trigger_requires_current_contact_and_measured_grasp_stage():
         contact_forces_n=[0.2, 0.0],
     )
     for step in range(1, 8):
-        assert lost.observe(
-            policy_step=step,
-            gripper_position_m=[0.0, 0.0, 0.1],
-            object_position_m=[0.1, 0.0, 0.0],
-            cube_lifted=False,
-            hard_range_violation_count=0,
-            command_slew_limited_count=0,
-            contact_forces_n=[0.0, 0.0],
-        ) is None
+        assert (
+            lost.observe(
+                policy_step=step,
+                gripper_position_m=[0.0, 0.0, 0.1],
+                object_position_m=[0.1, 0.0, 0.0],
+                cube_lifted=False,
+                hard_range_violation_count=0,
+                command_slew_limited_count=0,
+                contact_forces_n=[0.0, 0.0],
+            )
+            is None
+        )

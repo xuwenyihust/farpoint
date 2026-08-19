@@ -101,14 +101,23 @@ def test_transport_eligibility_enforces_canonical_subclass_and_stages():
             },
         }
     }
-    trial = {"recovery_trigger_class": "transport_drift"}
+    trial = {
+        "recovery_trigger_class": "transport_drift",
+        "required_failure_subclass": "transport_drop",
+    }
     assert validate_recovery_episode_eligibility(metadata, trial, eligibility) == []
 
-    metadata["demonstration"]["intervention"]["trigger"][
-        "failure_subclass"
-    ] = "contact_without_lift"
+    metadata["demonstration"]["intervention"]["trigger"]["failure_subclass"] = "transport_stall"
     assert validate_recovery_episode_eligibility(metadata, trial, eligibility) == [
-        "recovery failure_subclass is not allowed by campaign eligibility"
+        "recovery failure_subclass does not match the assigned trial"
+    ]
+
+    metadata["demonstration"]["intervention"]["trigger"]["failure_subclass"] = (
+        "contact_without_lift"
+    )
+    assert validate_recovery_episode_eligibility(metadata, trial, eligibility) == [
+        "recovery failure_subclass is not allowed by campaign eligibility",
+        "recovery failure_subclass does not match the assigned trial",
     ]
 
 
@@ -225,23 +234,16 @@ def _policy():
 
 def test_measured_grasp_recovery_eligibility_rejects_stage_and_contact_mismatch():
     trial = {"recovery_trigger_class": "contact_without_lift"}
-    assert validate_recovery_episode_eligibility(
-        _metadata(), trial, ELIGIBILITY
-    ) == []
+    assert validate_recovery_episode_eligibility(_metadata(), trial, ELIGIBILITY) == []
     errors = validate_recovery_episode_eligibility(
         _metadata(stage="lift", has_contact=False), trial, ELIGIBILITY
     )
     assert "recovery handoff_stage does not match campaign eligibility" in errors
-    assert (
-        "recovery trigger evidence has_contact does not match campaign eligibility"
-        in errors
-    )
+    assert "recovery trigger evidence has_contact does not match campaign eligibility" in errors
 
 
 def test_campaign_report_and_export_fail_closed_on_ineligible_recovery(tmp_path):
-    campaign, evidence = _evidence(
-        tmp_path, _metadata(stage="lift", has_contact=False)
-    )
+    campaign, evidence = _evidence(tmp_path, _metadata(stage="lift", has_contact=False))
     report = evaluate_self_healing_campaign(
         campaign,
         evidence,
@@ -258,9 +260,7 @@ def test_campaign_report_and_export_fail_closed_on_ineligible_recovery(tmp_path)
     assert report["progress"]["successful_quotas"] == 0
     assert any("recovery_episode_ineligible" in error for error in report["errors"])
     with pytest.raises(ValueError, match="selected recovery episode is ineligible"):
-        build_campaign_export_selection(
-            campaign, evidence, dataset_id="farpoint-so101-v012"
-        )
+        build_campaign_export_selection(campaign, evidence, dataset_id="farpoint-so101-v012")
 
 
 def test_campaign_report_and_export_accept_exact_measured_grasp_recovery(tmp_path):

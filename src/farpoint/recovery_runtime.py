@@ -94,7 +94,11 @@ def recovery_trigger_for_scene(spec: dict[str, Any], variation_id: str) -> dict[
     if spec["schema_version"] == "farpoint.recovery-runtime.v1":
         return deepcopy(spec["trigger"])
     binding = scene_binding(spec, variation_id)
-    return deepcopy(spec["trigger_profiles"][binding["trigger_class"]])
+    profile = deepcopy(spec["trigger_profiles"][binding["trigger_class"]])
+    required_subclass = binding.get("required_failure_subclass")
+    if required_subclass is not None:
+        profile["required_failure_subclass"] = required_subclass
+    return profile
 
 
 def recovery_oracle_entry_phase(trigger: dict[str, Any]) -> str:
@@ -239,9 +243,7 @@ class RecoveryTriggerDetector:
     def _finalize_profile_trigger(
         self, result: dict[str, Any], *, admission_stage: str | None
     ) -> dict[str, Any] | None:
-        result.update(
-            canonical_recovery_failure_taxonomy(str(result["failure_class"]), result)
-        )
+        result.update(canonical_recovery_failure_taxonomy(str(result["failure_class"]), result))
         result["handoff_stage_schema_version"] = HANDOFF_STAGE_SCHEMA_VERSION
         result["handoff_stage"] = derive_handoff_stage(result)
         result["stage"] = result["handoff_stage"]
@@ -267,6 +269,9 @@ class RecoveryTriggerDetector:
         if allowed_subclasses is not None and result.get("failure_subclass") not in set(
             allowed_subclasses
         ):
+            return None
+        required_subclass = self.config.get("required_failure_subclass")
+        if required_subclass is not None and result.get("failure_subclass") != required_subclass:
             return None
         return result
 
@@ -345,9 +350,7 @@ class RecoveryTriggerDetector:
             "has_contact": has_contact,
             "contact_forces_n": forces.tolist(),
             "contact_force_threshold_n": force_threshold,
-            "secure_grasp": bool(
-                np.min(forces) >= force_threshold and not gripper_released
-            ),
+            "secure_grasp": bool(np.min(forces) >= force_threshold and not gripper_released),
             "cube_in_target": bool(cube_in_target),
             "gripper_released": bool(gripper_released),
             "cube_stable": bool(cube_stable),
@@ -377,9 +380,7 @@ class RecoveryTriggerDetector:
                     "failure_class": failure_class,
                     "trigger_reason": "consecutive_action_safety_intervention",
                 }
-                finalized = self._finalize_profile_trigger(
-                    result, admission_stage=admission_stage
-                )
+                finalized = self._finalize_profile_trigger(result, admission_stage=admission_stage)
                 if finalized is not None:
                     return finalized
             deadline = policy_step + 1 >= int(self.config["maximum_policy_steps_before_handoff"])
@@ -409,9 +410,7 @@ class RecoveryTriggerDetector:
                 }
                 if progress is not None:
                     result["window_progress_m"] = progress
-                return self._finalize_profile_trigger(
-                    result, admission_stage=admission_stage
-                )
+                return self._finalize_profile_trigger(result, admission_stage=admission_stage)
             return None
         if self._consecutive_safety >= int(self.config["consecutive_safety_event_steps"]):
             result = {

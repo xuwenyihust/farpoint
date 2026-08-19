@@ -42,11 +42,12 @@ def validate_recovery_episode_eligibility(
         allowed_subclasses
     ):
         errors.append("recovery failure_subclass is not allowed by campaign eligibility")
+    required_subclass = trial.get("required_failure_subclass")
+    if required_subclass is not None and trigger.get("failure_subclass") != required_subclass:
+        errors.append("recovery failure_subclass does not match the assigned trial")
     for field, expected in (requirements.get("trigger_evidence") or {}).items():
         if evidence.get(field) != expected:
-            errors.append(
-                f"recovery trigger evidence {field} does not match campaign eligibility"
-            )
+            errors.append(f"recovery trigger evidence {field} does not match campaign eligibility")
     for field, expected in (requirements.get("handoff") or {}).items():
         if handoff.get(field) != expected:
             errors.append(f"recovery handoff {field} does not match campaign eligibility")

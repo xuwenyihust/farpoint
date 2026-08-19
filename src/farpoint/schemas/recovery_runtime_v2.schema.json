@@ -46,7 +46,10 @@
           "source_rollout_id": {"type": "string", "minLength": 1},
           "source_scene_id": {"type": "string", "minLength": 1},
           "source_partition": {"const": "train"},
-          "trigger_class": {"type": "string", "minLength": 1}
+          "trigger_class": {"type": "string", "minLength": 1},
+          "required_failure_subclass": {
+            "enum": ["transport_drop", "transport_stall", "premature_release_outside_target"]
+          }
         }
       }
     }

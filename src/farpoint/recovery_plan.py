@@ -20,6 +20,12 @@ REGION_PATTERN = {
     "yaw72_90": ("middle", "middle"),
 }
 
+TRANSPORT_FAILURE_SUBCLASSES = {
+    "transport_drop",
+    "transport_stall",
+    "premature_release_outside_target",
+}
+
 
 def _rank(seed: int, trial: dict[str, Any]) -> bytes:
     material = f"{seed}:{trial['trial_id']}:{trial['seed']}"
@@ -58,8 +64,7 @@ def _v012_region_slot_count(config: dict[str, Any]) -> int:
     if by_class and set(by_class) != set(trigger_classes):
         raise ValueError("per-trigger region slots must match trigger classes exactly")
     counts = {
-        len(tuple(by_class.get(trigger_class) or common))
-        for trigger_class in trigger_classes
+        len(tuple(by_class.get(trigger_class) or common)) for trigger_class in trigger_classes
     }
     if len(counts) != 1:
         raise ValueError("every trigger class must declare the same region slot count")
@@ -78,11 +83,10 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
     common_region_slots = tuple(policy.get("region_slots") or ())
     region_slots_by_class = policy.get("region_slots_by_trigger_class") or {}
     object_slots_by_class = policy.get("object_slots_by_trigger_class") or {}
+    subclass_slots_by_class = policy.get("failure_subclass_slots_by_trigger_class") or {}
     region_slot_count = _v012_region_slot_count(config)
     resolved_region_slots = {
-        trigger_class: tuple(
-            region_slots_by_class.get(trigger_class) or common_region_slots
-        )
+        trigger_class: tuple(region_slots_by_class.get(trigger_class) or common_region_slots)
         for trigger_class in trigger_classes
     }
     validation_slots = {
@@ -94,6 +98,8 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
         raise ValueError("per-trigger pilot slots must match trigger classes exactly")
     if object_slots_by_class and set(object_slots_by_class) != set(trigger_classes):
         raise ValueError("per-trigger object slots must match trigger classes exactly")
+    if subclass_slots_by_class and set(subclass_slots_by_class) != set(trigger_classes):
+        raise ValueError("per-trigger failure subclass slots must match trigger classes exactly")
     full_count = len(trigger_classes) * len(yaw_strata) * region_slot_count
     pilot_count = len(trigger_classes) * pilot_per_class
     if scene_count not in (pilot_count, full_count):
@@ -109,6 +115,7 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
         class_requests = []
         region_slots = resolved_region_slots[trigger_class]
         configured_object_slots = object_slots_by_class.get(trigger_class)
+        configured_subclass_slots = subclass_slots_by_class.get(trigger_class)
         if configured_object_slots is not None:
             if len(configured_object_slots) != len(yaw_strata) * region_slot_count:
                 raise ValueError("declared object slots do not match full class slot count")
@@ -116,6 +123,19 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
             if unknown_objects:
                 raise ValueError(
                     "object slots reference unknown objects: " + ", ".join(unknown_objects)
+                )
+        if configured_subclass_slots is not None:
+            if len(configured_subclass_slots) != len(yaw_strata) * region_slot_count:
+                raise ValueError(
+                    "declared failure subclass slots do not match full class slot count"
+                )
+            unknown_subclasses = sorted(
+                set(configured_subclass_slots) - TRANSPORT_FAILURE_SUBCLASSES
+            )
+            if unknown_subclasses:
+                raise ValueError(
+                    "failure subclass slots reference unknown subclasses: "
+                    + ", ".join(unknown_subclasses)
                 )
         for yaw_index, yaw_id in enumerate(yaw_strata):
             for slot_index, region in enumerate(region_slots):
@@ -126,15 +146,16 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
                     else objects[(yaw_index + slot_index + class_index) % len(objects)]
                 )
                 split = "validation" if (yaw_index, slot_index) in validation_slots else "train"
-                class_requests.append(
-                    {
-                        "trigger_class": trigger_class,
-                        "object_variant_id": object_id,
-                        "yaw_stratum_id": yaw_id,
-                        "region_band": region,
-                        "split": split,
-                    }
-                )
+                request = {
+                    "trigger_class": trigger_class,
+                    "object_variant_id": object_id,
+                    "yaw_stratum_id": yaw_id,
+                    "region_band": region,
+                    "split": split,
+                }
+                if configured_subclass_slots is not None:
+                    request["required_failure_subclass"] = configured_subclass_slots[flat_index]
+                class_requests.append(request)
         if scene_count == pilot_count:
             configured_slots = pilot_slots_by_class.get(trigger_class)
             if configured_slots is not None:
@@ -157,9 +178,7 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
                     if identity in seen_slots:
                         raise ValueError("pilot slots must be unique within a trigger class")
                     seen_slots.add(identity)
-                    pilot_indices.append(
-                        yaw_strata.index(yaw_id) * region_slot_count + slot_index
-                    )
+                    pilot_indices.append(yaw_strata.index(yaw_id) * region_slot_count + slot_index)
             else:
                 pilot_indices = tuple(
                     (class_index + len(yaw_strata) * offset) % len(class_requests)
@@ -173,11 +192,16 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
         declared_regions = policy.get("regions") or {}
         declared_aggregate_regions = policy.get("aggregate_regions") or {}
         declared_regions_by_class = policy.get("regions_by_trigger_class") or {}
-        if declared_regions_by_class and set(declared_regions_by_class) != set(
+        declared_subclasses_by_class = policy.get("failure_subclasses_by_trigger_class") or {}
+        if declared_regions_by_class and set(declared_regions_by_class) != set(trigger_classes):
+            raise ValueError(
+                "declared per-trigger region quotas must match trigger classes exactly"
+            )
+        if declared_subclasses_by_class and set(declared_subclasses_by_class) != set(
             trigger_classes
         ):
             raise ValueError(
-                "declared per-trigger region quotas must match trigger classes exactly"
+                "declared per-trigger failure subclass quotas must match trigger classes exactly"
             )
         declared_splits = policy.get("splits") or {}
         declared_yaw_each = int(policy.get("yaw_strata_each", -1))
@@ -189,23 +213,31 @@ def _v012_requests(config: dict[str, Any], scene_count: int) -> list[dict[str, s
                 "regions": Counter(row["region_band"] for row in rows),
                 "splits": Counter(row["split"] for row in rows),
                 "yaw": Counter(row["yaw_stratum_id"] for row in rows),
+                "failure_subclasses": Counter(
+                    row.get("required_failure_subclass")
+                    for row in rows
+                    if row.get("required_failure_subclass") is not None
+                ),
             }
             if len(rows) != declared_per_class:
                 raise ValueError("declared per-trigger recovery quota does not match slots")
             if observed["objects"] != Counter(declared_objects):
                 raise ValueError("declared object recovery quotas do not match slots")
-            expected_regions = declared_regions_by_class.get(
-                trigger_class, declared_regions
-            )
+            expected_regions = declared_regions_by_class.get(trigger_class, declared_regions)
             if observed["regions"] != Counter(expected_regions):
                 raise ValueError("declared region recovery quotas do not match slots")
             if observed["splits"] != Counter(declared_splits):
                 raise ValueError("declared split recovery quotas do not match slots")
             if set(observed["yaw"].values()) != {declared_yaw_each}:
                 raise ValueError("declared yaw recovery quotas do not match slots")
-        if declared_regions_by_class and Counter(
-            row["region_band"] for row in requests
-        ) != Counter(declared_aggregate_regions):
+            expected_subclasses = declared_subclasses_by_class.get(trigger_class)
+            if expected_subclasses is not None and observed["failure_subclasses"] != Counter(
+                expected_subclasses
+            ):
+                raise ValueError("declared failure subclass recovery quotas do not match slots")
+        if declared_regions_by_class and Counter(row["region_band"] for row in requests) != Counter(
+            declared_aggregate_regions
+        ):
             raise ValueError("declared aggregate region recovery quotas do not match slots")
     return requests
 
@@ -278,6 +310,11 @@ def _runtime_payload(
                     "source_scene_id": trial["recovery_source"].get("trial_id", trial["trial_id"]),
                     "source_partition": "train",
                     "trigger_class": trial["recovery_trigger_class"],
+                    **(
+                        {"required_failure_subclass": trial["required_failure_subclass"]}
+                        if trial.get("required_failure_subclass") is not None
+                        else {}
+                    ),
                 }
                 for trial in selected
             ],
@@ -380,6 +417,8 @@ def build_recovery_plan(
         chosen["split"] = request["split"]
         if multistage:
             chosen["recovery_trigger_class"] = request["trigger_class"]
+            if request.get("required_failure_subclass") is not None:
+                chosen["required_failure_subclass"] = request["required_failure_subclass"]
         selected.append(chosen)
         used.add(chosen["trial_id"])
     _assign_campaign_quota_ordinals(selected, source_plan_sha256=source_plan["plan_sha256"])
@@ -481,7 +520,20 @@ def build_recovery_plan(
                 {
                     "recovery_triggers": dict(
                         sorted(Counter(row["recovery_trigger_class"] for row in selected).items())
-                    )
+                    ),
+                    **(
+                        {
+                            "failure_subclasses": dict(
+                                sorted(
+                                    Counter(
+                                        row["required_failure_subclass"] for row in selected
+                                    ).items()
+                                )
+                            )
+                        }
+                        if all(row.get("required_failure_subclass") is not None for row in selected)
+                        else {}
+                    ),
                 }
                 if multistage
                 else {}
@@ -579,6 +631,8 @@ def build_recovery_continuation_plan(
                 raise ValueError("replacement materializer reused the source seed")
             if multistage:
                 trial["recovery_trigger_class"] = source["recovery_trigger_class"]
+                if source.get("required_failure_subclass") is not None:
+                    trial["required_failure_subclass"] = source["required_failure_subclass"]
         else:
             raise ValueError("recovery continuation request has an invalid kind")
 
@@ -638,7 +692,18 @@ def build_recovery_continuation_plan(
             {
                 "recovery_triggers": dict(
                     sorted(Counter(row["recovery_trigger_class"] for row in trials).items())
-                )
+                ),
+                **(
+                    {
+                        "failure_subclasses": dict(
+                            sorted(
+                                Counter(row["required_failure_subclass"] for row in trials).items()
+                            )
+                        )
+                    }
+                    if all(row.get("required_failure_subclass") is not None for row in trials)
+                    else {}
+                ),
             }
             if multistage
             else {}
