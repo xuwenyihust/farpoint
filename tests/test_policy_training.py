@@ -342,7 +342,7 @@ def test_v014_balanced_mix_200k_adds_transport_without_changing_recovery_share(t
     assert candidate["dataset"]["revision"] == "v0.1.4"
     assert candidate["dataset"]["source"] == {
         "kind": "local_snapshot",
-        "tree_sha256": "2629c29685d59492de73b12eca7b3108c89f5fdebdd792c8f4051227c84f4993",
+        "tree_sha256": "466cf33b2dab02122751466226c3a8d7518bebba93fa6e18bde9d9709499373b",
     }
     assert candidate["dataset"]["expected"] == {
         "total_episodes": 280,
