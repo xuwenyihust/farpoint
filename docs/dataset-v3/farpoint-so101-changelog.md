@@ -4,6 +4,39 @@ This changelog tracks published versions of
 `wenyixu101/farpoint-so101`. Dataset versions are independent of Farpoint
 Python package and schema versions.
 
+## v0.1.4
+
+Adds transport-stage recovery demonstrations while preserving the v0.1.x
+policy feature schema:
+
+- 280 successful SO-101 cube pick-and-place demonstrations
+- 212,606 policy frames at 30 Hz
+- 260 train and 20 validation episodes
+- 200 nominal demonstrations, 20 strict grasp-stage recovery demonstrations,
+  40 strict approach-stage recovery demonstrations, and 20 strict
+  transport-stage recovery demonstrations
+- transport recovery handoff requires a prior validated lift, no prior target
+  entry, and continuous live-state execution without a scene reset
+- the transport recovery set covers the frozen `transport_stall` failure
+  subclass; it does not claim balanced transport-failure subclass coverage
+- all legacy pre-lift recovery demonstrations remain excluded
+- two synchronized 640 x 480 RGB streams: front and wrist
+- unchanged six-dimensional joint state and joint-position action schema
+
+## v0.1.3
+
+Replaces legacy pre-lift recovery demonstrations with strict approach-stage
+coverage while preserving the v0.1.x policy feature schema:
+
+- 260 successful SO-101 cube pick-and-place demonstrations
+- 198,571 policy frames at 30 Hz
+- 240 train and 20 validation episodes
+- 200 nominal demonstrations, 20 strict grasp-stage recovery demonstrations,
+  and 40 strict approach-stage recovery demonstrations
+- all legacy pre-lift recovery demonstrations are excluded
+- two synchronized 640 x 480 RGB streams: front and wrist
+- unchanged six-dimensional joint state and joint-position action schema
+
 ## v0.1.2
 
 Adds grasp-stage recovery demonstrations while preserving the v0.1.x policy
