@@ -94,6 +94,15 @@ def subclass_balanced_transport_recovery_config():
     )
 
 
+def source100k_subclass_balanced_transport_recovery_config():
+    return json.loads(
+        (
+            ROOT
+            / "configs/recovery/so101_v014_transport_recovery20_subclass_balanced_source100k.json"
+        ).read_text()
+    )
+
+
 def multistage_source_plan():
     source = source_plan()
     expanded = []
@@ -454,6 +463,48 @@ def test_v014_subclass_balanced_transport_plan_freezes_exact_trial_targets(tmp_p
         "transport_stall": 2,
     }
     assert len(pilot_runtime["scenes"]) == 8
+
+
+def test_v014_source100k_transport_plan_is_a_checkpoint_only_ablation():
+    source200k = subclass_balanced_transport_recovery_config()
+    source100k = source100k_subclass_balanced_transport_recovery_config()
+    plan200k, runtime200k = build_recovery_plan(
+        multistage_source_plan(),
+        source200k,
+        campaign_id="transport-source200k-ablation",
+        scene_count=8,
+    )
+    plan100k, runtime100k = build_recovery_plan(
+        multistage_source_plan(),
+        source100k,
+        campaign_id="transport-source100k-ablation",
+        scene_count=8,
+    )
+
+    comparable_trial_fields = (
+        "trial_id",
+        "variation_id",
+        "object_variant_id",
+        "yaw_stratum_id",
+        "region_band",
+        "split",
+        "seed",
+        "required_failure_subclass",
+    )
+    assert [
+        {field: trial[field] for field in comparable_trial_fields} for trial in plan100k["trials"]
+    ] == [
+        {field: trial[field] for field in comparable_trial_fields} for trial in plan200k["trials"]
+    ]
+    assert plan100k["coverage"] == plan200k["coverage"]
+    assert runtime100k["control"] == runtime200k["control"]
+    assert runtime100k["trigger_profiles"] == runtime200k["trigger_profiles"]
+    assert runtime100k["source_policy"] == {
+        "policy_type": "act",
+        "checkpoint_step": 100000,
+        "model_sha256": "d21b401e39a06eb5aadb0ea0a468c43e96c39e5bc800683b9b40ac983e011ef8",
+        "training_run_id": "act-v013-balanced-mix-200k-20260817-3f0bf72",
+    }
 
 
 def test_v014_subclass_slots_reject_unfrozen_or_unknown_values():
