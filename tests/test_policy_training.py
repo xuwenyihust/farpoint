@@ -47,6 +47,9 @@ V013_BALANCED_MIX_20K_CONFIG = (
 V013_BALANCED_MIX_200K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_1_3_balanced_mix_200k.json"
 )
+V014_BALANCED_MIX_200K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_1_4_balanced_mix_200k.json"
+)
 
 
 def test_local_snapshot_tree_hash_binds_paths_sizes_and_contents(tmp_path):
@@ -328,6 +331,65 @@ def test_v013_balanced_mix_200k_is_fresh_and_reuses_exact_grouping(tmp_path):
         "grasp_blue": 80000,
         "grasp_red": 80000,
     }
+
+
+def test_v014_balanced_mix_200k_adds_transport_without_changing_recovery_share(tmp_path):
+    baseline = load_training_spec(V013_BALANCED_MIX_200K_CONFIG)
+    candidate = load_training_spec(V014_BALANCED_MIX_200K_CONFIG)
+
+    for field in ("environment", "policy", "training", "validation", "smoke"):
+        assert candidate[field] == baseline[field]
+    assert candidate["dataset"]["revision"] == "v0.1.4"
+    assert candidate["dataset"]["source"] == {
+        "kind": "local_snapshot",
+        "tree_sha256": "2629c29685d59492de73b12eca7b3108c89f5fdebdd792c8f4051227c84f4993",
+    }
+    assert candidate["dataset"]["expected"] == {
+        "total_episodes": 280,
+        "total_frames": 212606,
+        "fps": 30,
+        "selected_frames": {"train": 197805, "validation": 14801},
+    }
+    sampling = candidate["sampling"]
+    groups = {
+        group["group_id"]: parse_episode_slices(group["episode_slices"])
+        for group in sampling["groups"]
+    }
+    assert {group: len(episodes) for group, episodes in groups.items()} == {
+        "nominal_blue": 90,
+        "nominal_red": 90,
+        "approach_blue": 20,
+        "approach_red": 20,
+        "grasp_blue": 10,
+        "grasp_red": 10,
+        "transport_blue": 8,
+        "transport_red": 12,
+    }
+    assert sorted(episode for episodes in groups.values() for episode in episodes) == list(
+        range(260)
+    )
+    plan = {
+        "kind": sampling["kind"],
+        "steps": candidate["training"]["steps"],
+        "groups": sampling["groups"],
+        "batch_cycle": sampling["batch_cycle"],
+    }
+    assert expected_group_sample_counts(plan) == {
+        "nominal_blue": 639999,
+        "nominal_red": 639999,
+        "approach_blue": 53334,
+        "approach_red": 53334,
+        "grasp_blue": 53334,
+        "grasp_red": 53334,
+        "transport_blue": 53333,
+        "transport_red": 53333,
+    }
+    arguments = training_arguments(
+        candidate, tmp_path / "view", tmp_path / "out", "training"
+    )
+    assert "--steps=200000" in arguments
+    assert "--save_freq=20000" in arguments
+    assert "--resume=false" in arguments
 
 
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):
