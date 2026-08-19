@@ -1,0 +1,83 @@
+{
+  "schema_version": "farpoint.policy-training.v1",
+  "experiment_id": "so101_act_v0_1_4_balanced_mix_200k",
+  "dataset": {
+    "repo_id": "wenyixu101/farpoint-so101",
+    "revision": "v0.1.4",
+    "source": {
+      "kind": "local_snapshot",
+      "tree_sha256": "2629c29685d59492de73b12eca7b3108c89f5fdebdd792c8f4051227c84f4993"
+    },
+    "codebase_version": "v3.0",
+    "splits": {"train": "0:260", "validation": "260:280"},
+    "metadata_splits": {"train": "0:260", "validation": "260:280", "test": "280:280"},
+    "expected": {
+      "total_episodes": 280,
+      "total_frames": 212606,
+      "fps": 30,
+      "selected_frames": {"train": 197805, "validation": 14801}
+    },
+    "video_backend": "pyav",
+    "required_features": {
+      "observation.state": {"dtype": "float32", "shape": [6]},
+      "observation.images.front": {"dtype": "video", "shape": [480, 640, 3]},
+      "observation.images.wrist": {"dtype": "video", "shape": [480, 640, 3]},
+      "action": {"dtype": "float32", "shape": [6]}
+    }
+  },
+  "environment": {"lerobot_version": "0.4.4", "requires_cuda": true, "architecture": "aarch64"},
+  "policy": {
+    "type": "act", "device": "cuda", "vision_backbone": "resnet18",
+    "pretrained_backbone_weights": "ResNet18_Weights.IMAGENET1K_V1",
+    "chunk_size": 100, "n_action_steps": 100
+  },
+  "sampling": {
+    "kind": "deterministic_grouped_batches",
+    "episode_slices": ["0:260"],
+    "expected_episode_count": 260,
+    "expected_frame_count": 197805,
+    "groups": [
+      {"group_id": "nominal_blue", "episode_slices": ["0:5", "6:9", "10:13", "14:16", "17:22", "23:29", "30:31", "32:33", "34:41", "42:43", "46:53", "55:59", "60:62", "63:65", "66:69", "70:78", "79:80", "81:85", "87:92", "93:94", "95:99", "100:104", "106:107", "236:238", "239:240", "241:243", "244:247", "251:252", "253:254"]},
+      {"group_id": "nominal_red", "episode_slices": ["107:109", "110:112", "113:115", "116:119", "121:125", "126:131", "132:133", "134:137", "138:139", "140:142", "144:147", "148:150", "151:154", "155:156", "157:162", "164:165", "166:167", "168:169", "170:177", "178:182", "183:186", "187:188", "190:192", "193:194", "195:197", "198:199", "200:202", "203:205", "206:209", "210:214", "220:222", "224:226", "227:229", "231:235", "248:251", "255:256", "258:260"]},
+      {"group_id": "approach_blue", "episode_slices": ["5:6", "9:10", "13:14", "16:17", "22:23", "31:32", "41:42", "44:45", "54:55", "59:60", "65:66", "69:70", "78:79", "80:81", "86:87", "92:93", "99:100", "105:106", "218:219", "238:239"]},
+      {"group_id": "approach_red", "episode_slices": ["112:113", "119:121", "133:134", "139:140", "142:143", "147:148", "154:155", "156:157", "162:163", "167:168", "177:178", "186:187", "189:190", "194:195", "199:200", "205:206", "209:210", "214:215", "222:223"]},
+      {"group_id": "grasp_blue", "episode_slices": ["29:30", "43:44", "53:54", "85:86", "94:95", "104:105", "215:218", "247:248"]},
+      {"group_id": "grasp_red", "episode_slices": ["137:138", "165:166", "188:189", "192:193", "197:198", "226:227", "229:230", "235:236", "256:258"]},
+      {"group_id": "transport_blue", "episode_slices": ["33:34", "45:46", "62:63", "219:220", "240:241", "243:244", "252:253", "254:255"]},
+      {"group_id": "transport_red", "episode_slices": ["109:110", "115:116", "125:126", "131:132", "143:144", "150:151", "163:164", "169:170", "182:183", "202:203", "223:224", "230:231"]}
+    ],
+    "batch_cycle": [
+      {"nominal_blue": 3, "nominal_red": 3, "approach_blue": 1, "approach_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "grasp_blue": 1, "grasp_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "transport_blue": 1, "transport_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "approach_blue": 1, "approach_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "grasp_blue": 1, "grasp_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "transport_blue": 1, "transport_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "approach_blue": 1, "approach_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "grasp_blue": 1, "grasp_red": 1},
+      {"nominal_blue": 3, "nominal_red": 3, "transport_blue": 1, "transport_red": 1},
+      {"nominal_blue": 4, "nominal_red": 3, "approach_blue": 1},
+      {"nominal_blue": 3, "nominal_red": 4, "approach_red": 1},
+      {"nominal_blue": 4, "nominal_red": 3, "grasp_blue": 1},
+      {"nominal_blue": 3, "nominal_red": 4, "grasp_red": 1},
+      {"nominal_blue": 4, "nominal_red": 3, "transport_blue": 1},
+      {"nominal_blue": 3, "nominal_red": 4, "transport_red": 1}
+    ]
+  },
+  "training": {
+    "seed": 1010, "batch_size": 8, "steps": 200000, "num_workers": 4,
+    "save_checkpoint": true, "save_freq": 20000, "resume": false,
+    "push_to_hub": false, "wandb_enable": false, "log_freq": 100
+  },
+  "validation": {
+    "profile": "training", "split": "validation", "sample_count": 128,
+    "batch_size": 8, "num_workers": 2, "seed": 1010,
+    "minimum_relative_improvement": 0,
+    "require_later_improvement": false
+  },
+  "smoke": {
+    "seed": 1010, "batch_size": 2, "steps": 1, "num_workers": 0,
+    "save_checkpoint": false, "resume": false, "push_to_hub": false,
+    "wandb_enable": false, "log_freq": 1
+  }
+}
