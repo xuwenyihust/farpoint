@@ -86,11 +86,16 @@ def build_sampler_plan(spec: Mapping[str, Any], episode_lengths: Mapping[int, in
         raise ValueError(
             f"selected train frame count mismatch: {selected_frames} != {expected_frames}"
         )
+    start_step = int((spec.get("continuation") or {}).get("source_step", 0))
+    steps = int(spec["training"]["steps"])
+    if not 0 <= start_step < steps:
+        raise ValueError("sampler continuation start_step must be in [0, steps)")
     plan: dict[str, Any] = {
         "schema_version": "farpoint.training-sampler-plan.v1",
         "kind": "uniform_frames" if sampling is None else sampling["kind"],
         "seed": int(spec["training"]["seed"]),
-        "steps": int(spec["training"]["steps"]),
+        "start_step": start_step,
+        "steps": steps,
         "batch_size": int(spec["training"]["batch_size"]),
         "selected_episodes": selected,
         "selected_episode_count": len(selected),
@@ -109,7 +114,7 @@ def expected_group_sample_counts(plan: Mapping[str, Any]) -> dict[str, int]:
     cycle = plan["batch_cycle"]
     steps = int(plan["steps"])
     counts = {group["group_id"]: 0 for group in plan["groups"]}
-    for step in range(steps):
+    for step in range(int(plan.get("start_step", 0)), steps):
         for group_id, count in cycle[step % len(cycle)].items():
             counts[group_id] += int(count)
     return counts
@@ -147,7 +152,7 @@ class DeterministicGroupedBatchSampler:
             self.group_frames[group["group_id"]] = frames
 
     def __len__(self) -> int:
-        return int(self.plan["steps"])
+        return int(self.plan["steps"]) - int(self.plan.get("start_step", 0))
 
     def __iter__(self) -> Iterator[list[int]]:
         pools: dict[str, list[int]] = {}
@@ -162,6 +167,7 @@ class DeterministicGroupedBatchSampler:
             cursors[group_id] = 0
             rngs[group_id] = rng
 
+        start_step = int(self.plan.get("start_step", 0))
         for step in range(int(self.plan["steps"])):
             batch: list[int] = []
             template = self.plan["batch_cycle"][step % len(self.plan["batch_cycle"])]
@@ -174,4 +180,5 @@ class DeterministicGroupedBatchSampler:
                     cursors[group_id] += 1
             if len(batch) != int(self.plan["batch_size"]):
                 raise RuntimeError("generated batch does not match the frozen batch size")
-            yield batch
+            if step >= start_step:
+                yield batch

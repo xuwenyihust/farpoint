@@ -84,11 +84,22 @@ def main() -> int:
         for path in (args.output_dir / "checkpoints").iterdir()
         if path.name != "last" and (path / "training_state" / "training_step.json").is_file()
     )
-    expected_count = spec[profile]["steps"] // spec[profile]["save_freq"]
+    start_step = int((spec.get("continuation") or {}).get("source_step", 0))
+    expected_steps = list(
+        range(
+            start_step + int(spec[profile]["save_freq"]),
+            int(spec[profile]["steps"]) + 1,
+            int(spec[profile]["save_freq"]),
+        )
+    )
+    expected_count = len(expected_steps)
     if len(checkpoint_dirs) != expected_count:
         raise RuntimeError(
             f"expected {expected_count} checkpoints, found {len(checkpoint_dirs)}"
         )
+    actual_steps = [checkpoint_step(path) for path in checkpoint_dirs]
+    if actual_steps != expected_steps:
+        raise RuntimeError(f"checkpoint steps mismatch: {actual_steps} != {expected_steps}")
 
     first_pretrained = checkpoint_dirs[0] / "pretrained_model"
     policy_config = PreTrainedConfig.from_pretrained(first_pretrained, local_files_only=True)

@@ -8,6 +8,15 @@
   "properties": {
     "schema_version": {"const": "farpoint.policy-training.v1"},
     "experiment_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]+$"},
+    "continuation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_experiment_id", "source_step", "source_model_sha256"],
+      "properties": {
+        "source_experiment_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]+$"},
+        "source_step": {"type": "integer", "minimum": 1},
+        "source_model_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
     "dataset": {
       "type": "object",
       "additionalProperties": false,
@@ -177,7 +186,7 @@
         "num_workers": {"type": "integer", "minimum": 0},
         "save_checkpoint": {"type": "boolean"},
         "save_freq": {"type": "integer", "minimum": 1},
-        "resume": {"const": false},
+        "resume": {"type": "boolean"},
         "push_to_hub": {"const": false},
         "wandb_enable": {"type": "boolean"},
         "log_freq": {"type": "integer", "minimum": 1}

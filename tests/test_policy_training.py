@@ -1,4 +1,6 @@
 import json
+import importlib.util
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,11 @@ from farpoint.training_sampler import expected_group_sample_counts, parse_episod
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PREFLIGHT_SPEC = importlib.util.spec_from_file_location(
+    "preflight_policy_training", ROOT / "scripts" / "preflight_policy_training.py"
+)
+PREFLIGHT_MODULE = importlib.util.module_from_spec(PREFLIGHT_SPEC)
+PREFLIGHT_SPEC.loader.exec_module(PREFLIGHT_MODULE)
 CONFIG = ROOT / "configs" / "training" / "so101_act_v0_0_3_baseline.json"
 PILOT_CONFIG = ROOT / "configs" / "training" / "so101_act_v0_0_3_pilot.json"
 BASELINE_20K_CONFIG = (
@@ -49,6 +56,12 @@ V013_BALANCED_MIX_200K_CONFIG = (
 )
 V014_BALANCED_MIX_200K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_1_4_balanced_mix_200k.json"
+)
+V014_BALANCED_MIX_300K_CONTINUATION_CONFIG = (
+    ROOT
+    / "configs"
+    / "training"
+    / "so101_act_v0_1_4_balanced_mix_300k_continuation.json"
 )
 
 
@@ -161,6 +174,7 @@ def test_v010_formal_contract_selects_validation_without_dataset_test_split():
     assert '"${SOURCE_ROOT}" != "/workspace/source-dataset"' in runner
     container_runner = (ROOT / "scripts" / "run_so101_training.sh").read_text()
     assert '"${IMMUTABLE_SOURCE_ROOT}:/workspace/source-dataset:ro"' in container_runner
+    assert '"${RESUME_CHECKPOINT_ROOT}:/workspace/resume-checkpoint:ro"' in container_runner
 
 
 def test_v011_recovery20_contract_is_a_dataset_only_baseline_delta():
@@ -390,6 +404,104 @@ def test_v014_balanced_mix_200k_adds_transport_without_changing_recovery_share(t
     assert "--steps=200000" in arguments
     assert "--save_freq=20000" in arguments
     assert "--resume=false" in arguments
+
+
+def test_v014_300k_continuation_resumes_exact_200k_sampler_suffix(tmp_path):
+    baseline = load_training_spec(V014_BALANCED_MIX_200K_CONFIG)
+    continuation = load_training_spec(V014_BALANCED_MIX_300K_CONTINUATION_CONFIG)
+
+    for field in ("dataset", "environment", "policy", "sampling", "validation", "smoke"):
+        assert continuation[field] == baseline[field]
+    assert continuation["continuation"] == {
+        "source_experiment_id": "so101_act_v0_1_4_balanced_mix_200k",
+        "source_step": 200000,
+        "source_model_sha256": (
+            "fc444f76dd61bd4cf9b982c4e93ff406800e713be59542499e6e18fe85474a83"
+        ),
+    }
+    assert continuation["training"] == {
+        **baseline["training"],
+        "steps": 300000,
+        "resume": True,
+    }
+    checkpoint = tmp_path / "checkpoints" / "200000"
+    arguments = training_arguments(
+        continuation,
+        tmp_path / "view",
+        tmp_path / "out",
+        "training",
+        resume_checkpoint=checkpoint,
+    )
+    assert "--steps=300000" in arguments
+    assert "--resume=true" in arguments
+    assert (
+        f"--config_path={checkpoint / 'pretrained_model' / 'train_config.json'}" in arguments
+    )
+    with pytest.raises(ValueError, match="resume checkpoint is required"):
+        training_arguments(
+            continuation, tmp_path / "view", tmp_path / "out", "training"
+        )
+    plan = {
+        "kind": continuation["sampling"]["kind"],
+        "start_step": continuation["continuation"]["source_step"],
+        "steps": continuation["training"]["steps"],
+        "groups": continuation["sampling"]["groups"],
+        "batch_cycle": continuation["sampling"]["batch_cycle"],
+    }
+    assert expected_group_sample_counts(plan) == {
+        "nominal_blue": 320001,
+        "nominal_red": 320001,
+        "approach_blue": 26666,
+        "approach_red": 26666,
+        "grasp_blue": 26666,
+        "grasp_red": 26666,
+        "transport_blue": 26667,
+        "transport_red": 26667,
+    }
+
+
+def test_continuation_checkpoint_binding_requires_optimizer_rng_step_and_model(tmp_path):
+    checkpoint = tmp_path / "checkpoint"
+    pretrained = checkpoint / "pretrained_model"
+    state = checkpoint / "training_state"
+    pretrained.mkdir(parents=True)
+    state.mkdir()
+    files = {
+        pretrained / "model.safetensors": b"model",
+        state / "optimizer_state.safetensors": b"optimizer",
+        state / "optimizer_param_groups.json": b"{}\n",
+        state / "rng_state.safetensors": b"rng",
+    }
+    for path, content in files.items():
+        path.write_bytes(content)
+    (state / "training_step.json").write_text('{"step": 200000}\n', encoding="utf-8")
+    (pretrained / "train_config.json").write_text(
+        json.dumps(
+            {
+                "job_name": "source_experiment_training",
+                "steps": 200000,
+                "seed": 1010,
+                "batch_size": 8,
+            }
+        ),
+        encoding="utf-8",
+    )
+    spec = {
+        "continuation": {
+            "source_experiment_id": "source_experiment",
+            "source_step": 200000,
+            "source_model_sha256": hashlib.sha256(b"model").hexdigest(),
+        },
+        "training": {"seed": 1010, "batch_size": 8},
+    }
+    binding = PREFLIGHT_MODULE.validate_resume_checkpoint(spec, checkpoint)
+    assert binding["source_step"] == 200000
+    assert binding["model_sha256"] == hashlib.sha256(b"model").hexdigest()
+    assert binding["optimizer_state_sha256"] == hashlib.sha256(b"optimizer").hexdigest()
+
+    spec["continuation"]["source_model_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="model hash mismatch"):
+        PREFLIGHT_MODULE.validate_resume_checkpoint(spec, checkpoint)
 
 
 def test_training_view_replaces_only_stats_and_preserves_source(tmp_path):

@@ -104,6 +104,12 @@ def validate_split_partition(spec: dict[str, Any]) -> None:
 
 
 def validate_training_profiles(spec: dict[str, Any]) -> None:
+    continuation = spec.get("continuation")
+    training = spec["training"]
+    if bool(training.get("resume", False)) != (continuation is not None):
+        raise ValueError("training resume and continuation contract must be configured together")
+    if continuation is not None and int(continuation["source_step"]) >= int(training["steps"]):
+        raise ValueError("continuation source_step must be less than training steps")
     if "validation" not in spec:
         return
     validation = spec["validation"]
@@ -114,9 +120,10 @@ def validate_training_profiles(spec: dict[str, Any]) -> None:
     save_freq = run.get("save_freq")
     if not run["save_checkpoint"] or save_freq is None:
         raise ValueError(f"{profile} must save checkpoints at a fixed frequency")
-    if run["steps"] % save_freq != 0:
+    start_step = 0 if continuation is None else int(continuation["source_step"])
+    if start_step % save_freq != 0 or run["steps"] % save_freq != 0:
         raise ValueError(f"{profile} steps must be divisible by save_freq")
-    if run["steps"] // save_freq < 2:
+    if (run["steps"] - start_step) // save_freq < 2:
         raise ValueError(f"{profile} must produce at least two checkpoints")
     available_frames = spec["dataset"]["expected"]["selected_frames"][validation["split"]]
     if validation["sample_count"] > available_frames:
@@ -211,7 +218,12 @@ def create_training_view(
 
 
 def training_arguments(
-    spec: dict[str, Any], dataset_root: Path, output_dir: Path, profile: str
+    spec: dict[str, Any],
+    dataset_root: Path,
+    output_dir: Path,
+    profile: str,
+    *,
+    resume_checkpoint: Path | None = None,
 ) -> list[str]:
     if profile not in spec or profile not in {"training", "pilot", "smoke"}:
         raise ValueError(f"unsupported training profile: {profile}")
@@ -249,6 +261,14 @@ def training_arguments(
         f"--seed={run['seed']}",
         f"--wandb.enable={str(run['wandb_enable']).lower()}",
     ]
+    if run.get("resume", False):
+        if resume_checkpoint is None:
+            raise ValueError("resume checkpoint is required by the continuation contract")
+        arguments.append(
+            f"--config_path={resume_checkpoint / 'pretrained_model' / 'train_config.json'}"
+        )
+    elif resume_checkpoint is not None:
+        raise ValueError("resume checkpoint is only valid for a continuation contract")
     if run.get("save_freq") is not None:
         arguments.append(f"--save_freq={run['save_freq']}")
     if "resume" in run:
