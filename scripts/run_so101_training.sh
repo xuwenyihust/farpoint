@@ -8,6 +8,7 @@ MODEL_ROOT="${FARPOINT_TRAINING_MODEL_ROOT:-${PROJECT_ROOT}/.cache/farpoint/trai
 LOG_ROOT="${FARPOINT_TRAINING_LOG_ROOT:-${PROJECT_ROOT}/.cache/farpoint/training/logs}"
 CACHE_ROOT="${FARPOINT_TRAINING_CACHE_ROOT:-${PROJECT_ROOT}/.cache/farpoint/training/cache}"
 IMMUTABLE_SOURCE_ROOT="${FARPOINT_TRAINING_IMMUTABLE_SOURCE_ROOT:-}"
+RESUME_CHECKPOINT_ROOT="${FARPOINT_TRAINING_RESUME_CHECKPOINT_ROOT:-}"
 GIT_COMMIT="${FARPOINT_GIT_COMMIT:-}"
 
 if [[ -z "${GIT_COMMIT}" ]] && git -C "${PROJECT_ROOT}" rev-parse HEAD >/dev/null 2>&1; then
@@ -47,6 +48,13 @@ if [[ -n "${IMMUTABLE_SOURCE_ROOT}" ]]; then
     exit 2
   fi
   docker_args+=(--volume "${IMMUTABLE_SOURCE_ROOT}:/workspace/source-dataset:ro")
+fi
+if [[ -n "${RESUME_CHECKPOINT_ROOT}" ]]; then
+  if [[ ! -d "${RESUME_CHECKPOINT_ROOT}" ]]; then
+    echo "FARPOINT_TRAINING_RESUME_CHECKPOINT_ROOT must name an existing directory" >&2
+    exit 2
+  fi
+  docker_args+=(--volume "${RESUME_CHECKPOINT_ROOT}:/workspace/resume-checkpoint:ro")
 fi
 if [[ -n "${HF_TOKEN:-}" ]]; then
   docker_args+=(--env HF_TOKEN)

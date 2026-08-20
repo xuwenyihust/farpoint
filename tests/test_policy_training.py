@@ -174,6 +174,7 @@ def test_v010_formal_contract_selects_validation_without_dataset_test_split():
     assert '"${SOURCE_ROOT}" != "/workspace/source-dataset"' in runner
     container_runner = (ROOT / "scripts" / "run_so101_training.sh").read_text()
     assert '"${IMMUTABLE_SOURCE_ROOT}:/workspace/source-dataset:ro"' in container_runner
+    assert '"${RESUME_CHECKPOINT_ROOT}:/workspace/resume-checkpoint:ro"' in container_runner
 
 
 def test_v011_recovery20_contract_is_a_dataset_only_baseline_delta():

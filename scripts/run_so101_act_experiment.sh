@@ -24,9 +24,12 @@ if [[ -z "${SOURCE_REVISION}" || ! "${SOURCE_REVISION}" =~ ^[a-zA-Z0-9._-]+$ ]];
   echo "SOURCE_REVISION must be a safe dataset revision path component" >&2
   exit 2
 fi
-if [[ -n "${RESUME_CHECKPOINT}" ]] && \
-  { [[ ! "${RESUME_CHECKPOINT}" =~ ^/workspace/models/[a-zA-Z0-9._/-]+$ ]] || [[ "${RESUME_CHECKPOINT}" == *".."* ]]; }; then
-  echo "resume checkpoint must be a safe path under /workspace/models" >&2
+if [[ -n "${RESUME_CHECKPOINT}" ]] && [[ "${RESUME_CHECKPOINT}" != "/workspace/resume-checkpoint" ]]; then
+  echo "resume checkpoint must use the read-only /workspace/resume-checkpoint mount" >&2
+  exit 2
+fi
+if [[ -n "${RESUME_CHECKPOINT}" && -z "${FARPOINT_TRAINING_RESUME_CHECKPOINT_ROOT:-}" ]]; then
+  echo "FARPOINT_TRAINING_RESUME_CHECKPOINT_ROOT is required for continuation" >&2
   exit 2
 fi
 
