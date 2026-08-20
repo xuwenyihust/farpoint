@@ -248,6 +248,9 @@ def _so101_sidecar(
                 entry[key] = task[key]
         if "entities" in record["scene"]:
             entry["entities"] = record["scene"]["entities"]
+        source_split = record["provenance"].get("source_episode_split")
+        if source_split is not None:
+            entry["source_split"] = source_split
         requested_entities = variation["requested"].get("entities")
         resolved_entities = variation["resolved"].get("entities")
         if requested_entities is not None:
@@ -315,8 +318,31 @@ def _export_so101_dataset(manifest, output_dir, loaded, dataset_class):
             raise ValueError("SO-101 export cannot mix episode contract versions")
         if infer_fps(rows) != fps:
             raise ValueError(f"episode has a different recording rate: {episode_dir}")
+        source_split = metadata["identity"]["split"]
+        dataset_split = entry["split"]
+        declared_source_split = entry.get("source_split")
+        if dataset_split != source_split and declared_source_split != source_split:
+            raise ValueError(
+                "SO-101 split override must bind the raw metadata split as source_split"
+            )
+        if declared_source_split is not None and declared_source_split != source_split:
+            raise ValueError("selection source_split does not match raw SO-101 metadata")
         enriched = dict(metadata)
-        enriched["identity"] = {**metadata["identity"], "dataset_episode_index": index}
+        enriched["identity"] = {
+            **metadata["identity"],
+            "split": dataset_split,
+            "dataset_episode_index": index,
+        }
+        enriched["variation"] = {**metadata["variation"], "split": dataset_split}
+        if dataset_split != source_split:
+            enriched["provenance"] = {
+                **metadata["provenance"],
+                "source_episode_split": source_split,
+                "dataset_split_assignment": {
+                    "split": dataset_split,
+                    "selection_policy": manifest.get("selection_policy"),
+                },
+            }
         enriched["recording"] = {**metadata["recording"], "fps": fps, "frame_count": len(rows)}
         errors = validate_contract(enriched)
         if errors:

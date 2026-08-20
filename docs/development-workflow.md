@@ -75,6 +75,10 @@ episode IDs, artifact completeness, and distinct execution and quality states.
 1. Export only eligible benchmark or collection episodes into a new candidate directory.
    The selection manifest must assign every episode to an explicit split and
    preserve its source trial identity.
+   When a composed dataset intentionally repartitions immutable source episodes,
+   each selection row must bind the raw metadata split as `source_split`; the
+   exporter applies the dataset split only to its exported metadata copy and
+   retains the source split in provenance. Never rewrite the raw episode.
 2. Validate episode boundaries, finite values, feature dimensions, timestamps,
    Parquet shards, MP4 decoding, frame alignment, metadata, and checksums.
 3. Build the Viewer-safe package with `scripts/release_dataset.py build`.
