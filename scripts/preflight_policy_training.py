@@ -17,6 +17,7 @@ from farpoint.policy_training import (
     canonical_sha256,
     create_training_view,
     directory_tree_sha256,
+    file_sha256,
     load_training_spec,
     training_arguments,
     unflatten_episode_stats,
@@ -39,7 +40,59 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--profile", choices=("smoke", "pilot", "training"), default="smoke")
     parser.add_argument("--run-act-step", action="store_true")
     parser.add_argument("--run-profile", action="store_true")
+    parser.add_argument("--resume-checkpoint", type=Path)
     return parser.parse_args()
+
+
+def validate_resume_checkpoint(spec: dict, checkpoint: Path | None) -> dict | None:
+    continuation = spec.get("continuation")
+    if continuation is None:
+        if checkpoint is not None:
+            raise ValueError("resume checkpoint is only valid for a continuation contract")
+        return None
+    if checkpoint is None:
+        raise ValueError("continuation contract requires --resume-checkpoint")
+    if not checkpoint.is_absolute() or not checkpoint.is_dir():
+        raise FileNotFoundError(checkpoint)
+    pretrained = checkpoint / "pretrained_model"
+    training_state = checkpoint / "training_state"
+    required = {
+        "model": pretrained / "model.safetensors",
+        "train_config": pretrained / "train_config.json",
+        "training_step": training_state / "training_step.json",
+        "optimizer_state": training_state / "optimizer_state.safetensors",
+        "optimizer_groups": training_state / "optimizer_param_groups.json",
+        "rng_state": training_state / "rng_state.safetensors",
+    }
+    for path in required.values():
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    step_payload = json.loads(required["training_step"].read_text(encoding="utf-8"))
+    step = int(step_payload.get("step", -1))
+    if step != int(continuation["source_step"]):
+        raise ValueError(f"resume checkpoint step mismatch: {step}")
+    model_sha256 = file_sha256(required["model"])
+    if model_sha256 != continuation["source_model_sha256"]:
+        raise ValueError("resume checkpoint model hash mismatch")
+    source_config = json.loads(required["train_config"].read_text(encoding="utf-8"))
+    if source_config.get("job_name") != f"{continuation['source_experiment_id']}_training":
+        raise ValueError("resume checkpoint experiment id mismatch")
+    if int(source_config.get("steps", -1)) != step:
+        raise ValueError("resume checkpoint source steps mismatch")
+    if int(source_config.get("seed", -1)) != int(spec["training"]["seed"]):
+        raise ValueError("resume checkpoint seed mismatch")
+    if int(source_config.get("batch_size", -1)) != int(spec["training"]["batch_size"]):
+        raise ValueError("resume checkpoint batch size mismatch")
+    return {
+        "source_experiment_id": continuation["source_experiment_id"],
+        "source_step": step,
+        "checkpoint": str(checkpoint),
+        "model_sha256": model_sha256,
+        "train_config_sha256": file_sha256(required["train_config"]),
+        "optimizer_state_sha256": file_sha256(required["optimizer_state"]),
+        "optimizer_groups_sha256": file_sha256(required["optimizer_groups"]),
+        "rng_state_sha256": file_sha256(required["rng_state"]),
+    }
 
 
 def main() -> int:
@@ -54,6 +107,7 @@ def main() -> int:
         raise RuntimeError("FARPOINT_TRAINING_IMAGE_ID must bind evidence to a Docker image ID")
     if args.report.exists() or args.output_dir.exists() or args.view_root.exists():
         raise FileExistsError("report, output directory, and training view must be new paths")
+    resume_binding = validate_resume_checkpoint(spec, args.resume_checkpoint)
 
     import av
     import torch
@@ -163,7 +217,13 @@ def main() -> int:
     if args.run_act_step and args.profile != "smoke":
         raise ValueError("--run-act-step is retained only for the smoke profile")
     should_run = args.run_act_step or args.run_profile
-    command = training_arguments(spec, args.view_root, args.output_dir, args.profile)
+    command = training_arguments(
+        spec,
+        args.view_root,
+        args.output_dir,
+        args.profile,
+        resume_checkpoint=args.resume_checkpoint,
+    )
     return_code = None
     if should_run:
         completed = subprocess.run(command, check=False)
@@ -213,6 +273,8 @@ def main() -> int:
             "command": command,
         },
     }
+    if resume_binding is not None:
+        report["continuation"] = resume_binding
     if source_binding["kind"] == "hub":
         report["dataset"]["resolved_commit"] = source_binding["resolved_commit"]
     if args.profile == "smoke":

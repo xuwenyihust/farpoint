@@ -98,6 +98,35 @@ def test_grouped_sampler_is_deterministic_and_honors_each_template():
     }
 
 
+def test_grouped_sampler_continuation_is_exact_suffix_of_full_plan():
+    spec = grouped_spec()
+    spec["training"]["steps"] = 9
+    lengths = {episode: 5 for episode in range(10)}
+    full_plan = build_sampler_plan(spec, lengths)
+    full = list(DeterministicGroupedBatchSampler(full_plan, list(range(8)), lengths))
+
+    continued_spec = copy.deepcopy(spec)
+    continued_spec["continuation"] = {
+        "source_experiment_id": "source_run",
+        "source_step": 5,
+        "source_model_sha256": "a" * 64,
+    }
+    continued_spec["training"]["resume"] = True
+    continuation_plan = build_sampler_plan(continued_spec, lengths)
+    continued = list(
+        DeterministicGroupedBatchSampler(continuation_plan, list(range(8)), lengths)
+    )
+    assert continuation_plan["start_step"] == 5
+    assert len(continued) == 4
+    assert continued == full[5:]
+    assert expected_group_sample_counts(continuation_plan) == {
+        "nominal_blue": 6,
+        "nominal_red": 6,
+        "recovery_blue": 2,
+        "recovery_red": 2,
+    }
+
+
 def test_sampler_plan_binds_selected_frame_count_and_dataset_order():
     spec = grouped_spec()
     lengths = {episode: 5 for episode in range(10)}
