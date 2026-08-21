@@ -214,6 +214,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     capture_preload_force_floor,
     contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
+    contact_force_vectors_opposed,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
@@ -2279,6 +2280,13 @@ def run_attempt(
         relative_recenter_active = False
         recenter_used_memory = False
         recenter_forces = balanced_forces
+        contact_geometry_valid = False
+        if balanced_forces is not None:
+            contact_geometry_valid = contact_force_vectors_opposed(
+                contact["sensors"][0]["cube_filtered_vector_n"],
+                contact["sensors"][1]["cube_filtered_vector_n"],
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )
         closing_alignment = phase is OraclePhase.CLOSE and (
             grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
@@ -2307,8 +2315,16 @@ def run_attempt(
                 *recenter_forces,
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
+            or (
+                grasp_hold_pose is not None
+                and (closing_alignment or verification_alignment)
+                and recenter_forces is not None
+                and min(recenter_forces)
+                >= grasp_machine.minimum_contact_force_n
+                and not contact_geometry_valid
+            )
         ):
-            if closing_alignment:
+            if closing_alignment or not contact_geometry_valid:
                 # A finger-side label alone does not determine which world
                 # direction centers this rotated, long-finger aperture.  Use
                 # simulator truth and the measured gripper orientation to
@@ -2499,7 +2515,7 @@ def run_attempt(
                 capture_admissible,
                 object_width_m=object_spec["dimensions_m"][0],
                 capture_contact_force_n=grasp_machine.capture_contact_force_n,
-            ):
+            ) and contact_geometry_valid:
                 # Both cube sidewalls constrain the arm before the grasp state
                 # machine has completed its force *and* relative-speed window.
                 # Rebase the joint command on every such sample to discard the
@@ -2539,7 +2555,9 @@ def run_attempt(
             # change produces enough acceleration to shed a small cube before
             # contact persistence can be evaluated.
             just_armed_proof_lift = False
-            bilateral_capture = min(balanced_forces) >= 0.10
+            bilateral_capture = (
+                min(balanced_forces) >= 0.10 and contact_geometry_valid
+            )
             if bilateral_capture and not verify_capture_latched:
                 # Re-capture the measured aperture as soon as recentering has
                 # restored both contacts. Continuing toward the older, tighter
@@ -3022,6 +3040,7 @@ def run_attempt(
                     capture_object_in_gripper,
                 ),
                 capture_admissible=capture_admissible,
+                contact_geometry_valid=contact_geometry_valid,
                 relative_translation_error_m=relative_translation_error,
                 relative_speed_mps=relative_speed,
                 proof_lift_m=(
@@ -3185,6 +3204,7 @@ def run_attempt(
                 "gripper_control": gripper_control,
                 "recenter_contact_memory_side": capture_recenter_side,
                 "recenter_used_contact_memory": recenter_used_memory,
+                "contact_geometry_valid": contact_geometry_valid,
                 "relative_grasp_recenter_active": relative_recenter_active,
                 "descent_lateral_correction_m": descent_lateral_correction,
                 "grasp_lateral_correction_m": (

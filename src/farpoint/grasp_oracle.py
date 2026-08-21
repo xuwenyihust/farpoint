@@ -33,6 +33,42 @@ def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
     }
 
 
+def contact_force_vectors_opposed(
+    left_vector_n,
+    right_vector_n,
+    *,
+    maximum_cosine: float = -0.5,
+    minimum_force_n: float = 0.10,
+) -> bool:
+    """Return whether two cube-contact forces form a real opposing grasp.
+
+    Bilateral force magnitudes alone also admit corner wedges where both
+    fingertips load the cube in nearly orthogonal directions.  Such a wedge
+    can remain quasi-static through the capture window and then eject the
+    cube on the first proof-lift sample.  Requiring a bounded negative cosine
+    distinguishes opposing sidewall contact without depending on cube yaw or
+    a world-space force axis.
+    """
+    left = np.asarray(left_vector_n, dtype=np.float64)
+    right = np.asarray(right_vector_n, dtype=np.float64)
+    cosine_limit = float(maximum_cosine)
+    force_floor = float(minimum_force_n)
+    if left.shape != (3,) or right.shape != (3,):
+        raise ValueError("contact force vectors must have shape (3,)")
+    if not np.all(np.isfinite(left)) or not np.all(np.isfinite(right)):
+        raise ValueError("contact force vectors must be finite")
+    if not np.isfinite(cosine_limit) or not -1.0 < cosine_limit < 0.0:
+        raise ValueError("maximum_cosine must be finite and between -1 and 0")
+    if not np.isfinite(force_floor) or force_floor <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+    left_norm = float(np.linalg.norm(left))
+    right_norm = float(np.linalg.norm(right))
+    if left_norm < force_floor or right_norm < force_floor:
+        return False
+    cosine = float(np.dot(left, right) / (left_norm * right_norm))
+    return cosine <= cosine_limit
+
+
 def capture_aperture_laterally_aligned(
     object_in_gripper_m,
     aperture_reference_m,
@@ -390,6 +426,7 @@ class GraspEvidence:
     right_force_n: float
     aperture_aligned: bool = False
     capture_admissible: bool = True
+    contact_geometry_valid: bool = True
     relative_translation_error_m: float = float("inf")
     relative_speed_mps: float = float("inf")
     proof_lift_m: float = 0.0
@@ -517,6 +554,7 @@ class ContactAwareGraspStateMachine:
                 ),
             )
             and evidence.capture_admissible
+            and evidence.contact_geometry_valid
         )
         rigid = (
             evidence.relative_translation_error_m

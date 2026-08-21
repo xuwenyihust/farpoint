@@ -10,6 +10,7 @@ from farpoint.grasp_oracle import (
     advance_proof_lift_command,
     cartesian_motion_command_base,
     contact_constrained_joint_step_limit,
+    contact_force_vectors_opposed,
     capture_preload_force_floor,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
@@ -64,6 +65,28 @@ def test_gripper_local_offset_tracks_rotated_gripper_frame():
     np.testing.assert_allclose(
         point_in_local_frame(pose, object_world), desired_local, atol=1e-7
     )
+
+
+def test_contact_force_vectors_require_opposing_sidewall_loads():
+    assert contact_force_vectors_opposed([2.0, -4.0, 0.5], [-3.0, 3.0, 0.0])
+    assert not contact_force_vectors_opposed(
+        [-0.9, -3.85, 0.98], [-4.18, 1.44, -0.02]
+    )
+    assert not contact_force_vectors_opposed([0.01, 0.0, 0.0], [-1.0, 0.0, 0.0])
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "kwargs"),
+    (
+        ([1.0, 2.0], [-1.0, -2.0, 0.0], {}),
+        ([float("nan"), 0.0, 0.0], [-1.0, 0.0, 0.0], {}),
+        ([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], {"maximum_cosine": 0.0}),
+        ([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], {"minimum_force_n": 0.0}),
+    ),
+)
+def test_contact_force_vectors_reject_invalid_inputs(left, right, kwargs):
+    with pytest.raises(ValueError):
+        contact_force_vectors_opposed(left, right, **kwargs)
 
 
 def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
@@ -566,6 +589,24 @@ def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
     assert machine.step(_evidence()).phase is GraspPhase.SLOW_CLOSE
     decision = machine.step(_evidence())
 
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
+def test_capture_confirmation_rejects_nonopposing_contact_geometry():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(machine.capture_confirmation_steps + 2):
+        decision = machine.step(_evidence(contact_geometry_valid=False))
+        assert decision.phase is GraspPhase.SLOW_CLOSE
+
+    for _ in range(machine.capture_confirmation_steps):
+        decision = machine.step(_evidence(contact_geometry_valid=True))
     assert decision.phase is GraspPhase.BILATERAL_SETTLE
     assert decision.rebase_relative_tracking
 
