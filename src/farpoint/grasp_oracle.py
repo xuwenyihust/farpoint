@@ -58,10 +58,19 @@ def advance_proof_lift_command(
     current_height_m: float,
     *,
     just_armed: bool,
-    increment_m: float = 0.0000625,
+    increment_m: float = 0.000015625,
     maximum_height_m: float = 0.010,
 ) -> tuple[np.ndarray, float]:
-    """Advance proof lift without erasing accumulated gravity compensation."""
+    """Advance proof lift without erasing accumulated gravity compensation.
+
+    At 120 Hz the default is a 1.875 mm/s ramp.  Frozen 40 mm-cube evidence
+    showed that the former 7.5 mm/s target could retain a quasi-static,
+    bilateral capture for the full admission and hold windows, then peel one
+    fingertip off on the first proof-lift samples.  Keeping this ramp below the
+    capture-motion ceiling gives the existing force controller time to retain
+    the same grasp; contact thresholds and the 5 mm physical proof remain
+    unchanged.
+    """
     command_base = cartesian_motion_command_base(
         commanded_joints, measured_joints, entering_motion=just_armed
     )

@@ -342,14 +342,14 @@ def test_proof_lift_rebases_once_then_preserves_accumulated_command():
         ahead, measured, 0.0, just_armed=True
     )
     np.testing.assert_allclose(base, measured)
-    assert height == pytest.approx(0.0000625)
+    assert height == pytest.approx(0.000015625)
 
     accumulated = base + 0.01
     base, height = advance_proof_lift_command(
         accumulated, measured, height, just_armed=False
     )
     np.testing.assert_allclose(base, accumulated)
-    assert height == pytest.approx(0.000125)
+    assert height == pytest.approx(0.00003125)
 
 
 def test_cartesian_motion_command_rebases_only_on_phase_entry():
