@@ -2140,7 +2140,6 @@ def run_attempt(
     placement_object_xy = None
     lift_object_start_position = None
     transport_lift_target_m = 0.0
-    bilateral_capture_steps = 0
     verify_bilateral_steps = 0
     verify_capture_latched = False
     close_capture_confirmed = False
@@ -2500,66 +2499,25 @@ def run_attempt(
                 object_width_m=object_spec["dimensions_m"][0],
                 capture_contact_force_n=grasp_machine.capture_contact_force_n,
             ):
-                # Both cube sidewalls constrain the arm even before the
-                # three-sample confirmation is complete. Rebase the joint
-                # command on every such sample to discard the pre-contact IK
-                # tail, but keep the original follow-down reference and wrist
-                # posture until the grasp is actually confirmed. Rebasing the
-                # descent reference on a transient impact makes the next miss
-                # apply the full 12 mm follow-down a second time.
+                # Both cube sidewalls constrain the arm before the grasp state
+                # machine has completed its force *and* relative-speed window.
+                # Rebase the joint command on every such sample to discard the
+                # pre-contact IK tail and keep closing gently, but do not latch
+                # a capture here.  The state machine below is the single owner
+                # of capture admission and overrides this action in the exact
+                # tick that BILATERAL_SETTLE is entered.  A second collector-
+                # local latch used to ignore the relative-speed gate, freeze a
+                # still-moving 40 mm cube, and leave the state machine stuck in
+                # SLOW_CLOSE after bilateral force decayed.
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 target = ee_position.copy()
-                bilateral_capture_steps += 1
-                if bilateral_capture_steps < grasp_machine.capture_confirmation_steps:
-                    # A single bilateral sample can be an edge-impact pulse.
-                    # Continue closing gently until both contacts persist for
-                    # the same window required by the state machine.
-                    jaw = max(closed_jaw, float(current[5].item()) - 0.005)
-                    gripper_control = "confirm_bilateral"
-                    target = grasp_hold_pose
-                else:
-                    # Capture the measured aperture before another full close
-                    # step can squeeze the cube out. A bounded 0.002 rad preload
-                    # compensates actuator/contact relaxation: a zero-preload
-                    # hold was observed to decay from bilateral 1 N contact to
-                    # zero within seven control frames before proof lift.
-                    grasp_hold_pose = ee_position.copy()
-                    grasp_hold_nominal_pose = grasp_hold_pose.copy()
-                    grasp_hold_nominal_y = float(grasp_hold_pose[1])
-                    # ``target`` still refers to the pre-capture follow-down
-                    # array. Rebind it in this same control step so the arm does
-                    # not execute one final downward/lateral correction after a
-                    # valid bilateral grasp has already formed.
-                    target = grasp_hold_pose
-                    # Approach IK integrates in command space so the small arm can
-                    # overcome gravity. At contact that command may be several
-                    # simulation ticks ahead of the measured joints. Rebase once
-                    # here so no pre-contact command tail moves the closed fingers.
-                    commanded_joints = _numpy(current).astype(np.float32).copy()
-                    # The wrist settles measurably between first unilateral
-                    # contact and confirmed bilateral enclosure. Latch the
-                    # posture that actually produced the grasp, not the earlier
-                    # side-contact pose; returning to the latter opens the
-                    # contact geometry during VERIFY.
-                    grasp_hold_posture = _numpy(current[3:5]).astype(np.float32).copy()
-                    preload = 0.002
-                    grasp_jaw_hold = float(
-                        np.clip(float(current[5].item()) - preload, closed_jaw, open_jaw)
-                    )
-                    grasp_jaw_reference = grasp_jaw_hold
-                    # Freeze both the measured aperture and Cartesian hold as
-                    # soon as CLOSE proves sustained bilateral enclosure.  If
-                    # the latch is delayed until VERIFY, the intervening CLOSE
-                    # frames re-enable force control and recentering; on the
-                    # rotary SO-101 jaw that command tail can peel one finger
-                    # off an otherwise valid grasp before VERIFY begins.
-                    verify_capture_latched = True
-                    close_capture_confirmed = True
-                    verify_capture_wait_steps = 0
-                    jaw = grasp_jaw_hold
-                    gripper_control = "capture_aperture"
+                # A single bilateral sample can be an edge-impact pulse.
+                # Continue closing until the shared state machine observes its
+                # full confirmation window at or below the capture-speed gate.
+                jaw = max(closed_jaw, float(current[5].item()) - 0.005)
+                gripper_control = "confirm_bilateral"
+                target = grasp_hold_pose
             else:
-                bilateral_capture_steps = 0
                 # The validated calibration stops Cartesian insertion at first
                 # contact and closes quasi-statically at the measured pose.
                 # Continuing to chase the displaced cube recreates the old
