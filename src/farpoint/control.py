@@ -121,28 +121,61 @@ def so101_cube_contact_handoff(
 def so101_pre_capture_recenter_limit(
     object_width_m,
     *,
-    maximum_correction_m=0.012,
-    width_fraction=0.30,
+    maximum_correction_m=0.008,
 ):
-    """Bound capture search while leaving room for the opposite fingertip.
-
-    The former 8 mm bound saturated on both Cartesian axes in the immutable
-    v0.2.0 outer-workspace trace while a 40 mm cube retained unilateral
-    contact for the entire close phase.  Permit at most 30% of the object
-    width, capped at 12 mm, only before bilateral capture.  The existing
-    0.125 mm/tick servo rate and all independent contact/safety gates remain
-    unchanged.
-    """
+    """Return the validated default bound for pre-capture XY search."""
     width = float(object_width_m)
     maximum = float(maximum_correction_m)
-    fraction = float(width_fraction)
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     if not math.isfinite(maximum) or maximum <= 0.0:
         raise ValueError("maximum_correction_m must be finite and positive")
+    return maximum
+
+
+def so101_adaptive_pre_capture_recenter_limit(
+    object_width_m,
+    current_xy_correction_m,
+    *,
+    unilateral_contact=False,
+    base_correction_m=0.008,
+    maximum_correction_m=0.012,
+    width_fraction=0.30,
+    saturation_fraction=0.98,
+):
+    """Expand capture search only after unilateral corner saturation.
+
+    Immutable v0.2.0 pilot evidence separates two cases: a one-axis offset
+    succeeds with the validated 8 mm corridor, while a persistent unilateral
+    contact at the outer workspace can saturate both XY axes.  Preserve the
+    validated corridor unless both axes are already at its boundary and the
+    contact is unilateral.  The expanded corridor remains size-aware and is
+    capped at 12 mm.
+    """
+    width = float(object_width_m)
+    correction = tuple(float(value) for value in current_xy_correction_m)
+    base = float(base_correction_m)
+    maximum = float(maximum_correction_m)
+    fraction = float(width_fraction)
+    saturation = float(saturation_fraction)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if len(correction) != 2 or any(not math.isfinite(value) for value in correction):
+        raise ValueError("current_xy_correction_m must contain two finite values")
+    if not math.isfinite(base) or base <= 0.0:
+        raise ValueError("base_correction_m must be finite and positive")
+    if not math.isfinite(maximum) or maximum < base:
+        raise ValueError("maximum_correction_m must be finite and at least the base")
     if not math.isfinite(fraction) or not 0.0 < fraction < 0.5:
         raise ValueError("width_fraction must be finite and between zero and 0.5")
-    return min(maximum, fraction * width)
+    if not math.isfinite(saturation) or not 0.0 < saturation <= 1.0:
+        raise ValueError("saturation_fraction must be finite and in (0, 1]")
+    corner_saturated = all(
+        abs(value) >= base * saturation for value in correction
+    )
+    if not unilateral_contact or not corner_saturated:
+        return base
+    return max(base, min(maximum, fraction * width))
 
 
 def so101_capture_contact_loss_grace_s(object_width_m):

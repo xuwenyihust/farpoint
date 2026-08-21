@@ -197,8 +197,8 @@ from farpoint.control import (  # noqa: E402
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
+    so101_adaptive_pre_capture_recenter_limit,
     so101_post_capture_recenter_step,
-    so101_pre_capture_recenter_limit,
     so101_reset_support_is_stable,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
@@ -2324,14 +2324,18 @@ def run_attempt(
             recenter_used_memory = bool(recenter_memory["used_memory"])
         elif phase not in {OraclePhase.DESCEND, OraclePhase.CLOSE}:
             capture_recenter_side = None
-        if (
-            grasp_hold_pose is not None
-            and (closing_alignment or settling_capture or verification_alignment)
-            and recenter_forces is not None
+        unilateral_recenter = bool(
+            recenter_forces is not None
             and unilateral_contact_requires_recenter(
                 *recenter_forces,
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
+        )
+        if (
+            grasp_hold_pose is not None
+            and (closing_alignment or settling_capture or verification_alignment)
+            and recenter_forces is not None
+            and unilateral_recenter
             or (
                 grasp_hold_pose is not None
                 and (closing_alignment or verification_alignment)
@@ -2359,8 +2363,14 @@ def run_attempt(
                     capture_object_in_gripper,
                 )
                 desired_object_minus_grasp = object_world - desired_gripper
-                correction_limit = so101_pre_capture_recenter_limit(
-                    object_spec["dimensions_m"][0]
+                current_xy_correction = (
+                    np.asarray(grasp_hold_pose[:2], dtype=np.float64)
+                    - np.asarray(grasp_hold_nominal_pose[:2], dtype=np.float64)
+                )
+                correction_limit = so101_adaptive_pre_capture_recenter_limit(
+                    object_spec["dimensions_m"][0],
+                    current_xy_correction,
+                    unilateral_contact=unilateral_recenter,
                 )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
