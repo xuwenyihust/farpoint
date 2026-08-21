@@ -1,6 +1,23 @@
 import math
 
 
+def so101_capture_admission_retention_fraction(object_width_m=None):
+    """Return the shared size-aware capture-admission force fraction.
+
+    Keep this policy in the dependency-light control module so both the
+    collector latch and the grasp state machine use exactly the same floor.
+    A split policy can freeze the active close controller on a weak contact
+    that the state machine correctly refuses to admit.
+    """
+    if object_width_m is None:
+        return 0.25
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 0.25 + 0.65 * interpolation
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 
@@ -27,25 +44,27 @@ def so101_bilateral_capture_ready(
     *,
     object_width_m=None,
     minimum_force_n=0.5,
+    capture_contact_force_n=2.0,
 ):
     """Return whether bilateral force may enter capture confirmation.
 
     The 30 mm floor distinguishes sustained, cube-filtered contact from sensor
     noise without forcing the controller to cross its nominal 2 N target.
-    The 40 mm endpoint retains 1.5 N: immutable diagnostic evidence showed that
-    applying the small-object floor globally admits a wide-aperture capture too
-    early and loses contact during static hold.
+    The 40 mm endpoint uses the shared 90% admission floor. Immutable r6
+    evidence showed that a lower collector-only threshold latched a decaying
+    contact while the state machine correctly remained in active slow close.
     Capture still needs six consecutive control ticks,
     the independent relative-speed gate, bilateral settle, static hold, and
     proof lift; this hook does not change success validation.
     """
     forces = (float(left_force_n), float(right_force_n))
     if object_width_m is not None:
-        width = float(object_width_m)
-        if not math.isfinite(width) or width <= 0.0:
-            raise ValueError("object_width_m must be finite and positive")
-        interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-        threshold = 0.5 + interpolation
+        capture_force = float(capture_contact_force_n)
+        if not math.isfinite(capture_force) or capture_force <= 0.0:
+            raise ValueError("capture_contact_force_n must be finite and positive")
+        threshold = capture_force * so101_capture_admission_retention_fraction(
+            object_width_m
+        )
     else:
         threshold = float(minimum_force_n)
     if any(not math.isfinite(force) or force < 0.0 for force in forces):

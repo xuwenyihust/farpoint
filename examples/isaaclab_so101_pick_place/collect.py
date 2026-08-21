@@ -2498,6 +2498,7 @@ def run_attempt(
                 *finger_forces,
                 capture_admissible,
                 object_width_m=object_spec["dimensions_m"][0],
+                capture_contact_force_n=grasp_machine.capture_contact_force_n,
             ):
                 # Both cube sidewalls constrain the arm even before the
                 # three-sample confirmation is complete. Rebase the joint

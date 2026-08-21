@@ -27,6 +27,7 @@ from farpoint.control import (
     simulation_stop_reason,
     so101_approach_jaw_target,
     so101_capture_admission_ready,
+    so101_capture_admission_retention_fraction,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
@@ -75,14 +76,14 @@ def test_so101_bilateral_capture_ready_uses_bounded_force_hysteresis():
     )
     assert not so101_bilateral_capture_ready(0.5, 0.499, True)
     assert so101_bilateral_capture_ready(
-        1.5,
-        1.5,
+        1.8,
+        1.8,
         True,
         object_width_m=0.04,
     )
     assert not so101_bilateral_capture_ready(
-        1.5,
-        1.499,
+        1.8,
+        1.799,
         True,
         object_width_m=0.04,
     )
@@ -93,6 +94,13 @@ def test_so101_bilateral_capture_ready_uses_bounded_force_hysteresis():
         True,
         minimum_force_n=2.0,
     )
+
+
+def test_so101_capture_admission_floor_is_shared_across_cube_sizes():
+    assert so101_capture_admission_retention_fraction(None) == pytest.approx(0.25)
+    assert so101_capture_admission_retention_fraction(0.03) == pytest.approx(0.25)
+    assert so101_capture_admission_retention_fraction(0.035) == pytest.approx(0.575)
+    assert so101_capture_admission_retention_fraction(0.04) == pytest.approx(0.90)
 
 
 @pytest.mark.parametrize(
