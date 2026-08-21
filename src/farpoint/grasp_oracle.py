@@ -84,6 +84,30 @@ def advance_proof_lift_command(
     return command_base, float(next_height)
 
 
+def contact_constrained_joint_step_limit(
+    default_max_joint_step: float,
+    *,
+    proof_lift_armed: bool,
+    maximum_proof_lift_joint_step: float = 0.001,
+) -> float:
+    """Bound resolved-rate IK more tightly while proving a live grasp.
+
+    A tiny Cartesian proof-lift target can still produce a saturated joint
+    update near a poorly conditioned arm pose.  Limiting that contact-bound
+    transition separately suppresses the first-tick acceleration without
+    slowing free-space motion or weakening the physical proof requirement.
+    """
+    default_limit = float(default_max_joint_step)
+    proof_limit = float(maximum_proof_lift_joint_step)
+    if not np.isfinite(default_limit) or default_limit <= 0.0:
+        raise ValueError("default_max_joint_step must be finite and positive")
+    if not np.isfinite(proof_limit) or proof_limit <= 0.0:
+        raise ValueError(
+            "maximum_proof_lift_joint_step must be finite and positive"
+        )
+    return min(default_limit, proof_limit) if proof_lift_armed else default_limit
+
+
 def cartesian_motion_command_base(
     commanded_joints, measured_joints, *, entering_motion: bool
 ) -> np.ndarray:

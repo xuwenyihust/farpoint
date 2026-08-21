@@ -9,6 +9,7 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    contact_constrained_joint_step_limit,
     capture_preload_force_floor,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
@@ -350,6 +351,30 @@ def test_proof_lift_rebases_once_then_preserves_accumulated_command():
     )
     np.testing.assert_allclose(base, accumulated)
     assert height == pytest.approx(0.00003125)
+
+
+def test_proof_lift_uses_tighter_contact_constrained_joint_step_limit():
+    assert contact_constrained_joint_step_limit(
+        0.005, proof_lift_armed=False
+    ) == pytest.approx(0.005)
+    assert contact_constrained_joint_step_limit(
+        0.005, proof_lift_armed=True
+    ) == pytest.approx(0.001)
+    assert contact_constrained_joint_step_limit(
+        0.0005, proof_lift_armed=True
+    ) == pytest.approx(0.0005)
+
+
+@pytest.mark.parametrize("value", (0.0, -0.001, float("nan"), float("inf")))
+def test_contact_constrained_joint_step_limit_rejects_invalid_limits(value):
+    with pytest.raises(ValueError, match="finite and positive"):
+        contact_constrained_joint_step_limit(value, proof_lift_armed=False)
+    with pytest.raises(ValueError, match="finite and positive"):
+        contact_constrained_joint_step_limit(
+            0.005,
+            proof_lift_armed=True,
+            maximum_proof_lift_joint_step=value,
+        )
 
 
 def test_cartesian_motion_command_rebases_only_on_phase_entry():

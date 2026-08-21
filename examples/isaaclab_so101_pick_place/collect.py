@@ -212,6 +212,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     advance_proof_lift_command,
     cartesian_motion_command_base,
     capture_preload_force_floor,
+    contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
@@ -2847,9 +2848,13 @@ def run_attempt(
                     }
                     else 0.20
                 ),
-                max_joint_step=0.02
-                * schedule.recording_hz
-                / schedule.control_hz,
+                max_joint_step=contact_constrained_joint_step_limit(
+                    0.02 * schedule.recording_hz / schedule.control_hz,
+                    proof_lift_armed=(
+                        phase is OraclePhase.VERIFY_CONTACT
+                        and verify_grasp_armed
+                    ),
+                ),
                 lock_wrist=(
                     grasp_hold_posture is not None
                     and phase
