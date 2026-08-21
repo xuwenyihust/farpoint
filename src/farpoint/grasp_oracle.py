@@ -191,14 +191,17 @@ def rotary_jaw_capture_hold_target(
     relative_speed_mps: float | None = None,
     moving_capture_preload_rad: float = 0.004,
     moving_capture_threshold_mps: float = 0.001,
+    moving_capture_ceiling_mps: float = 0.002,
 ) -> float:
-    """Hold a captured rotary jaw with a motion-aware closing preload.
+    """Hold a captured rotary jaw with a continuously tapered preload.
 
     Quasi-static exact-mesh captures need the validated 8 mrad preload to keep
-    bilateral contact.  A capture whose object is still moving uses the lower
-    4 mrad preload so the transition command does not eject the cube.  This
-    changes only the hold target after capture admission; force limits and
-    grasp-success evidence remain unchanged.
+    bilateral contact.  Captures at the admission-speed ceiling use the lower
+    4 mrad preload so the transition command does not eject the cube.  Speeds
+    between those two calibrated points taper continuously: a one-sample
+    threshold crossing must not halve the preload while an otherwise admitted
+    capture is settling.  This changes only the hold target after capture
+    admission; force limits and grasp-success evidence remain unchanged.
     """
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
@@ -211,6 +214,13 @@ def rotary_jaw_capture_hold_target(
         or moving_capture_threshold_mps < 0.0
     ):
         raise ValueError("moving_capture_threshold_mps must be non-negative")
+    if (
+        not np.isfinite(moving_capture_ceiling_mps)
+        or moving_capture_ceiling_mps <= moving_capture_threshold_mps
+    ):
+        raise ValueError(
+            "moving_capture_ceiling_mps must exceed moving_capture_threshold_mps"
+        )
     if relative_speed_mps is not None and (
         not np.isfinite(relative_speed_mps) or relative_speed_mps < 0.0
     ):
@@ -220,7 +230,18 @@ def rotary_jaw_capture_hold_target(
         relative_speed_mps is not None
         and relative_speed_mps > moving_capture_threshold_mps
     ):
-        effective_preload = min(effective_preload, float(moving_capture_preload_rad))
+        moving_fraction = float(
+            np.clip(
+                (relative_speed_mps - moving_capture_threshold_mps)
+                / (moving_capture_ceiling_mps - moving_capture_threshold_mps),
+                0.0,
+                1.0,
+            )
+        )
+        effective_preload = effective_preload + moving_fraction * (
+            min(effective_preload, float(moving_capture_preload_rad))
+            - effective_preload
+        )
     return float(
         np.clip(
             float(measured_position) - effective_preload,
