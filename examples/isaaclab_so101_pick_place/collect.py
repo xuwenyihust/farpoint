@@ -345,6 +345,12 @@ def _move_object(obj, position, device, orientation_xyzw=(0.0, 0.0, 0.0, 1.0)):
     obj.write_root_velocity_to_sim(torch.zeros((1, 6), dtype=torch.float32, device=device))
 
 
+def _move_static_frame(frame, position, device):
+    """Move a non-rigid AssetBase through Isaac Lab's frame-view API."""
+    positions = torch.tensor([position], dtype=torch.float32, device=device)
+    frame.set_world_poses(positions=positions)
+
+
 def _image(camera, device):
     return np.asarray(_numpy(camera.data.output["rgb"][0, ..., :3]), dtype=np.uint8)
 
@@ -1944,9 +1950,7 @@ def run_attempt(
     )
     target_position = np.asarray(target_spec["position_m"], dtype=np.float32)
     target_dimensions = np.asarray(target_spec["dimensions_m"], dtype=np.float32)
-    scene["target_pad"].write_root_pose_to_sim(
-        _torch_pose(target_position.tolist(), device)
-    )
+    _move_static_frame(scene["target_pad"], target_position.tolist(), device)
     # Spawn just above the table and let PhysX establish support before the
     # oracle reads its first target. A failed audit is a deterministic scene
     # error and must not be hidden by retrying the same pose.
