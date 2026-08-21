@@ -915,11 +915,11 @@ def test_so101_slow_close_force_actions_preserve_limits():
     assert -0.1746 <= high_force["position"] <= 1.7453
 
 
-def test_so101_slow_close_crosses_old_unilateral_limit_cycle_then_backs_off():
+def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_off():
     crossing = advance_so101_slow_close_target(
         0.40,
         0.405,
-        10.0,
+        16.93,
         0.0,
         open_position=1.7453,
         closed_position=-0.1746,
@@ -929,7 +929,7 @@ def test_so101_slow_close_crosses_old_unilateral_limit_cycle_then_backs_off():
     backoff = advance_so101_slow_close_target(
         crossing["position"],
         0.404,
-        12.0,
+        17.0,
         0.0,
         open_position=1.7453,
         closed_position=-0.1746,
