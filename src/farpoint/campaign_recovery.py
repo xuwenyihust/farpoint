@@ -15,6 +15,8 @@ from farpoint.campaign import (
     validate_campaign_semantics,
     validate_segment_semantics,
     variation_seed,
+    generic_variation_seed,
+    quota_identity_fields,
 )
 from farpoint.so101_collection import validate_manifest
 from farpoint.so101_episode_analysis import classify_so101_failure
@@ -66,27 +68,28 @@ def validate_self_healing_policy(policy: dict[str, Any]) -> None:
         raise ValueError("structural_failure_classes must be unique")
 
 
-def _quota_identity(trial: dict[str, Any]) -> tuple[Any, ...]:
-    missing = [field for field in QUOTA_FIELDS if field not in trial]
+def _quota_fields(campaign: dict[str, Any]) -> tuple[str, ...]:
+    return (*quota_identity_fields(campaign), "quota_ordinal")
+
+
+def _quota_identity(
+    trial: dict[str, Any], fields: tuple[str, ...] = QUOTA_FIELDS
+) -> tuple[Any, ...]:
+    missing = [field for field in fields if field not in trial]
     if missing:
         raise ValueError(f"trial is missing quota identity fields: {missing}")
-    return tuple(trial[field] for field in QUOTA_FIELDS)
+    return tuple(trial[field] for field in fields)
 
 
 def _campaign_quota_identities(campaign: dict[str, Any]) -> set[tuple[Any, ...]]:
+    identity_fields = quota_identity_fields(campaign)
     identities = set()
     expected_count = 0
     for row in campaign.get("quotas") or []:
         count = int(row["count"])
         expected_count += count
         for quota_ordinal in range(count):
-            identity = (
-                row["object_variant_id"],
-                row["yaw_stratum_id"],
-                row["region_band"],
-                row["split"],
-                quota_ordinal,
-            )
+            identity = (*tuple(row[field] for field in identity_fields), quota_ordinal)
             if identity in identities:
                 raise ValueError("campaign quota rows overlap")
             identities.add(identity)
@@ -108,10 +111,11 @@ def _resolved_trial_quota_identities(
     """Resolve legacy recovery source ordinals into campaign-local ordinals."""
     trials = plan.get("trials") or []
     allowed = _campaign_quota_identities(campaign)
-    raw = {trial["variation_id"]: _quota_identity(trial) for trial in trials}
+    fields = _quota_fields(campaign)
+    raw = {trial["variation_id"]: _quota_identity(trial, fields) for trial in trials}
     if len(set(raw.values())) == len(raw) and set(raw.values()).issubset(allowed):
         return raw
-    if plan.get("schema_version") != "farpoint.so101-recovery-plan.v1" or (
+    if fields != QUOTA_FIELDS or plan.get("schema_version") != "farpoint.so101-recovery-plan.v1" or (
         campaign.get("variation_contract") or {}
     ).get("kind") != "live_policy_recovery":
         return raw
@@ -368,20 +372,25 @@ def build_replacement_requests(
         if variation_id in (manifest.get("selected_variations") or {}) or count < maximum:
             continue
         trial = trials[variation_id]
-        quota_identity = _quota_identity(trial)
+        fields = _quota_fields(campaign)
+        quota_identity = _quota_identity(trial, fields)
         if quota_identity not in allowed_quotas:
             raise ValueError(f"deferred variation is outside campaign quotas: {variation_id}")
-        quota = dict(zip(QUOTA_FIELDS, quota_identity))
+        quota = dict(zip(fields, quota_identity))
         replacement_index = int(trial.get("replacement_index", 0)) + 1
-        seed = variation_seed(
-            campaign["campaign_sha256"],
-            object_variant_id=str(quota["object_variant_id"]),
-            yaw_stratum_id=str(quota["yaw_stratum_id"]),
-            region_band=str(quota["region_band"]),
-            split=str(quota["split"]),
-            quota_ordinal=int(quota["quota_ordinal"]),
-            replacement_index=replacement_index,
-        )
+        if fields == QUOTA_FIELDS:
+            seed = variation_seed(
+                campaign["campaign_sha256"],
+                object_variant_id=str(quota["object_variant_id"]), yaw_stratum_id=str(quota["yaw_stratum_id"]),
+                region_band=str(quota["region_band"]), split=str(quota["split"]),
+                quota_ordinal=int(quota["quota_ordinal"]), replacement_index=replacement_index,
+            )
+        else:
+            seed = generic_variation_seed(
+                campaign["campaign_sha256"],
+                quota={field: quota[field] for field in quota_identity_fields(campaign)},
+                quota_ordinal=int(quota["quota_ordinal"]), replacement_index=replacement_index,
+            )
         requests.append(
             {
                 "deferred_variation_id": variation_id,
@@ -488,7 +497,8 @@ def build_continuation_requests(
             raise ValueError(f"campaign quota has no source trial: {quota_identity}")
         trial = source["trial"]
         consumed = int(source["attempts_consumed"])
-        quota = dict(zip(QUOTA_FIELDS, quota_identity))
+        fields = _quota_fields(campaign)
+        quota = dict(zip(fields, quota_identity))
         if consumed < maximum:
             request_kind = "carryover"
             replacement_index = int(trial.get("replacement_index", 0))
@@ -497,15 +507,18 @@ def build_continuation_requests(
         else:
             request_kind = "replacement"
             replacement_index = int(trial.get("replacement_index", 0)) + 1
-            seed = variation_seed(
-                campaign["campaign_sha256"],
-                object_variant_id=str(quota["object_variant_id"]),
-                yaw_stratum_id=str(quota["yaw_stratum_id"]),
-                region_band=str(quota["region_band"]),
-                split=str(quota["split"]),
-                quota_ordinal=int(quota["quota_ordinal"]),
-                replacement_index=replacement_index,
-            )
+            if fields == QUOTA_FIELDS:
+                seed = variation_seed(
+                    campaign["campaign_sha256"], object_variant_id=str(quota["object_variant_id"]),
+                    yaw_stratum_id=str(quota["yaw_stratum_id"]), region_band=str(quota["region_band"]),
+                    split=str(quota["split"]), quota_ordinal=int(quota["quota_ordinal"]), replacement_index=replacement_index,
+                )
+            else:
+                seed = generic_variation_seed(
+                    campaign["campaign_sha256"],
+                    quota={field: quota[field] for field in quota_identity_fields(campaign)},
+                    quota_ordinal=int(quota["quota_ordinal"]), replacement_index=replacement_index,
+                )
             prior_attempt_count = 0
         requests.append(
             {
@@ -544,7 +557,7 @@ def validate_replacement_plan(
             raise ValueError("continuation request has an invalid request kind")
     expected = {
         (
-            tuple(request["quota"][field] for field in QUOTA_FIELDS),
+            tuple(sorted(request["quota"].items())),
             int(request["replacement_index"]),
             int(request["variation_seed"]),
             int(request.get("prior_attempt_count", 0)),
@@ -554,7 +567,7 @@ def validate_replacement_plan(
     }
     observed = {
         (
-            _quota_identity(trial),
+            tuple(sorted({field: trial[field] for field in (trial.get("quota_identity_fields") or QUOTA_FIELDS)}.items())),
             int(trial.get("replacement_index", 0)),
             int(trial["seed"]),
             int(trial.get("prior_attempt_count", 0)),
@@ -756,7 +769,7 @@ def evaluate_self_healing_campaign(
                     bool(trigger_evidence.get("ever_lifted"))
                 )
             selected = {
-                "quota": dict(zip(QUOTA_FIELDS, quota)),
+                "quota": dict(zip(_quota_fields(campaign), quota)),
                 "variation_id": variation_id,
                 "attempt_id": attempt_id,
                 "segment_id": segment["segment_id"],
@@ -1022,7 +1035,7 @@ def build_campaign_export_selection(
                 "segment_index": segment["segment_index"],
                 "git_commit": segment["git_commit"],
                 "attempt_id": attempt_id,
-                "quota": dict(zip(QUOTA_FIELDS, quota)),
+                "quota": dict(zip(_quota_fields(campaign), quota)),
                 **(
                     {"recovery_handoff": recovery_handoff}
                     if recovery_handoff is not None

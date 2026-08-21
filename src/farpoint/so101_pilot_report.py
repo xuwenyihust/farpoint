@@ -424,7 +424,8 @@ def build_so101_pilot_report(
             errors.append(f"{attempt['episode_id']}:manifest_episode_validity_mismatch")
     yaw_audits, yaw_errors = audit_yaw_mass_episodes(plan, attempts, by_name, root)
     errors.extend(yaw_errors)
-    if (plan.get("pilot") or {}).get("kind") == "v010_integration_pilot":
+    pilot_contract = plan.get("pilot") or {}
+    if pilot_contract.get("kind") == "v010_integration_pilot" or pilot_contract.get("episode_contract") == "farpoint.episode.v4":
         for attempt in episode_attempts:
             episode_root = root / attempt["episode_id"]
             metadata_path = episode_root / "metadata.json"
@@ -435,6 +436,34 @@ def build_so101_pilot_report(
                 errors.append(f"{attempt['episode_id']}:episode_v4_required")
                 continue
             errors.extend(_v010_video_errors(episode_root, metadata))
+            if str(pilot_contract.get("kind", "")).startswith("v020_"):
+                trial = next(
+                    (
+                        row
+                        for row in plan.get("trials") or []
+                        if row["variation_id"] == attempt.get("variation_id")
+                    ),
+                    None,
+                )
+                if trial is None:
+                    errors.append(f"{attempt['episode_id']}:v020_trial_missing")
+                    continue
+                resolved = (metadata.get("variation") or {}).get("resolved") or {}
+                for field in ("target_profile_id", "camera_profile_id"):
+                    if resolved.get(field) != trial.get(field):
+                        errors.append(
+                            f"{attempt['episode_id']}:{field}_provenance_mismatch"
+                        )
+                cameras = (metadata.get("recording") or {}).get("cameras") or []
+                front = next(
+                    (row for row in cameras if row.get("camera_id") == "front"), {}
+                )
+                if front.get("config_version") != (
+                    trial["camera_profile"]["resolved_profile"]["profile_id"]
+                ):
+                    errors.append(
+                        f"{attempt['episode_id']}:front_camera_profile_mismatch"
+                    )
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
     selected_nominal_proof_lifts = []

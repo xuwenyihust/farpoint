@@ -1,0 +1,51 @@
+{
+  "schema_version": "farpoint.so101-v020-config.v1",
+  "config_version": "0.2.0-plan.1",
+  "task_id": "so101_cube_pick_place",
+  "seed": 20260821,
+  "target_successful_episodes": 300,
+  "maximum_attempts": 450,
+  "slots_per_cell": 10,
+  "split_per_cell": {"train": 9, "validation": 1},
+  "sampler": {
+    "sampler_version": "farpoint.deterministic-latin-hypercube.v1",
+    "x_bounds_m": [0.14, 0.26],
+    "y_bounds_m": [-0.12, -0.02],
+    "yaw_bounds_degrees": [0.0, 90.0]
+  },
+  "object_archetype": {
+    "archetype_id": "cube-v1", "version": "1", "semantic_type": "cube",
+    "geometry_representation": "procedural", "anchor": "center",
+    "default_orientation_xyzw": [0.0, 0.0, 0.0, 1.0]
+  },
+  "object_variants": [
+    {"variant_id": "blue-30mm-30g", "version": "1", "archetype_id": "cube-v1", "asset_id": "procedural_cube_v1", "dimensions_m": [0.03, 0.03, 0.03], "rgba": [0.04, 0.20, 0.85, 1.0], "mass_kg": 0.03},
+    {"variant_id": "red-40mm-40g", "version": "1", "archetype_id": "cube-v1", "asset_id": "procedural_cube_v1", "dimensions_m": [0.04, 0.04, 0.04], "rgba": [0.85, 0.08, 0.06, 1.0], "mass_kg": 0.04}
+  ],
+  "materials": {
+    "object": {"static_friction": 1.2, "dynamic_friction": 1.0, "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "average"},
+    "table": {"static_friction": 1.2, "dynamic_friction": 1.0, "restitution": 0.0, "friction_combine_mode": "average", "restitution_combine_mode": "average"},
+    "gripper": {"static_friction": 2.0, "dynamic_friction": 1.5, "restitution": 0.0, "friction_combine_mode": "max", "restitution_combine_mode": "average"}
+  },
+  "target_pad_candidates_m": [[0.09, 0.09, 0.01], [0.10, 0.09, 0.01]],
+  "footprint_margin_m": 0.005,
+  "target_profiles": [
+    {"target_profile_id": "target-a", "position_m": [0.16, 0.08, 0.037]},
+    {"target_profile_id": "target-b", "position_m": [0.20, 0.12, 0.037]},
+    {"target_profile_id": "target-c", "position_m": [0.24, 0.08, 0.037]}
+  ],
+  "camera_base_profile": "configs/cameras/so101_front_wrist_v1.json",
+  "camera_profiles": [
+    {"camera_profile_id": "front-nominal", "eye_offset_m": [0.0, 0.0, 0.0], "look_at_offset_m": [0.0, 0.0, 0.0]},
+    {"camera_profile_id": "front-x-positive", "eye_offset_m": [0.025, 0.0, 0.0], "look_at_offset_m": [-0.015, 0.0, 0.0]},
+    {"camera_profile_id": "front-x-negative", "eye_offset_m": [-0.024, 0.0, 0.0], "look_at_offset_m": [0.014, 0.0, 0.0]},
+    {"camera_profile_id": "front-yz-positive", "eye_offset_m": [0.0, 0.018, 0.014], "look_at_offset_m": [0.0, -0.010, -0.008]},
+    {"camera_profile_id": "front-yz-negative", "eye_offset_m": [0.0, -0.018, -0.014], "look_at_offset_m": [0.0, 0.010, 0.008]}
+  ],
+  "front_camera_base": {"eye_m": [0.42, -0.38, 0.34], "look_at_m": [0.20, 0.02, 0.06]},
+  "table": {"entity_id": "table", "asset_id": "procedural_table_v1", "position_m": [0.265, 0.0, 0.012], "orientation_xyzw": [0.0, 0.0, 0.0, 1.0], "dimensions_m": [0.37, 0.48, 0.04]},
+  "oracle_profile_id": "so101_contact_aware_dls_preload90_v1",
+  "lighting_profile_id": "fixed_default_v1",
+  "runtime_watchdog": "configs/workflows/so101_v020_watchdog_runtime.json",
+  "self_healing_policy": "configs/workflows/so101_v020_self_healing.json"
+}

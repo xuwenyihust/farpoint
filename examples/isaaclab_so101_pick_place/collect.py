@@ -383,10 +383,19 @@ def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str):
     return np.asarray(response["action"], dtype=np.float32), response.get("execution", {})
 
 
-def _aim_front_camera(scene, device) -> None:
-    """Set the fixed front camera from an unambiguous eye/target pair."""
-    eye = torch.tensor([[0.42, -0.38, 0.34]], dtype=torch.float32, device=device)
-    target = torch.tensor([[0.20, 0.02, 0.06]], dtype=torch.float32, device=device)
+def _aim_front_camera(scene, device, camera_view=None) -> None:
+    """Set the front camera from an explicit, episode-bound eye/look-at pair."""
+    camera_view = camera_view or {}
+    eye = torch.tensor(
+        [camera_view.get("eye_m", [0.42, -0.38, 0.34])],
+        dtype=torch.float32,
+        device=device,
+    )
+    target = torch.tensor(
+        [camera_view.get("look_at_m", [0.20, 0.02, 0.06])],
+        dtype=torch.float32,
+        device=device,
+    )
     scene["front_camera"].set_world_poses_from_view(eye, target)
 
 
@@ -1927,7 +1936,17 @@ def run_attempt(
     # the first observation can be a stale pre-reset pose.
     # Send the same explicit pose as the first manager action; using the stale
     # tensor cached before write_joint_state would restore the USD default.
-    _aim_front_camera(scene, device)
+    camera_view = copy.deepcopy(trial.get("front_camera_view") or {})
+    _aim_front_camera(scene, device, camera_view)
+    target_spec = copy.deepcopy(
+        (trial.get("target_profile") or {}).get("resolved")
+        or v010_context["plan"]["target"]
+    )
+    target_position = np.asarray(target_spec["position_m"], dtype=np.float32)
+    target_dimensions = np.asarray(target_spec["dimensions_m"], dtype=np.float32)
+    scene["target_pad"].write_root_pose_to_sim(
+        _torch_pose(target_position.tolist(), device)
+    )
     # Spawn just above the table and let PhysX establish support before the
     # oracle reads its first target. A failed audit is a deterministic scene
     # error and must not be hidden by retrying the same pose.
@@ -2044,9 +2063,6 @@ def run_attempt(
     )
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
-    target_spec = v010_context["plan"]["target"]
-    target_position = np.asarray(target_spec["position_m"], dtype=np.float32)
-    target_dimensions = np.asarray(target_spec["dimensions_m"], dtype=np.float32)
     # Release above the raised target pad instead of driving the fingertips
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
@@ -3426,9 +3442,13 @@ def run_attempt(
     resolved_variation["entities"]["pick_object"]["physics"]["mass_audit"] = (
         copy.deepcopy(mass_audit)
     )
+    episode_camera_profile = (
+        (trial.get("camera_profile") or {}).get("resolved_profile")
+        or camera_profile
+    )
     resolved_camera_records = (
-        _runtime_camera_records(scene, camera_profile)
-        if camera_profile is not None
+        _runtime_camera_records(scene, episode_camera_profile)
+        if episode_camera_profile is not None
         else None
     )
     if resolved_camera_records is not None:
@@ -3449,7 +3469,7 @@ def run_attempt(
         _write_json(
             root / "camera-evidence.json",
             {
-                "profile": copy.deepcopy(camera_profile),
+                "profile": copy.deepcopy(episode_camera_profile),
                 "resolved_cameras": copy.deepcopy(resolved_camera_records),
                 "same_control_tick": True,
                 "recording_stride": schedule.recording_stride,
@@ -3640,6 +3660,12 @@ def main():
         from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
 
         env_cfg = SO101CubePickPlaceEnvCfg()
+        if is_v010_episode_plan(plan):
+            target_dimensions = (plan.get("target") or {}).get("dimensions_m")
+            if target_dimensions is not None:
+                env_cfg.scene.target_pad.spawn.size = tuple(
+                    float(value) for value in target_dimensions
+                )
         # Seed the construction path as well as every reset. Isaac Lab warns
         # and may initialize manager state nondeterministically when this is None.
         env_cfg.seed = 0

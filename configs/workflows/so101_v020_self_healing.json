@@ -1,0 +1,12 @@
+{
+  "schema_version": "farpoint.self-healing-policy.v1",
+  "maximum_attempts_per_variation": 3,
+  "distinct_structural_failure_limit": 5,
+  "recent_window_attempts": 10,
+  "minimum_recent_success_rate": 0.0,
+  "no_success_timeout_seconds": 7200,
+  "heartbeat_timeout_seconds": 60,
+  "minimum_free_disk_bytes": 536870912000,
+  "diagnostic_representatives_per_class": 3,
+  "structural_failure_classes": ["runner_error", "contact_force_limit", "bilateral_contact_lost", "collision", "object_dropped", "phase_timeout", "camera_integrity", "metadata_integrity", "hash_mismatch"]
+}
