@@ -191,19 +191,20 @@ def rotary_jaw_capture_hold_target(
     open_position: float,
     preload_rad: float = 0.008,
     relative_speed_mps: float | None = None,
-    moving_capture_preload_rad: float = 0.004,
+    moving_capture_preload_rad: float = 0.008,
     moving_capture_threshold_mps: float = 0.001,
     moving_capture_ceiling_mps: float = 0.002,
 ) -> float:
     """Hold a captured rotary jaw with a continuously tapered preload.
 
-    Quasi-static exact-mesh captures need the validated 8 mrad preload to keep
-    bilateral contact.  Captures at the admission-speed ceiling use the lower
-    4 mrad preload so the transition command does not eject the cube.  Speeds
-    between those two calibrated points taper continuously: a one-sample
-    threshold crossing must not halve the preload while an otherwise admitted
-    capture is settling.  This changes only the hold target after capture
-    admission; force limits and grasp-success evidence remain unchanged.
+    Exact-mesh captures need the validated 8 mrad preload to keep bilateral
+    contact.  The independent capture-speed gate already rejects a moving
+    enclosure above 2 mm/s, so the default hold must not weaken again inside
+    that admitted window. Immutable outer-workspace evidence showed the former
+    4 mrad moving endpoint entering BILATERAL_SETTLE correctly, then shedding a
+    finger before force control could recover.  The taper remains configurable
+    for explicit experiments; force limits and grasp-success evidence remain
+    unchanged.
     """
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
