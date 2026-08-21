@@ -201,9 +201,10 @@ def test_so101_cube_contact_handoff_uses_first_filtered_finger_contact():
 
 
 def test_so101_pre_capture_recenter_limit_expands_formal_cube_corridor():
-    assert so101_pre_capture_recenter_limit(0.03) == pytest.approx(0.008)
-    assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.008)
+    assert so101_pre_capture_recenter_limit(0.03) == pytest.approx(0.009)
+    assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.012)
     assert so101_pre_capture_recenter_limit(0.02) == pytest.approx(0.006)
+    assert so101_pre_capture_recenter_limit(0.05) == pytest.approx(0.012)
 
 
 def test_so101_capture_contact_loss_grace_is_size_aware():

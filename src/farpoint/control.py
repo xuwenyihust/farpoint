@@ -121,14 +121,17 @@ def so101_cube_contact_handoff(
 def so101_pre_capture_recenter_limit(
     object_width_m,
     *,
-    maximum_correction_m=0.008,
+    maximum_correction_m=0.012,
     width_fraction=0.30,
 ):
     """Bound capture search while leaving room for the opposite fingertip.
 
-    The former 4 mm bound saturated on every uncovered mass variation while
-    the cube moved 6--10 mm under unilateral contact.  Permit at most 30% of
-    the object width, capped at 8 mm, only before bilateral capture.
+    The former 8 mm bound saturated on both Cartesian axes in the immutable
+    v0.2.0 outer-workspace trace while a 40 mm cube retained unilateral
+    contact for the entire close phase.  Permit at most 30% of the object
+    width, capped at 12 mm, only before bilateral capture.  The existing
+    0.125 mm/tick servo rate and all independent contact/safety gates remain
+    unchanged.
     """
     width = float(object_width_m)
     maximum = float(maximum_correction_m)
