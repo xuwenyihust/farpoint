@@ -274,14 +274,20 @@ def capture_preload_force_floor(
 
 
 def capture_admission_retention_fraction(object_width_m: float | None) -> float:
-    """Return the evidence-bounded capture floor fraction for object width."""
+    """Return the evidence-bounded capture floor fraction for object width.
+
+    Large cubes require the same 90% force floor used by bilateral settle.
+    Admitting a 40 mm capture below that floor can transition away from the
+    active slow-close/recenter controller while one fingertip is already
+    losing contact.  The 30 mm hysteresis remains unchanged.
+    """
     if object_width_m is None:
         return 0.25
     width = float(object_width_m)
     if not np.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     interpolation = float(np.clip((width - 0.03) / 0.01, 0.0, 1.0))
-    return 0.25 + 0.50 * interpolation
+    return 0.25 + 0.65 * interpolation
 
 
 def unilateral_contact_requires_recenter(

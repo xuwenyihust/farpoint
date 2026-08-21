@@ -135,8 +135,35 @@ def test_capture_preload_force_floor_tracks_admission_threshold():
 def test_capture_admission_retention_fraction_is_size_aware():
     assert capture_admission_retention_fraction(None) == pytest.approx(0.25)
     assert capture_admission_retention_fraction(0.03) == pytest.approx(0.25)
-    assert capture_admission_retention_fraction(0.035) == pytest.approx(0.50)
-    assert capture_admission_retention_fraction(0.04) == pytest.approx(0.75)
+    assert capture_admission_retention_fraction(0.035) == pytest.approx(0.575)
+    assert capture_admission_retention_fraction(0.04) == pytest.approx(0.90)
+
+
+def test_large_cube_capture_waits_for_settle_force_floor():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        object_width_m=0.04,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(3):
+        decision = machine.step(
+            _evidence(left_force_n=1.79, right_force_n=2.64)
+        )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+
+    for _ in range(3):
+        decision = machine.step(
+            _evidence(left_force_n=1.80, right_force_n=2.64)
+        )
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
 
 
 @pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
