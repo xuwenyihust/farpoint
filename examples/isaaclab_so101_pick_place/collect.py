@@ -465,6 +465,23 @@ def _cube_contact_forces(sensors) -> tuple[float, float]:
     return forces[0], forces[1]
 
 
+def _cube_contact_force_vectors(sensors) -> tuple[np.ndarray, np.ndarray]:
+    """Return peak cube-filtered force vectors for both finger sensors."""
+    vectors = []
+    for sensor in sensors:
+        peak = np.zeros(3, dtype=np.float32)
+        if hasattr(sensor.data, "force_matrix_w"):
+            candidates = sensor.data.force_matrix_w.reshape(-1, 3)
+            norms = torch.linalg.vector_norm(candidates, dim=-1)
+            peak = _numpy(candidates[int(torch.argmax(norms).item())]).astype(
+                np.float32
+            )
+        vectors.append(peak)
+    if len(vectors) != 2:
+        raise RuntimeError(f"expected two SO-101 finger sensors, got {len(vectors)}")
+    return vectors[0], vectors[1]
+
+
 def _body_index(robot) -> int:
     indexes, _names = robot.find_bodies("gripper")
     if len(indexes) != 1:
@@ -2282,9 +2299,9 @@ def run_attempt(
         recenter_forces = balanced_forces
         contact_geometry_valid = False
         if balanced_forces is not None:
+            contact_force_vectors = _cube_contact_force_vectors(contact)
             contact_geometry_valid = contact_force_vectors_opposed(
-                contact["sensors"][0]["cube_filtered_vector_n"],
-                contact["sensors"][1]["cube_filtered_vector_n"],
+                *contact_force_vectors,
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         closing_alignment = phase is OraclePhase.CLOSE and (
