@@ -934,6 +934,7 @@ def advance_so101_slow_close_target(
     closed_position,
     min_force=2.0,
     max_force=20.0,
+    unilateral_backoff_fraction=0.60,
     close_step=0.001,
     backoff_step=0.002,
     capture_admissible=True,
@@ -950,7 +951,16 @@ def advance_so101_slow_close_target(
     closed_value = float(closed_position)
     previous_target = _clamp(previous_command_target, closed_value, open_value)
     forces = (float(left_force), float(right_force))
-    unilateral_backoff_force = 0.5 * float(max_force)
+    backoff_fraction = float(unilateral_backoff_fraction)
+    if not math.isfinite(backoff_fraction) or not 0.0 < backoff_fraction < 1.0:
+        raise ValueError("unilateral_backoff_fraction must be between zero and one")
+    # The former 50% threshold formed a deterministic limit cycle on the
+    # outer, high-yaw 40 mm pose: a single finger oscillated at 9.6--10.0 N
+    # while the jaw stayed near 1.12 rad for the entire slow-close budget.
+    # Permit the quasi-static close to cross that geometry at 60% of the
+    # unchanged force ceiling.  This remains well below both the 20 N
+    # controller ceiling and the independent 30 N validation gate.
+    unilateral_backoff_force = backoff_fraction * float(max_force)
     if min(forces) < float(min_force) and max(forces) >= unilateral_backoff_force:
         return {
             "position": _clamp(

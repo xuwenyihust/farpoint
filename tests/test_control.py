@@ -915,8 +915,8 @@ def test_so101_slow_close_force_actions_preserve_limits():
     assert -0.1746 <= high_force["position"] <= 1.7453
 
 
-def test_so101_slow_close_backs_off_before_unilateral_force_limit():
-    update = advance_so101_slow_close_target(
+def test_so101_slow_close_crosses_old_unilateral_limit_cycle_then_backs_off():
+    crossing = advance_so101_slow_close_target(
         0.40,
         0.405,
         10.0,
@@ -926,8 +926,33 @@ def test_so101_slow_close_backs_off_before_unilateral_force_limit():
         min_force=2.0,
         max_force=20.0,
     )
+    backoff = advance_so101_slow_close_target(
+        crossing["position"],
+        0.404,
+        12.0,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        min_force=2.0,
+        max_force=20.0,
+    )
 
-    assert update == {"position": pytest.approx(0.407), "action": "backoff"}
+    assert crossing == {"position": pytest.approx(0.399), "action": "close"}
+    assert backoff == {"position": pytest.approx(0.406), "action": "backoff"}
+
+
+@pytest.mark.parametrize("fraction", (0.0, 1.0, float("nan")))
+def test_so101_slow_close_rejects_invalid_unilateral_backoff_fraction(fraction):
+    with pytest.raises(ValueError, match="unilateral_backoff_fraction"):
+        advance_so101_slow_close_target(
+            0.40,
+            0.405,
+            0.0,
+            0.0,
+            open_position=1.7453,
+            closed_position=-0.1746,
+            unilateral_backoff_fraction=fraction,
+        )
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():
