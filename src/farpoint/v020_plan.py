@@ -22,6 +22,7 @@ PLAN_SCHEMA = "farpoint.so101-v020-plan.v1"
 PLAN_MODES = {"pad-pilot", "combined-pilot", "formal"}
 AUTHORIZATION_SCHEMA = "farpoint.so101-v020-pilot-authorization.v1"
 YAW_STRATA = ("yaw00_18", "yaw18_36", "yaw36_54", "yaw54_72", "yaw72_90")
+PILOT_ATTEMPT_BUDGETS = {"pad-pilot": 18, "combined-pilot": 45}
 
 
 def canonical_sha256(value: Any) -> str:
@@ -186,7 +187,13 @@ def _campaign(config: dict[str, Any], *, plan_id: str, cells: list[tuple[str, st
         "quota_identity_fields": ["object_variant_id", "target_profile_id", "camera_profile_id", "split"],
         "quotas": quotas,
         "variation_contract": {"config_schema": CONFIG_SCHEMA, "config_sha256": canonical_sha256(config), "sampler_version": config["sampler"]["sampler_version"], "frozen_semantics": True},
-        "attempt_policy": {"maximum_attempts_per_variation": 3, "global_attempt_limit": (450 if mode == "formal" else target_count), "replacement_policy": "same_quota_new_variation_seed"},
+        "attempt_policy": {
+            "maximum_attempts_per_variation": 3,
+            "global_attempt_limit": (
+                450 if mode == "formal" else PILOT_ATTEMPT_BUDGETS[mode]
+            ),
+            "replacement_policy": "same_quota_new_variation_seed",
+        },
         "watchdog_policy": {"path": config["runtime_watchdog"]},
         "rollout_holdout": {"scene_count": 20, "disjoint": True},
     })
@@ -287,7 +294,14 @@ def build_v020_plan(
         plan["collection"] = {"kind": "self_healing_campaign_segment", "required_successes": 300, "maximum_attempts": 450, "maximum_attempts_per_variation": 3, "fresh_nominal_only": True, "excluded_lineages": ["farpoint-so101-v010", "farpoint-so101-v011", "farpoint-so101-v012", "farpoint-so101-v013", "farpoint-so101-v014"]}
         plan["pilot_authorization"] = deepcopy(pilot_authorization)
     else:
-        plan["pilot"] = {"kind": f"v020_{mode.replace('-', '_')}", "episode_contract": "farpoint.episode.v4", "required_successes": len(trials), "maximum_attempts": len(trials), "trial_ids": [row["trial_id"] for row in trials], "pad_dimensions_m": dimensions}
+        plan["pilot"] = {
+            "kind": f"v020_{mode.replace('-', '_')}",
+            "episode_contract": "farpoint.episode.v4",
+            "required_successes": len(trials),
+            "maximum_attempts": PILOT_ATTEMPT_BUDGETS[mode],
+            "trial_ids": [row["trial_id"] for row in trials],
+            "pad_dimensions_m": dimensions,
+        }
     plan["coverage"] = {"cells": len(cells), "episodes": len(trials), "objects": dict(Counter(row["object_variant_id"] for row in trials)), "targets": dict(Counter(row["target_profile_id"] for row in trials)), "cameras": dict(Counter(row["camera_profile_id"] for row in trials)), "splits": dict(Counter(row["split"] for row in trials))}
     plan["plan_sha256"] = canonical_sha256(plan)
     return plan
@@ -517,6 +531,10 @@ def build_v020_continuation_plan(
         "global_attempts_remaining": int(remaining_global_attempts),
         "fresh_nominal_only": True,
     }
+    # A continuation is a self-healing campaign segment, even when its source
+    # was a pilot. Retaining the source pilot profile makes the generic runner
+    # re-apply the original fixed-size pilot gate to the uncovered subset.
+    plan.pop("pilot", None)
     plan["continuation"] = {
         "segment_id": segment_id,
         "parent_manifest_sha256": parent_manifest_sha256,

@@ -97,8 +97,11 @@ def test_v020_formal_plan_freezes_exact_cells_splits_and_continuous_lhs():
     assert manifest["maximum_attempts"] == 450
 
 
-def test_v020_pilots_freeze_12_and_30_of_30_gates():
-    for mode, expected in (("pad-pilot", 12), ("combined-pilot", 30)):
+def test_v020_pilots_freeze_cell_successes_with_retry_budgets():
+    for mode, expected, maximum in (
+        ("pad-pilot", 12, 18),
+        ("combined-pilot", 30, 45),
+    ):
         plan = build_v020_plan(
             _config(), project_root=ROOT, plan_id=f"v020-{mode}", mode=mode
         )
@@ -107,7 +110,8 @@ def test_v020_pilots_freeze_12_and_30_of_30_gates():
             plan, collection_id=plan["plan_id"], git_commit="b" * 40
         )
         assert manifest["required_successes"] == expected
-        assert manifest["maximum_attempts"] == expected
+        assert manifest["maximum_attempts"] == maximum
+        assert manifest["completion_policy"] == "success_target"
 
 
 def test_v020_plan_is_deterministic_and_records_target_camera_provenance():
@@ -173,3 +177,41 @@ def test_v020_replacement_changes_jitter_but_preserves_quota_and_lhs_strata():
     )
     assert manifest["required_successes"] == 1
     assert manifest["maximum_attempts"] == 3
+
+
+def test_v020_pilot_continuation_drops_source_pilot_profile():
+    config = _config()
+    plan = build_v020_plan(
+        config,
+        project_root=ROOT,
+        plan_id="v020-combined-pilot-continuation",
+        mode="combined-pilot",
+    )
+    source = plan["trials"][10]
+    continuation = build_v020_continuation_plan(
+        config,
+        project_root=ROOT,
+        source_plan=plan,
+        requests=[
+            {
+                "request_kind": "carryover",
+                "source_variation_id": source["variation_id"],
+                "replacement_index": 0,
+                "variation_seed": source["seed"],
+                "prior_attempt_count": 1,
+                "remaining_attempt_count": 2,
+            }
+        ],
+        segment_id="segment-001",
+        parent_manifest_sha256="f" * 64,
+        remaining_global_attempts=15,
+    )
+
+    assert "pilot" not in continuation
+    manifest = create_manifest(
+        continuation,
+        collection_id="v020-combined-pilot-segment-001",
+        git_commit="d" * 40,
+    )
+    assert manifest["required_successes"] == 1
+    assert manifest["maximum_attempts"] == 2

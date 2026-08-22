@@ -206,9 +206,17 @@ def create_pilot_manifest(
     kind = pilot.get("kind")
     if kind in {"v020_pad_pilot", "v020_combined_pilot"}:
         expected = 12 if kind == "v020_pad_pilot" else 30
+        expected_maximum = 18 if kind == "v020_pad_pilot" else 45
         frozen_ids = pilot.get("trial_ids") or []
-        if len(trials) != expected or maximum_attempts != expected or required_successes != expected:
-            raise ValueError(f"{kind} must freeze a {expected}-of-{expected} gate")
+        if (
+            len(trials) != expected
+            or maximum_attempts != expected_maximum
+            or required_successes != expected
+        ):
+            raise ValueError(
+                f"{kind} must freeze {expected} cell successes within "
+                f"{expected_maximum} attempts"
+            )
         if [trial["trial_id"] for trial in trials] != frozen_ids:
             raise ValueError("v0.2.0 pilot ordering does not match its frozen ids")
         if any(trial.get("target_profile_id") is None or trial.get("camera_profile_id") is None for trial in trials):
@@ -220,7 +228,7 @@ def create_pilot_manifest(
             required_successes=required_successes,
             maximum_attempts=maximum_attempts,
             release_status="PILOT",
-            completion_policy="all_planned_trials",
+            completion_policy="success_target",
             stop_when_success_target_unreachable=True,
         )
     if kind == "v010_integration_pilot":
