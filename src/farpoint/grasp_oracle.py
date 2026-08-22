@@ -386,31 +386,35 @@ def capture_hold_preload_for_force(
     right_force_n: float,
     *,
     proof_entry_force_n: float,
+    overload_margin_n: float = 1.0,
     retention_preload_rad: float = 0.002,
     buildup_preload_rad: float = 0.008,
 ) -> float:
     """Select capture preload from the already-measured bilateral force.
 
     A capture below the independent proof-entry floor still needs the full
-    buildup preload.  Once both fingers already exceed that floor, continuing
-    to chase the same 8 mrad error can over-compress an exact-mesh enclosure;
-    retain only the original bounded 2 mrad hold while the unchanged force
-    controller and proof gates remain authoritative.
+    buildup preload.  Even a balanced capture only barely above that floor can
+    shed both contacts if the hold relaxes too early.  Reduce to the original
+    bounded 2 mrad retention hold only when both fingers are proof-ready *and*
+    the stronger finger exceeds the floor by an evidence-bounded overload
+    margin; the unchanged force controller and proof gates remain authoritative.
     """
-    left_force, right_force, proof_floor, retention_preload, buildup_preload = (
+    values = (
         float(left_force_n),
         float(right_force_n),
         float(proof_entry_force_n),
+        float(overload_margin_n),
         float(retention_preload_rad),
         float(buildup_preload_rad),
     )
-    values = (
+    (
         left_force,
         right_force,
         proof_floor,
+        overload_margin,
         retention_preload,
         buildup_preload,
-    )
+    ) = values
     if any(not np.isfinite(value) or value < 0.0 for value in values):
         raise ValueError("capture forces, floor, and preloads must be non-negative")
     if proof_floor == 0.0:
@@ -420,6 +424,7 @@ def capture_hold_preload_for_force(
     return (
         retention_preload
         if min(left_force, right_force) >= proof_floor
+        and max(left_force, right_force) >= proof_floor + overload_margin
         else buildup_preload
     )
 

@@ -3218,11 +3218,12 @@ def run_attempt(
             # even one 120 Hz step can turn bilateral contact into a one-sided
             # squeeze on the rotary jaw.
             # A zero-error position target lets contact force relax to zero
-            # immediately. Use the full buildup preload only while either
-            # finger is still below the independent proof-entry floor. The
-            # immutable v0.2.0 c22 trace entered with 6.1/4.5 N, then the
-            # unnecessary 8 mrad chase over-compressed the exact mesh and
-            # shed the moving finger. Force control and all proof gates remain
+            # immediately. Use the full buildup preload while either finger
+            # is below the independent proof-entry floor or the stronger side
+            # has less than 1 N overload margin. The immutable v0.2.0 c22
+            # trace entered around 5.4/4.3 N and was over-compressed by the
+            # 8 mrad chase; c26 entered around 4.4/4.0 N and lost both contacts
+            # when reduced to 2 mrad. Force control and all proof gates remain
             # unchanged after this one-time capture decision.
             grasp_jaw_hold = rotary_jaw_capture_hold_target(
                 float(current[5].item()),
