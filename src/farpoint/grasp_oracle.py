@@ -95,6 +95,7 @@ def advance_proof_lift_command(
     current_height_m: float,
     *,
     just_armed: bool,
+    contact_retained: bool = True,
     increment_m: float = 0.000015625,
     maximum_height_m: float = 0.010,
 ) -> tuple[np.ndarray, float]:
@@ -117,7 +118,17 @@ def advance_proof_lift_command(
         raise ValueError("proof-lift increment and maximum must be positive")
     if current_height_m > maximum_height_m:
         raise ValueError("current proof-lift height exceeds the maximum")
-    next_height = min(maximum_height_m, current_height_m + increment_m)
+    if not isinstance(contact_retained, bool):
+        raise ValueError("contact_retained must be a boolean")
+    # The state machine permits a short, bounded contact-loss recovery window.
+    # Do not make that recovery chase a moving Z target: hold the accumulated
+    # proof height until bilateral contact is restored, then resume the same
+    # ramp.  The physical proof requirement and recovery timeout are unchanged.
+    next_height = (
+        min(maximum_height_m, current_height_m + increment_m)
+        if contact_retained
+        else current_height_m
+    )
     return command_base, float(next_height)
 
 

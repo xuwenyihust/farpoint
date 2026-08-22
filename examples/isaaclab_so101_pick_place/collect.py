@@ -2747,6 +2747,7 @@ def run_attempt(
                     _numpy(current),
                     verify_lift_height,
                     just_armed=just_armed_proof_lift,
+                    contact_retained=bilateral_capture,
                 )
             target = grasp_hold_pose + np.asarray((0.0, 0.0, verify_lift_height))
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw

@@ -413,6 +413,45 @@ def test_proof_lift_rebases_once_then_preserves_accumulated_command():
     assert height == pytest.approx(0.00003125)
 
 
+def test_proof_lift_freezes_height_during_bounded_contact_recovery():
+    commanded = np.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    measured = commanded - 0.01
+
+    held, height = advance_proof_lift_command(
+        commanded,
+        measured,
+        0.00125,
+        just_armed=False,
+        contact_retained=False,
+    )
+
+    assert held == pytest.approx(commanded)
+    assert height == pytest.approx(0.00125)
+
+    resumed, height = advance_proof_lift_command(
+        held,
+        measured,
+        height,
+        just_armed=False,
+        contact_retained=True,
+    )
+
+    assert resumed == pytest.approx(commanded)
+    assert height == pytest.approx(0.001265625)
+
+
+@pytest.mark.parametrize("value", (None, 0, 1, "yes"))
+def test_proof_lift_rejects_non_boolean_contact_retained(value):
+    with pytest.raises(ValueError, match="contact_retained"):
+        advance_proof_lift_command(
+            np.zeros(6),
+            np.zeros(6),
+            0.0,
+            just_armed=False,
+            contact_retained=value,
+        )
+
+
 def test_proof_lift_uses_tighter_contact_constrained_joint_step_limit():
     assert contact_constrained_joint_step_limit(
         0.005, proof_lift_armed=False
