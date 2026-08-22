@@ -18,6 +18,22 @@ def so101_capture_admission_retention_fraction(object_width_m=None):
     return 0.25 + 0.65 * interpolation
 
 
+def so101_proof_entry_force_floor(object_width_m):
+    """Return the size-aware bilateral preload required before proof lift.
+
+    The 30 mm exact mesh has successful immutable captures around 3.2--3.6 N
+    per finger, while the 40 mm cube can eject when proof starts with one side
+    at 3.82 N and the force controller is still closing.  Interpolate between
+    those evidence-bounded 3 N and 4 N floors so capture persistence remains
+    independent from the stronger contact-bound motion gate.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 3.0 + interpolation
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 

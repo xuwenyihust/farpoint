@@ -34,6 +34,7 @@ from farpoint.control import (
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_post_capture_recenter_step,
+    so101_proof_entry_force_floor,
     so101_pre_capture_recenter_limit,
     so101_reset_support_is_stable,
     tactile_contact_hold_target,
@@ -102,6 +103,20 @@ def test_so101_capture_admission_floor_is_shared_across_cube_sizes():
     assert so101_capture_admission_retention_fraction(0.03) == pytest.approx(0.25)
     assert so101_capture_admission_retention_fraction(0.035) == pytest.approx(0.575)
     assert so101_capture_admission_retention_fraction(0.04) == pytest.approx(0.90)
+
+
+def test_so101_proof_entry_force_floor_is_size_aware():
+    assert so101_proof_entry_force_floor(0.03) == pytest.approx(3.0)
+    assert so101_proof_entry_force_floor(0.035) == pytest.approx(3.5)
+    assert so101_proof_entry_force_floor(0.04) == pytest.approx(4.0)
+    assert so101_proof_entry_force_floor(0.02) == pytest.approx(3.0)
+    assert so101_proof_entry_force_floor(0.05) == pytest.approx(4.0)
+
+
+@pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
+def test_so101_proof_entry_force_floor_rejects_invalid_width(width):
+    with pytest.raises(ValueError, match="finite and positive"):
+        so101_proof_entry_force_floor(width)
 
 
 @pytest.mark.parametrize(

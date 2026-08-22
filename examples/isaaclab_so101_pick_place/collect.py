@@ -195,6 +195,7 @@ from farpoint.control import (  # noqa: E402
     so101_capture_admission_ready,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_proof_entry_force_floor,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_adaptive_pre_capture_recenter_limit,
@@ -2119,15 +2120,13 @@ def run_attempt(
         # around 0.1--1.9 N before being rejected by the former 2 N floor.
         minimum_contact_force_n=0.10,
         capture_contact_force_n=2.0,
-        # Do not begin the physical proof while one finger is below the same
-        # 4 N preload that the capture-validation controller is still trying
-        # to restore.  Immutable v0.2.0 c08 evidence entered proof on a 3.82 N
-        # decaying side and ejected the 40 mm cube; the same seed's successful
-        # trace began after both sides exceeded 4 N.  This changes only proof
-        # entry readiness, not persistence, force ceilings, or the 5 mm proof.
-        minimum_proof_entry_force_n=capture_retention_force_floor(
-            0.0,
-            capture_validation_active=True,
+        # Require an evidence-bounded, size-aware bilateral preload before
+        # contact-bound motion. A fixed 4 N floor correctly blocked the 40 mm
+        # c08 ejection but also rejected a stable 30 mm capture at 3.61 N.
+        # This changes only proof entry readiness, not persistence, force
+        # ceilings, or the independent 5 mm physical proof.
+        minimum_proof_entry_force_n=so101_proof_entry_force_floor(
+            object_spec["dimensions_m"][0],
         ),
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
