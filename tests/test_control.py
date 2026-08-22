@@ -272,12 +272,12 @@ def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation
     ) == pytest.approx(0.01225)
 
 
-def test_so101_capture_contact_loss_grace_is_size_aware():
+def test_so101_capture_contact_loss_grace_allows_bounded_recenter_to_finish():
     assert so101_capture_contact_loss_grace_s(0.03) == pytest.approx(0.30)
-    assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.25)
-    assert so101_capture_contact_loss_grace_s(0.04) == pytest.approx(0.20)
+    assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.30)
+    assert so101_capture_contact_loss_grace_s(0.04) == pytest.approx(0.30)
     assert so101_capture_contact_loss_grace_s(0.02) == pytest.approx(0.30)
-    assert so101_capture_contact_loss_grace_s(0.05) == pytest.approx(0.20)
+    assert so101_capture_contact_loss_grace_s(0.05) == pytest.approx(0.30)
 
 
 def test_so101_post_capture_recenter_reaches_bound_before_shortest_grace_expires():
@@ -285,7 +285,7 @@ def test_so101_post_capture_recenter_reaches_bound_before_shortest_grace_expires
 
     assert step == pytest.approx(0.000125)
     assert step * 16 == pytest.approx(0.002)
-    assert 16 < 0.20 * 120
+    assert 16 < so101_capture_contact_loss_grace_s(0.04) * 120
 
 
 @pytest.mark.parametrize(
