@@ -33,6 +33,7 @@ from farpoint.control import (
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_cube_contact_handoff,
+    so101_imbalanced_capture_close_step,
     so101_minimum_safe_descent_fraction,
     so101_post_capture_recenter_step,
     so101_proof_entry_force_floor,
@@ -112,6 +113,34 @@ def test_so101_proof_entry_force_floor_is_size_aware():
     assert so101_proof_entry_force_floor(0.04) == pytest.approx(4.0)
     assert so101_proof_entry_force_floor(0.02) == pytest.approx(3.0)
     assert so101_proof_entry_force_floor(0.05) == pytest.approx(4.0)
+
+
+def test_so101_imbalanced_capture_close_step_tapers_to_large_cube_pause():
+    assert so101_imbalanced_capture_close_step(0.03) == pytest.approx(0.00025)
+    assert so101_imbalanced_capture_close_step(0.035) == pytest.approx(0.000125)
+    assert so101_imbalanced_capture_close_step(0.04) == pytest.approx(0.0)
+    assert so101_imbalanced_capture_close_step(0.02) == pytest.approx(0.00025)
+    assert so101_imbalanced_capture_close_step(0.05) == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize(
+    ("object_width_m", "balanced_close_step"),
+    (
+        (0.0, 0.0005),
+        (float("nan"), 0.0005),
+        (0.03, -0.0005),
+        (0.03, float("nan")),
+    ),
+)
+def test_so101_imbalanced_capture_close_step_rejects_invalid_contract(
+    object_width_m,
+    balanced_close_step,
+):
+    with pytest.raises(ValueError):
+        so101_imbalanced_capture_close_step(
+            object_width_m,
+            balanced_close_step=balanced_close_step,
+        )
 
 
 @pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))

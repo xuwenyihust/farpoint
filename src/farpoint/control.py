@@ -34,6 +34,29 @@ def so101_proof_entry_force_floor(object_width_m):
     return 3.0 + interpolation
 
 
+def so101_imbalanced_capture_close_step(
+    object_width_m,
+    *,
+    balanced_close_step=0.0005,
+):
+    """Return a bounded jaw recovery step for a weak imbalanced capture.
+
+    A 30 mm cube can enter static hold with a rigid bilateral enclosure whose
+    forces remain below proof-entry preload. Fully pausing jaw squeeze then
+    deadlocks the independent proof gate. Permit half of the ordinary settle
+    step for the smaller cube, tapering to zero at 40 mm where immutable
+    evidence shows that squeezing an off-centre enclosure can eject the cube.
+    """
+    width = float(object_width_m)
+    close_step = float(balanced_close_step)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(close_step) or close_step < 0.0:
+        raise ValueError("balanced_close_step must be finite and non-negative")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return close_step * 0.5 * (1.0 - interpolation)
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 
