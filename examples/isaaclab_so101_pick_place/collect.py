@@ -2373,11 +2373,14 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         )
-        # A bilateral force imbalance pauses jaw squeeze, but must not reuse
-        # the pre-capture aperture calibration as a Cartesian recenter target.
-        # The physical capture entering BILATERAL_SETTLE is the new reference;
-        # moving it toward the old calibration peeled the weak finger off the
-        # outer-workspace 40 mm cube in immutable r28 evidence.
+        # A bilateral force imbalance pauses jaw squeeze.  Pre-capture
+        # calibration remains useful while CLOSE is still finding the
+        # enclosure, but is not a valid post-capture recenter reference.  Once
+        # BILATERAL_SETTLE records a physical capture, recover that measured
+        # object/gripper offset through settle and proof lift.  The immutable
+        # v0.2.0 c22 trace showed that chasing the old calibration after proof
+        # contact loss followed the sliding cube for 2.16 mm without restoring
+        # the weak finger.
         capture_recenter_required = unilateral_recenter
         if (
             grasp_hold_pose is not None
@@ -2393,7 +2396,7 @@ def run_attempt(
                 and not contact_geometry_valid
             )
         ):
-            if closing_alignment or not contact_geometry_valid:
+            if closing_alignment:
                 # A finger-side label alone does not determine which world
                 # direction centers this rotated, long-finger aperture.  Use
                 # simulator truth and the measured gripper orientation to
@@ -2435,6 +2438,32 @@ def run_attempt(
                 recenter = {
                     "position": aligned["position"],
                     "active": float(np.linalg.norm(aligned["error"][:2])) > 1e-6,
+                }
+            elif capture_object_minus_grasp is not None:
+                object_world = _numpy(
+                    scene[active_name].data.root_pos_w[0, :3]
+                )
+                # This is an XY enclosure repair, not a second lift command.
+                # Project the object's Z onto the current proof-lift base so
+                # the relative servo cannot fold measured proof motion back
+                # into grasp_hold_pose before verify_lift_height is added.
+                planar_object_world = object_world.copy()
+                planar_object_world[2] = (
+                    float(capture_object_minus_grasp[2])
+                    + float(grasp_hold_pose[2])
+                )
+                aligned = relative_object_grasp_servo_target(
+                    planar_object_world,
+                    capture_object_minus_grasp,
+                    grasp_hold_pose,
+                    grasp_hold_nominal_pose,
+                    max_step=so101_post_capture_recenter_step(),
+                    max_correction=(0.002, 0.002, 0.0),
+                )
+                recenter = {
+                    "position": aligned["position"],
+                    "active": float(np.linalg.norm(aligned["error"][:2]))
+                    > 1e-6,
                 }
             else:
                 jaw_center = _numpy(

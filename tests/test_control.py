@@ -272,12 +272,12 @@ def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation
     ) == pytest.approx(0.01225)
 
 
-def test_so101_capture_contact_loss_grace_allows_bounded_recenter_to_finish():
+def test_so101_capture_contact_loss_grace_is_size_aware():
     assert so101_capture_contact_loss_grace_s(0.03) == pytest.approx(0.30)
-    assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.30)
-    assert so101_capture_contact_loss_grace_s(0.04) == pytest.approx(0.30)
+    assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.25)
+    assert so101_capture_contact_loss_grace_s(0.04) == pytest.approx(0.20)
     assert so101_capture_contact_loss_grace_s(0.02) == pytest.approx(0.30)
-    assert so101_capture_contact_loss_grace_s(0.05) == pytest.approx(0.30)
+    assert so101_capture_contact_loss_grace_s(0.05) == pytest.approx(0.20)
 
 
 def test_so101_post_capture_recenter_reaches_bound_before_shortest_grace_expires():
@@ -285,7 +285,7 @@ def test_so101_post_capture_recenter_reaches_bound_before_shortest_grace_expires
 
     assert step == pytest.approx(0.000125)
     assert step * 16 == pytest.approx(0.002)
-    assert 16 < so101_capture_contact_loss_grace_s(0.04) * 120
+    assert 16 < 0.20 * 120
 
 
 @pytest.mark.parametrize(
@@ -1107,6 +1107,36 @@ def test_relative_object_grasp_servo_recovers_yaw30_static_hold_drift():
         result["position"][axis] - measured_grasp[axis] for axis in range(3)
     ]
     assert all(value > 0.0 for value in correction)
+    assert sum(value * value for value in correction) ** 0.5 == pytest.approx(
+        0.000125
+    )
+
+
+def test_relative_object_grasp_servo_recovers_c22_physical_capture_offset():
+    captured_object = [0.1854020655, -0.0461667143, 0.0521944426]
+    captured_grasp = [0.1527982503, -0.1056722030, 0.0845712945]
+    capture_offset = [
+        captured_object[axis] - captured_grasp[axis] for axis in range(3)
+    ]
+    measured_object = [0.1868820041, -0.0458244756, 0.0525271036]
+    planar_object = measured_object.copy()
+    planar_object[2] = capture_offset[2] + captured_grasp[2]
+
+    result = relative_object_grasp_servo_target(
+        planar_object,
+        capture_offset,
+        captured_grasp,
+        captured_grasp,
+        max_step=0.000125,
+        max_correction=[0.002, 0.002, 0.0],
+    )
+
+    correction = [
+        result["position"][axis] - captured_grasp[axis] for axis in range(3)
+    ]
+    assert correction[0] > 0.0
+    assert abs(correction[0]) > abs(correction[1])
+    assert correction[2] == pytest.approx(0.0)
     assert sum(value * value for value in correction) ** 0.5 == pytest.approx(
         0.000125
     )
