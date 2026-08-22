@@ -399,7 +399,7 @@ def unilateral_contact_requires_recenter(
     )
 
 
-def captured_force_imbalance_requires_recenter(
+def captured_force_imbalance_requires_squeeze_pause(
     left_force_n: float,
     right_force_n: float,
     *,
@@ -411,11 +411,13 @@ def captured_force_imbalance_requires_recenter(
 
     Once both fingers contact the object, blindly increasing rotary-jaw preload
     can amplify an off-centre enclosure and eject the object.  Keep the force
-    evidence thresholds independent: this helper only selects the bounded
-    aperture-recenter controller while neither finger has reached proof-entry
-    preload and the weaker finger carries less than a fixed fraction of the
-    stronger finger.  A strong one-sided preload remains eligible for ordinary
-    force restoration.
+    evidence thresholds independent: this helper only selects a squeeze pause
+    while neither finger has reached proof-entry preload and the weaker finger
+    carries less than a fixed fraction of the stronger finger.  The caller
+    pauses rotary-jaw squeeze without moving the
+    just-measured Cartesian capture pose: pre-capture aperture calibration is
+    not a valid post-capture recenter target.  A strong one-sided preload
+    remains eligible for ordinary force restoration.
     """
     forces = (float(left_force_n), float(right_force_n))
     force_floor = float(minimum_force_n)

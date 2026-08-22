@@ -13,7 +13,7 @@ from farpoint.grasp_oracle import (
     contact_constrained_joint_step_limit,
     contact_force_vectors_opposed,
     capture_preload_force_floor,
-    captured_force_imbalance_requires_recenter,
+    captured_force_imbalance_requires_squeeze_pause,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
@@ -50,14 +50,14 @@ def test_control_schedule_records_exactly_30_hz_from_120_hz():
     assert schedule.steps_for_seconds(0.5) == 60
 
 
-def test_captured_force_imbalance_selects_recenter_only_for_bilateral_load():
-    assert captured_force_imbalance_requires_recenter(
+def test_captured_force_imbalance_pauses_squeeze_only_for_bilateral_load():
+    assert captured_force_imbalance_requires_squeeze_pause(
         2.18, 3.20, minimum_force_n=0.10, proof_entry_force_n=4.0
     )
-    assert not captured_force_imbalance_requires_recenter(
+    assert not captured_force_imbalance_requires_squeeze_pause(
         3.82, 5.66, minimum_force_n=0.10, proof_entry_force_n=4.0
     )
-    assert not captured_force_imbalance_requires_recenter(
+    assert not captured_force_imbalance_requires_squeeze_pause(
         0.0, 3.20, minimum_force_n=0.10, proof_entry_force_n=4.0
     )
 
@@ -82,7 +82,7 @@ def test_captured_force_imbalance_rejects_invalid_contract(kwargs):
     }
     arguments.update(kwargs)
     with pytest.raises(ValueError):
-        captured_force_imbalance_requires_recenter(**arguments)
+        captured_force_imbalance_requires_squeeze_pause(**arguments)
 
 
 def test_control_schedule_rejects_aliased_recording_rate():

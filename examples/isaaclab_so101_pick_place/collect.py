@@ -214,7 +214,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     cartesian_motion_command_base,
     capture_retention_force_floor,
     capture_preload_force_floor,
-    captured_force_imbalance_requires_recenter,
+    captured_force_imbalance_requires_squeeze_pause,
     contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
     contact_force_vectors_opposed,
@@ -2266,7 +2266,7 @@ def run_attempt(
         settling_force_imbalanced = bool(
             settling_capture
             and balanced_forces is not None
-            and captured_force_imbalance_requires_recenter(
+            and captured_force_imbalance_requires_squeeze_pause(
                 *balanced_forces,
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
                 proof_entry_force_n=grasp_machine.minimum_proof_entry_force_n,
@@ -2358,9 +2358,12 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         )
-        capture_recenter_required = bool(
-            unilateral_recenter or settling_force_imbalanced
-        )
+        # A bilateral force imbalance pauses jaw squeeze, but must not reuse
+        # the pre-capture aperture calibration as a Cartesian recenter target.
+        # The physical capture entering BILATERAL_SETTLE is the new reference;
+        # moving it toward the old calibration peeled the weak finger off the
+        # outer-workspace 40 mm cube in immutable r28 evidence.
+        capture_recenter_required = unilateral_recenter
         if (
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
