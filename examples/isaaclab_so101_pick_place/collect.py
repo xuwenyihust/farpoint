@@ -274,6 +274,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     so101_capture_aperture_reference,
     so101_capture_channel_direction_world,
     so101_level_capture_orientation_xyzw,
+    so101_pre_capture_recenter_aperture_reference,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -2095,6 +2096,12 @@ def run_attempt(
     )
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
+    pre_capture_recenter_aperture_reference = (
+        so101_pre_capture_recenter_aperture_reference(
+            approach_jaw,
+            object_spec["dimensions_m"][0],
+        )
+    )
     # Release above the raised target pad instead of driving the fingertips
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
@@ -2423,7 +2430,7 @@ def run_attempt(
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
                     live_gripper_pose,
-                    capture_object_in_gripper,
+                    pre_capture_recenter_aperture_reference,
                 )
                 desired_object_minus_grasp = object_world - desired_gripper
                 current_xy_correction = (
@@ -3392,6 +3399,9 @@ def run_attempt(
                 "approach_jaw_target_rad": approach_jaw,
                 "capture_aperture_reference_local_m": (
                     capture_object_in_gripper.tolist()
+                ),
+                "pre_capture_recenter_aperture_reference_local_m": (
+                    pre_capture_recenter_aperture_reference.tolist()
                 ),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),

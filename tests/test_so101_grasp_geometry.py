@@ -12,6 +12,7 @@ from farpoint.so101_grasp_geometry import (
     so101_capture_aperture_reference,
     so101_capture_channel_direction_world,
     so101_level_capture_orientation_xyzw,
+    so101_pre_capture_recenter_aperture_reference,
     transform_points_xyzw,
 )
 
@@ -74,6 +75,25 @@ def test_capture_aperture_reference_returns_copy_and_validates_joint_limit():
     for invalid in (-0.1747, 1.7454):
         with pytest.raises(ValueError, match="pinned USD limits"):
             so101_capture_aperture_reference(invalid)
+
+
+def test_pre_capture_recenter_reference_preserves_small_and_biases_large_cube():
+    base = so101_capture_aperture_reference(1.4)
+    small = so101_pre_capture_recenter_aperture_reference(1.4, 0.030)
+    middle = so101_pre_capture_recenter_aperture_reference(1.4, 0.035)
+    large = so101_pre_capture_recenter_aperture_reference(1.4, 0.040)
+
+    np.testing.assert_allclose(small, base)
+    assert middle[0] == pytest.approx((float(base[0]) + 0.016) / 2.0)
+    assert large[0] == pytest.approx(0.016)
+    np.testing.assert_allclose(middle[1:], base[1:])
+    np.testing.assert_allclose(large[1:], base[1:])
+
+
+@pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
+def test_pre_capture_recenter_reference_validates_width(width):
+    with pytest.raises(ValueError, match="object_width_m"):
+        so101_pre_capture_recenter_aperture_reference(1.4, width)
 
 
 def test_capture_channel_is_horizontal_normalized_and_perpendicular():

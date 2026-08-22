@@ -1047,7 +1047,7 @@ def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_of
     crossing = advance_so101_slow_close_target(
         0.40,
         0.405,
-        18.15,
+        16.93,
         0.0,
         open_position=1.7453,
         closed_position=-0.1746,
@@ -1057,7 +1057,7 @@ def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_of
     backoff = advance_so101_slow_close_target(
         crossing["position"],
         0.404,
-        19.0,
+        17.0,
         0.0,
         open_position=1.7453,
         closed_position=-0.1746,
