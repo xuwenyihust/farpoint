@@ -2556,9 +2556,17 @@ def run_attempt(
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 target = ee_position.copy()
                 # A single bilateral sample can be an edge-impact pulse.
-                # Continue closing until the shared state machine observes its
-                # full confirmation window at or below the capture-speed gate.
-                jaw = max(closed_jaw, float(current[5].item()) - 0.005)
+                # Continue closing with the same bounded preload used after
+                # capture until the shared state machine observes its full
+                # confirmation window at or below the capture-speed gate.
+                # Using a smaller confirmation-only preload produced a stable
+                # 40 mm limit cycle immediately around the unchanged 90%
+                # force floor, so six consecutive samples could never accrue.
+                jaw = rotary_jaw_capture_hold_target(
+                    float(current[5].item()),
+                    closed_position=closed_jaw,
+                    open_position=open_jaw,
+                )
                 gripper_control = "confirm_bilateral"
                 target = grasp_hold_pose
             else:
