@@ -205,7 +205,7 @@ def test_capture_hold_preload_uses_retention_only_after_proof_force():
         4.4,
         4.0,
         proof_entry_force_n=4.0,
-    ) == pytest.approx(0.008)
+    ) == pytest.approx(0.004)
     assert capture_hold_preload_for_force(
         6.1,
         3.9,
@@ -234,12 +234,13 @@ def test_capture_hold_preload_uses_retention_only_after_proof_force():
             "right_force_n": 4.0,
             "proof_entry_force_n": 4.0,
             "retention_preload_rad": 0.009,
+            "balanced_preload_rad": 0.0085,
             "buildup_preload_rad": 0.008,
         },
     ),
 )
 def test_capture_hold_preload_rejects_invalid_inputs(kwargs):
-    with pytest.raises(ValueError, match="non-negative|positive|must not exceed"):
+    with pytest.raises(ValueError, match="non-negative|positive|capture preloads"):
         capture_hold_preload_for_force(**kwargs)
 
 

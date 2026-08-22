@@ -388,6 +388,7 @@ def capture_hold_preload_for_force(
     proof_entry_force_n: float,
     overload_margin_n: float = 1.0,
     retention_preload_rad: float = 0.002,
+    balanced_preload_rad: float = 0.004,
     buildup_preload_rad: float = 0.008,
 ) -> float:
     """Select capture preload from the already-measured bilateral force.
@@ -397,7 +398,9 @@ def capture_hold_preload_for_force(
     shed both contacts if the hold relaxes too early.  Reduce to the original
     bounded 2 mrad retention hold only when both fingers are proof-ready *and*
     the stronger finger exceeds the floor by an evidence-bounded overload
-    margin; the unchanged force controller and proof gates remain authoritative.
+    margin.  A proof-ready capture below that overload boundary uses the 4 mrad
+    midpoint so it neither relaxes to zero nor chases the full buildup error;
+    the unchanged force controller and proof gates remain authoritative.
     """
     values = (
         float(left_force_n),
@@ -405,6 +408,7 @@ def capture_hold_preload_for_force(
         float(proof_entry_force_n),
         float(overload_margin_n),
         float(retention_preload_rad),
+        float(balanced_preload_rad),
         float(buildup_preload_rad),
     )
     (
@@ -413,20 +417,23 @@ def capture_hold_preload_for_force(
         proof_floor,
         overload_margin,
         retention_preload,
+        balanced_preload,
         buildup_preload,
     ) = values
     if any(not np.isfinite(value) or value < 0.0 for value in values):
         raise ValueError("capture forces, floor, and preloads must be non-negative")
     if proof_floor == 0.0:
         raise ValueError("proof_entry_force_n must be positive")
-    if retention_preload > buildup_preload:
-        raise ValueError("retention_preload_rad must not exceed buildup_preload_rad")
-    return (
-        retention_preload
-        if min(left_force, right_force) >= proof_floor
-        and max(left_force, right_force) >= proof_floor + overload_margin
-        else buildup_preload
-    )
+    if not retention_preload <= balanced_preload <= buildup_preload:
+        raise ValueError(
+            "capture preloads must satisfy retention <= balanced <= buildup"
+        )
+    proof_ready = min(left_force, right_force) >= proof_floor
+    if not proof_ready:
+        return buildup_preload
+    if max(left_force, right_force) >= proof_floor + overload_margin:
+        return retention_preload
+    return balanced_preload
 
 
 def capture_preload_force_floor(
