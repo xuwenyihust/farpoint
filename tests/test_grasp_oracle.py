@@ -708,6 +708,62 @@ def test_capture_confirmation_resets_after_dynamic_tick():
     assert decision.phase is GraspPhase.BILATERAL_SETTLE
 
 
+def test_capture_confirmation_rejects_translating_bilateral_enclosure():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(4):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.00495,
+                relative_speed_mps=0.001,
+            )
+        )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+
+    for _ in range(machine.capture_confirmation_steps):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.002,
+                relative_speed_mps=0.001,
+            )
+        )
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+    assert decision.rebase_relative_tracking
+
+
+def test_capture_confirmation_resets_after_translation_drift_tick():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    decision = machine.step(_evidence(relative_translation_error_m=0.00495))
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    decision = machine.step(_evidence(relative_translation_error_m=0.002))
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
 def test_capture_admission_blocks_force_only_corner_contact():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,

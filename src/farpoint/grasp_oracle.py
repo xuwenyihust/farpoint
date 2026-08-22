@@ -598,13 +598,16 @@ class ContactAwareGraspStateMachine:
             self._enter(GraspPhase.SLOW_CLOSE)
         elif self.phase is GraspPhase.SLOW_CLOSE:
             # Confirmation is a joint force-and-motion window. Counting
-            # dynamic bilateral samples and checking speed only on the final
-            # tick lets a moving edge impact accumulate the whole force
-            # window, pause momentarily, and enter capture before the cube is
-            # settled in the aperture. Any dynamic sample therefore resets
-            # the same consecutive confirmation counter.
+            # translating bilateral samples and checking motion only on the
+            # final tick lets a sliding edge enclosure accumulate the whole
+            # force window, pause momentarily, and enter capture before the
+            # cube is settled in the aperture. Both instantaneous speed and
+            # displacement since first bilateral contact must therefore stay
+            # bounded throughout the consecutive confirmation window.
             capture_stable = (
                 capture_bilateral
+                and evidence.relative_translation_error_m
+                <= self.maximum_relative_translation_error_m
                 and evidence.relative_speed_mps
                 <= self.maximum_capture_relative_speed_mps
             )
