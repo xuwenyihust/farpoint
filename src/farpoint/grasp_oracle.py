@@ -488,6 +488,7 @@ class ContactAwareGraspStateMachine:
     object_width_m: float | None = None
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
+    minimum_proof_entry_force_n: float | None = None
     capture_confirmation_s: float = 0.05
     maximum_capture_relative_speed_mps: float = 0.002
     maximum_force_n: float = 60.0
@@ -527,6 +528,17 @@ class ContactAwareGraspStateMachine:
         ):
             raise ValueError(
                 "capture contact force must be at least the minimum contact "
+                "force and below the maximum force"
+            )
+        if self.minimum_proof_entry_force_n is None:
+            self.minimum_proof_entry_force_n = self.minimum_contact_force_n
+        if not (
+            self.minimum_contact_force_n
+            <= self.minimum_proof_entry_force_n
+            < self.maximum_force_n
+        ):
+            raise ValueError(
+                "proof-entry contact force must be at least the minimum contact "
                 "force and below the maximum force"
             )
         if self.capture_confirmation_s < 0:
@@ -649,7 +661,13 @@ class ContactAwareGraspStateMachine:
             if self.stable_steps >= self._steps(self.bilateral_settle_s):
                 self._enter(GraspPhase.STATIC_HOLD)
         elif self.phase is GraspPhase.STATIC_HOLD:
-            self.stable_steps = self.stable_steps + 1 if bilateral and rigid else 0
+            proof_entry_bilateral = (
+                evidence.left_force_n >= self.minimum_proof_entry_force_n
+                and evidence.right_force_n >= self.minimum_proof_entry_force_n
+            )
+            self.stable_steps = (
+                self.stable_steps + 1 if proof_entry_bilateral and rigid else 0
+            )
             if self.stable_steps >= self._steps(self.static_hold_s):
                 self._enter(GraspPhase.PROOF_LIFT)
         elif self.phase is GraspPhase.PROOF_LIFT:

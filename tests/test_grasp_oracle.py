@@ -557,6 +557,37 @@ def test_low_force_capture_still_requires_physical_proof_lift():
     ).phase is GraspPhase.VALIDATED
 
 
+def test_proof_lift_waits_for_full_bilateral_preload_window():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        minimum_proof_entry_force_n=4.0,
+        capture_confirmation_s=0.0,
+        bilateral_settle_s=0.1,
+        static_hold_s=0.2,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence())
+    assert machine.step(_evidence()).phase is GraspPhase.STATIC_HOLD
+
+    for _ in range(4):
+        decision = machine.step(
+            _evidence(left_force_n=5.28, right_force_n=3.82)
+        )
+
+    assert decision.phase is GraspPhase.STATIC_HOLD
+    assert machine.stable_steps == 0
+    assert machine.step(
+        _evidence(left_force_n=5.87, right_force_n=4.72)
+    ).phase is GraspPhase.STATIC_HOLD
+    assert machine.step(
+        _evidence(left_force_n=5.87, right_force_n=4.72)
+    ).phase is GraspPhase.PROOF_LIFT
+
+
 def test_capture_threshold_is_distinct_from_contact_persistence_threshold():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,
@@ -878,6 +909,8 @@ def test_sustain_threshold_applies_after_strong_capture():
     (
         {"capture_contact_force_n": 0.05},
         {"capture_contact_force_n": 60.0},
+        {"minimum_proof_entry_force_n": 0.05},
+        {"minimum_proof_entry_force_n": 60.0},
         {"capture_confirmation_s": -0.01},
         {"maximum_capture_relative_speed_mps": float("inf")},
     ),

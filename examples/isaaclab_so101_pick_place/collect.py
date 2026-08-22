@@ -2119,6 +2119,16 @@ def run_attempt(
         # around 0.1--1.9 N before being rejected by the former 2 N floor.
         minimum_contact_force_n=0.10,
         capture_contact_force_n=2.0,
+        # Do not begin the physical proof while one finger is below the same
+        # 4 N preload that the capture-validation controller is still trying
+        # to restore.  Immutable v0.2.0 c08 evidence entered proof on a 3.82 N
+        # decaying side and ejected the 40 mm cube; the same seed's successful
+        # trace began after both sides exceeded 4 N.  This changes only proof
+        # entry readiness, not persistence, force ceilings, or the 5 mm proof.
+        minimum_proof_entry_force_n=capture_retention_force_floor(
+            0.0,
+            capture_validation_active=True,
+        ),
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
         static_hold_s=0.20,
