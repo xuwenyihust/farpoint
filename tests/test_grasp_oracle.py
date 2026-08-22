@@ -9,6 +9,7 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_retention_force_floor,
     contact_constrained_joint_step_limit,
     contact_force_vectors_opposed,
     capture_preload_force_floor,
@@ -17,7 +18,6 @@ from farpoint.grasp_oracle import (
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
-    proof_lift_retention_force_floor,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
@@ -389,27 +389,27 @@ def test_proof_lift_uses_tighter_contact_constrained_joint_step_limit():
     ) == pytest.approx(0.0005)
 
 
-def test_proof_lift_raises_only_the_controller_retention_floor():
-    assert proof_lift_retention_force_floor(
-        3.0, proof_lift_armed=False
+def test_capture_validation_raises_only_the_controller_retention_floor():
+    assert capture_retention_force_floor(
+        3.0, capture_validation_active=False
     ) == pytest.approx(3.0)
-    assert proof_lift_retention_force_floor(
-        3.0, proof_lift_armed=True
+    assert capture_retention_force_floor(
+        3.0, capture_validation_active=True
     ) == pytest.approx(4.0)
-    assert proof_lift_retention_force_floor(
-        5.0, proof_lift_armed=True
+    assert capture_retention_force_floor(
+        5.0, capture_validation_active=True
     ) == pytest.approx(5.0)
 
 
 @pytest.mark.parametrize("value", (-0.1, float("nan"), float("inf")))
-def test_proof_lift_retention_force_floor_rejects_invalid_values(value):
+def test_capture_retention_force_floor_rejects_invalid_values(value):
     with pytest.raises(ValueError, match="finite and non-negative"):
-        proof_lift_retention_force_floor(value, proof_lift_armed=False)
+        capture_retention_force_floor(value, capture_validation_active=False)
     with pytest.raises(ValueError, match="finite and non-negative"):
-        proof_lift_retention_force_floor(
+        capture_retention_force_floor(
             3.0,
-            proof_lift_armed=True,
-            minimum_proof_lift_force_n=value,
+            capture_validation_active=True,
+            minimum_capture_force_n=value,
         )
 
 

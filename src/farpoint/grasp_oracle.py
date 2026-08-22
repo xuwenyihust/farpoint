@@ -144,29 +144,32 @@ def contact_constrained_joint_step_limit(
     return min(default_limit, proof_limit) if proof_lift_armed else default_limit
 
 
-def proof_lift_retention_force_floor(
+def capture_retention_force_floor(
     default_force_n: float,
     *,
-    proof_lift_armed: bool,
-    minimum_proof_lift_force_n: float = 4.0,
+    capture_validation_active: bool,
+    minimum_capture_force_n: float = 4.0,
 ) -> float:
-    """Keep a modest bilateral preload while a captured object starts lifting.
+    """Keep a modest bilateral preload while validating a captured object.
 
     Static captures can sit safely just below 4 N on one finger while the
-    default 3 N force controller remains idle. At the first contact-bound
-    Cartesian samples that margin can disappear before the controller has
-    time to recover. Raising only the proof-lift control floor preserves the
-    independent grasp evidence, force ceilings, and physical lift proof.
+    weaker admission or default force controller remains idle. That margin can
+    disappear during bilateral settle or at the first contact-bound Cartesian
+    samples before the controller has time to recover. Raising only the
+    capture-validation control floor preserves the independent grasp evidence,
+    force ceilings, and physical lift proof.
     """
     default_force = float(default_force_n)
-    proof_force = float(minimum_proof_lift_force_n)
+    capture_force = float(minimum_capture_force_n)
     if not np.isfinite(default_force) or default_force < 0.0:
         raise ValueError("default_force_n must be finite and non-negative")
-    if not np.isfinite(proof_force) or proof_force < 0.0:
-        raise ValueError(
-            "minimum_proof_lift_force_n must be finite and non-negative"
-        )
-    return max(default_force, proof_force) if proof_lift_armed else default_force
+    if not np.isfinite(capture_force) or capture_force < 0.0:
+        raise ValueError("minimum_capture_force_n must be finite and non-negative")
+    return (
+        max(default_force, capture_force)
+        if capture_validation_active
+        else default_force
+    )
 
 
 def cartesian_motion_command_base(

@@ -211,6 +211,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_retention_force_floor,
     capture_preload_force_floor,
     contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
@@ -219,7 +220,6 @@ from farpoint.grasp_oracle import (  # noqa: E402
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
-    proof_lift_retention_force_floor,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
@@ -2273,15 +2273,17 @@ def run_attempt(
                 # controller reacted. Retain 90% of the unchanged admission
                 # force so the rotary jaw closes while contact still exists;
                 # persistence and maximum-force validation remain independent.
-                min_force=(
-                    capture_preload_force_floor(
-                        grasp_machine.capture_contact_force_n
-                    )
-                    if settling_capture
-                    else proof_lift_retention_force_floor(
-                        3.0,
-                        proof_lift_armed=phase is OraclePhase.VERIFY_CONTACT,
-                    )
+                min_force=capture_retention_force_floor(
+                    (
+                        capture_preload_force_floor(
+                            grasp_machine.capture_contact_force_n
+                        )
+                        if settling_capture
+                        else 3.0
+                    ),
+                    capture_validation_active=(
+                        settling_capture or phase is OraclePhase.VERIFY_CONTACT
+                    ),
                 ),
                 # Back off before the independent 30 N safety validator can
                 # trip on a one-control-tick unilateral force spike.
