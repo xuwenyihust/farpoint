@@ -1065,7 +1065,7 @@ def advance_so101_slow_close_target(
     closed_position,
     min_force=2.0,
     max_force=20.0,
-    unilateral_backoff_fraction=0.90,
+    unilateral_backoff_fraction=0.95,
     close_step=0.001,
     backoff_step=0.002,
     capture_admissible=True,
@@ -1090,10 +1090,10 @@ def advance_so101_slow_close_target(
     # 12 N with 60%, while the jaw remained too open for the second finger to
     # engage. A neighbouring validated red pose required a 16.93 N unilateral
     # peak before bilateral capture. The frozen-reference c17 r15 trace then
-    # formed a deterministic limit cycle at 17.08--17.09 N with the opposite
-    # finger still clear. Permit that observed geometry at 90% of the unchanged
-    # force ceiling. The independent 20 N controller ceiling and 30 N
-    # validation gate remain unchanged.
+    # formed deterministic limit cycles first at 17.08--17.09 N and then at
+    # 18.15 N with the opposite finger still clear. Permit one final bounded
+    # search interval at 95% of the unchanged force ceiling. The independent
+    # 20 N controller ceiling and 30 N validation gate remain unchanged.
     unilateral_backoff_force = backoff_fraction * float(max_force)
     if min(forces) < float(min_force) and max(forces) >= unilateral_backoff_force:
         return {
