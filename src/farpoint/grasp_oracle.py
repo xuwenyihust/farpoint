@@ -311,6 +311,29 @@ def gripper_xy_target_for_object_local_offset(
     return target
 
 
+def latch_pre_capture_recenter_object_reference(
+    object_position_world,
+    previous_reference=None,
+) -> np.ndarray:
+    """Latch the first contacted object position for pre-capture recentering.
+
+    A live object target creates positive feedback when one finger pushes the
+    object: the recenter target follows the displaced object, so the same
+    finger keeps translating it without ever closing the opposite side. Keep
+    the first finite contact position immutable for the remainder of the grasp
+    attempt. The ordinary correction corridor still bounds arm motion.
+    """
+    current = np.asarray(object_position_world, dtype=np.float64)
+    if current.shape != (3,) or not np.all(np.isfinite(current)):
+        raise ValueError("object_position_world must contain three finite values")
+    if previous_reference is None:
+        return current.astype(np.float32)
+    previous = np.asarray(previous_reference, dtype=np.float64)
+    if previous.shape != (3,) or not np.all(np.isfinite(previous)):
+        raise ValueError("previous_reference must contain three finite values")
+    return previous.astype(np.float32)
+
+
 def rotary_jaw_capture_hold_target(
     measured_position: float,
     *,

@@ -19,12 +19,40 @@ from farpoint.grasp_oracle import (
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
+    latch_pre_capture_recenter_object_reference,
     point_in_local_frame,
     proof_lift_recovery_holds_xy,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
+
+
+def test_pre_capture_recenter_reference_latches_first_contact_position():
+    first = latch_pre_capture_recenter_object_reference([0.20, -0.08, 0.052])
+    retained = latch_pre_capture_recenter_object_reference(
+        [0.23, -0.05, 0.052],
+        first,
+    )
+
+    assert first.tolist() == pytest.approx([0.20, -0.08, 0.052])
+    assert retained.tolist() == pytest.approx(first.tolist())
+
+
+@pytest.mark.parametrize(
+    ("current", "previous"),
+    (
+        ([0.0, 0.0], None),
+        ([0.0, float("nan"), 0.0], None),
+        ([0.0, 0.0, 0.0], [0.0, float("inf"), 0.0]),
+    ),
+)
+def test_pre_capture_recenter_reference_rejects_invalid_positions(
+    current,
+    previous,
+):
+    with pytest.raises(ValueError, match="three finite values"):
+        latch_pre_capture_recenter_object_reference(current, previous)
 
 
 def _evidence(**overrides):

@@ -225,6 +225,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
+    latch_pre_capture_recenter_object_reference,
     point_in_local_frame,
     proof_lift_recovery_holds_xy,
     quaternion_rotation_matrix_xyzw,
@@ -2185,6 +2186,7 @@ def run_attempt(
     grasp_relative_reference = None
     previous_object_in_gripper = None
     capture_recenter_side = None
+    pre_capture_recenter_object_reference = None
     capture_object_minus_grasp = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
@@ -2410,8 +2412,13 @@ def run_attempt(
                 live_gripper_pose = _numpy(
                     robot.data.body_link_pose_w.torch[0, body_index]
                 )
-                object_world = _numpy(
+                live_object_world = _numpy(
                     scene[active_name].data.root_pos_w[0, :3]
+                )
+                object_world = (
+                    live_object_world
+                    if pre_capture_recenter_object_reference is None
+                    else pre_capture_recenter_object_reference
                 )
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
@@ -3087,6 +3094,16 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )["side"]
         object_pose = _numpy(scene[active_name].data.root_pose_w[0])
+        if (
+            phase in {OraclePhase.DESCEND, OraclePhase.CLOSE}
+            and max(contact_forces) >= grasp_machine.minimum_contact_force_n
+        ):
+            pre_capture_recenter_object_reference = (
+                latch_pre_capture_recenter_object_reference(
+                    object_pose[:3],
+                    pre_capture_recenter_object_reference,
+                )
+            )
         gripper_pose = _numpy(
             robot.data.body_link_pose_w.torch[0, body_index]
         )
@@ -3351,6 +3368,11 @@ def run_attempt(
                 "gripper_control": gripper_control,
                 "recenter_contact_memory_side": capture_recenter_side,
                 "recenter_used_contact_memory": recenter_used_memory,
+                "pre_capture_recenter_object_reference_m": (
+                    None
+                    if pre_capture_recenter_object_reference is None
+                    else pre_capture_recenter_object_reference.tolist()
+                ),
                 "contact_geometry_valid": contact_geometry_valid,
                 "relative_grasp_recenter_active": relative_recenter_active,
                 "descent_lateral_correction_m": descent_lateral_correction,

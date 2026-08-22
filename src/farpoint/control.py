@@ -201,9 +201,9 @@ def so101_adaptive_pre_capture_recenter_limit(
     *,
     unilateral_contact=False,
     base_correction_m=0.008,
-    maximum_correction_m=0.0192,
+    maximum_correction_m=0.016,
     width_fraction=0.30,
-    large_width_fraction=0.48,
+    large_width_fraction=0.40,
     saturation_fraction=0.98,
 ):
     """Expand capture search only after unilateral axis saturation.
@@ -213,11 +213,10 @@ def so101_adaptive_pre_capture_recenter_limit(
     contact can pin either XY axis at that boundary before the other axis
     catches up. Preserve the validated corridor unless contact is unilateral
     and at least one axis is already saturated. Immutable v0.2.0 combined-pilot
-    traces then found 40 mm cells pinned first at the former (+12, +12) mm
-    bound and, after that repair, c17 pinned at (+16, +16) mm with 15--17 N on
-    one finger and no contact on the other. Preserve the proven 30 mm endpoint
-    while interpolating the 40 mm endpoint to a bounded 48% of object width,
-    still below the half-width crossing limit and capped at 19.2 mm.
+    traces then found two 40 mm cells pinned at the former (+12, +12) mm bound
+    with 15--17 N on one finger and no contact on the other. Preserve the
+    proven 30 mm endpoint while interpolating the 40 mm endpoint to 40% of
+    object width, capped at 16 mm.
     """
     width = float(object_width_m)
     correction = tuple(float(value) for value in current_xy_correction_m)
