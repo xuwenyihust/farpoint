@@ -19,6 +19,7 @@ from farpoint.grasp_oracle import (
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
+    proof_lift_recovery_holds_xy,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
@@ -449,6 +450,41 @@ def test_proof_lift_rejects_non_boolean_contact_retained(value):
             0.0,
             just_armed=False,
             contact_retained=value,
+        )
+
+
+@pytest.mark.parametrize(
+    ("proof_lift_armed", "unilateral_contact", "expected"),
+    (
+        (False, False, False),
+        (False, True, False),
+        (True, False, False),
+        (True, True, True),
+    ),
+)
+def test_proof_lift_unilateral_recovery_holds_xy(
+    proof_lift_armed, unilateral_contact, expected
+):
+    assert (
+        proof_lift_recovery_holds_xy(
+            proof_lift_armed=proof_lift_armed,
+            unilateral_contact=unilateral_contact,
+        )
+        is expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("proof_lift_armed", "unilateral_contact"),
+    ((1, True), (True, 1), (None, False), (False, None)),
+)
+def test_proof_lift_xy_hold_rejects_non_boolean_flags(
+    proof_lift_armed, unilateral_contact
+):
+    with pytest.raises(ValueError, match="flags"):
+        proof_lift_recovery_holds_xy(
+            proof_lift_armed=proof_lift_armed,
+            unilateral_contact=unilateral_contact,
         )
 
 

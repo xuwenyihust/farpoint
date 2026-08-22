@@ -224,6 +224,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
+    proof_lift_recovery_holds_xy,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
@@ -2438,6 +2439,18 @@ def run_attempt(
                 recenter = {
                     "position": aligned["position"],
                     "active": float(np.linalg.norm(aligned["error"][:2])) > 1e-6,
+                }
+            elif proof_lift_recovery_holds_xy(
+                proof_lift_armed=verify_grasp_armed,
+                unilateral_contact=unilateral_recenter,
+            ):
+                # The moving jaw can still recover inside the unchanged
+                # contact-loss grace. Holding XY prevents the retained fixed
+                # finger from dragging the cube away at the same rate that
+                # the jaw closes toward it.
+                recenter = {
+                    "position": grasp_hold_pose,
+                    "active": False,
                 }
             elif capture_object_minus_grasp is not None:
                 object_world = _numpy(

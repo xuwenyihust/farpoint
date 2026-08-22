@@ -132,6 +132,24 @@ def advance_proof_lift_command(
     return command_base, float(next_height)
 
 
+def proof_lift_recovery_holds_xy(
+    *, proof_lift_armed: bool, unilateral_contact: bool
+) -> bool:
+    """Keep a live unilateral proof recovery from dragging the held object.
+
+    Once proof lift is armed, a single retained fixed-finger contact means the
+    jaw still has a bounded opportunity to close. Tracking the displaced
+    object in XY moves that fixed finger with the object and prevents the
+    moving jaw from catching it. Bilateral geometry repair and pre-proof
+    capture alignment remain eligible for physical-offset tracking.
+    """
+    if not isinstance(proof_lift_armed, bool) or not isinstance(
+        unilateral_contact, bool
+    ):
+        raise ValueError("proof-lift recovery flags must be booleans")
+    return proof_lift_armed and unilateral_contact
+
+
 def contact_constrained_joint_step_limit(
     default_max_joint_step: float,
     *,
