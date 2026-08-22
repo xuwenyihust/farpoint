@@ -2600,6 +2600,15 @@ def run_attempt(
                     closed_position=closed_jaw,
                     open_position=open_jaw,
                 )
+                # Hold the wrists at the measured bilateral-contact posture
+                # immediately.  Waiting until BILATERAL_SETTLE let the generic
+                # CLOSE posture override keep chasing the pre-grasp 0.5/0.5
+                # target for one extra actuator-response window.  The frozen
+                # v0.2.0 c10 r29c trace showed that tail peeling both contacts
+                # away after six otherwise-valid confirmation samples.
+                grasp_hold_posture = (
+                    _numpy(current[3:5]).astype(np.float32).copy()
+                )
                 gripper_control = "confirm_bilateral"
                 target = grasp_hold_pose
             else:
