@@ -24,6 +24,7 @@ from farpoint.control import (
     relative_object_grasp_servo_target,
     rmpflow_world_target,
     settle_release_separation_target,
+    so101_release_object_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
     so101_adaptive_pre_capture_recenter_limit,
@@ -343,6 +344,17 @@ def test_settle_release_separation_ramps_and_caps_vertical_clearance():
     assert settle_release_separation_target(
         start, 500, control_hz=120
     ) == pytest.approx([0.20, 0.10, 0.10])
+
+
+def test_release_descent_preserves_validated_transport_xy():
+    assert so101_release_object_target(
+        [0.153, 0.073, 0.091], 0.080
+    ) == pytest.approx([0.153, 0.073, 0.080])
+
+
+def test_release_descent_rejects_nonfinite_targets():
+    with pytest.raises(ValueError, match="finite"):
+        so101_release_object_target([0.153, float("nan"), 0.091], 0.080)
 
 
 def test_unsafe_so101_approach_contact_rejects_route_and_early_insertion():

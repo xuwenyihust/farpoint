@@ -295,6 +295,22 @@ def settle_release_separation_target(
     ]
 
 
+def so101_release_object_target(transport_object_target, release_height_m):
+    """Keep descent centered on the validated transport target.
+
+    Rebasing the descent target to the measured object position preserves any
+    residual transport error.  A cube can then tip outside the required target
+    footprint even though PREPLACE reached its validated interior waypoint.
+    """
+    if len(transport_object_target) != 3:
+        raise ValueError("transport_object_target must have three coordinates")
+    target = [float(value) for value in transport_object_target]
+    release_height = float(release_height_m)
+    if any(not math.isfinite(value) for value in (*target, release_height)):
+        raise ValueError("release target values must be finite")
+    return [target[0], target[1], release_height]
+
+
 def unsafe_so101_approach_contact(
     phase,
     has_contact,

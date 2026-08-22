@@ -191,6 +191,7 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     relative_object_grasp_servo_target,
     settle_release_separation_target,
+    so101_release_object_target,
     so101_approach_jaw_target,
     so101_capture_admission_ready,
     so101_bilateral_capture_ready,
@@ -2167,7 +2168,7 @@ def run_attempt(
     transport_object_target = None
     transport_recovering_height = False
     transport_recovery_xy = None
-    placement_object_xy = None
+    placement_descent_initialized = False
     lift_object_start_position = None
     transport_lift_target_m = 0.0
     verify_bilateral_steps = 0
@@ -2816,19 +2817,16 @@ def run_attempt(
             # lets the arm target run ahead of its measured pose and produces
             # a lateral acceleration that shears the cube from the fingers.
         elif phase is OraclePhase.PLACE_DESCEND:
-            if placement_object_xy is None:
-                placement_object_xy = _numpy(
-                    scene[active_name].data.root_pos_w[0, :2]
-                ).copy()
+            if not placement_descent_initialized:
+                placement_descent_initialized = True
                 commanded_joints = _numpy(current).astype(np.float32).copy()
             if placement_grasp_offset is None:
                 placement_grasp_offset = (
                     ee_position - _numpy(scene[active_name].data.root_pos_w[0])
                 )
             release_object_position = np.asarray(
-                (
-                    placement_object_xy[0],
-                    placement_object_xy[1],
+                so101_release_object_target(
+                    transport_object_target,
                     release_position[2],
                 ),
                 dtype=np.float32,
