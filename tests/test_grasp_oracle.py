@@ -764,6 +764,76 @@ def test_capture_confirmation_resets_after_translation_drift_tick():
     assert decision.phase is GraspPhase.BILATERAL_SETTLE
 
 
+def test_stable_recentered_capture_rebases_candidate_before_admission():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        bilateral_settle_s=0.10,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(11):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.01258,
+                relative_speed_mps=0.00004,
+            )
+        )
+        assert not decision.rebase_relative_tracking
+
+    decision = machine.step(
+        _evidence(
+            relative_translation_error_m=0.01258,
+            relative_speed_mps=0.00004,
+        )
+    )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert decision.rebase_capture_candidate_tracking
+    assert decision.rebase_relative_tracking
+    assert machine.capture_steps == 0
+
+    for _ in range(machine.capture_confirmation_steps):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.00002,
+                relative_speed_mps=0.00004,
+            )
+        )
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
+def test_transient_sliding_edge_cannot_rebase_capture_candidate():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        bilateral_settle_s=0.10,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for speed in (0.00255, 0.00356, 0.00321, 0.00137):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.00495,
+                relative_speed_mps=speed,
+            )
+        )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert not decision.rebase_relative_tracking
+    assert machine.capture_rebase_steps == 1
+    decision = machine.step(_evidence(right_force_n=0.0))
+    assert not decision.rebase_relative_tracking
+    assert machine.capture_rebase_steps == 0
+
+
 def test_capture_admission_blocks_force_only_corner_contact():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,

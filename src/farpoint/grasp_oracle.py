@@ -468,11 +468,16 @@ class GraspDecision:
     rebase_joint_command: bool
     hold_cartesian_pose: bool
     failure_reason: str | None
+    rebase_capture_candidate_tracking: bool = False
 
     @property
     def rebase_relative_tracking(self) -> bool:
-        """Return whether object-in-gripper tracking must start from this capture."""
-        return self.entered_phase and self.phase is GraspPhase.BILATERAL_SETTLE
+        """Return whether object-in-gripper tracking needs a new rigid reference."""
+        return (
+            self.rebase_capture_candidate_tracking
+            or self.entered_phase
+            and self.phase is GraspPhase.BILATERAL_SETTLE
+        )
 
 
 @dataclass
@@ -499,6 +504,7 @@ class ContactAwareGraspStateMachine:
     stable_steps: int = 0
     contact_loss_steps: int = 0
     capture_steps: int = 0
+    capture_rebase_steps: int = 0
     failure_reason: str | None = None
 
     def __post_init__(self) -> None:
@@ -545,6 +551,7 @@ class ContactAwareGraspStateMachine:
         self.stable_steps = 0
         self.contact_loss_steps = 0
         self.capture_steps = 0
+        self.capture_rebase_steps = 0
 
     def _fail(self, reason: str) -> None:
         self.phase = GraspPhase.FAILED
@@ -552,6 +559,7 @@ class ContactAwareGraspStateMachine:
 
     def step(self, evidence: GraspEvidence) -> GraspDecision:
         previous = self.phase
+        rebase_capture_candidate_tracking = False
         if self.phase in {GraspPhase.VALIDATED, GraspPhase.FAILED}:
             return GraspDecision(self.phase, False, False, True, self.failure_reason)
         self.phase_steps += 1
@@ -604,14 +612,36 @@ class ContactAwareGraspStateMachine:
             # cube is settled in the aperture. Both instantaneous speed and
             # displacement since first bilateral contact must therefore stay
             # bounded throughout the consecutive confirmation window.
-            capture_stable = (
+            capture_motion_stable = (
                 capture_bilateral
-                and evidence.relative_translation_error_m
-                <= self.maximum_relative_translation_error_m
                 and evidence.relative_speed_mps
                 <= self.maximum_capture_relative_speed_mps
             )
+            capture_stable = (
+                capture_motion_stable
+                and evidence.relative_translation_error_m
+                <= self.maximum_relative_translation_error_m
+            )
             self.capture_steps = self.capture_steps + 1 if capture_stable else 0
+            # Recenter is allowed before capture and can deliberately move the
+            # cube far from the first weak bilateral-contact reference. Do not
+            # make that historical displacement a permanent admission veto.
+            # A new candidate reference is allowed only after a full settle
+            # window of uninterrupted force, geometry, aperture and low-speed
+            # evidence. A transient sliding edge enclosure cannot satisfy this
+            # longer window; after rebasing, the ordinary consecutive capture
+            # window still has to pass before BILATERAL_SETTLE.
+            needs_candidate_rebase = (
+                capture_motion_stable
+                and evidence.relative_translation_error_m
+                > self.maximum_relative_translation_error_m
+            )
+            self.capture_rebase_steps = (
+                self.capture_rebase_steps + 1 if needs_candidate_rebase else 0
+            )
+            if self.capture_rebase_steps >= self._steps(self.bilateral_settle_s):
+                self.capture_rebase_steps = 0
+                rebase_capture_candidate_tracking = True
             if self.capture_steps >= self.capture_confirmation_steps:
                 self._enter(GraspPhase.BILATERAL_SETTLE)
         elif self.phase is GraspPhase.BILATERAL_SETTLE:
@@ -657,4 +687,5 @@ class ContactAwareGraspStateMachine:
                 GraspPhase.STATIC_HOLD,
             },
             failure_reason=self.failure_reason,
+            rebase_capture_candidate_tracking=rebase_capture_candidate_tracking,
         )
