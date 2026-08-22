@@ -201,9 +201,9 @@ def so101_adaptive_pre_capture_recenter_limit(
     *,
     unilateral_contact=False,
     base_correction_m=0.008,
-    maximum_correction_m=0.018,
+    maximum_correction_m=0.016,
     width_fraction=0.30,
-    large_width_fraction=0.45,
+    large_width_fraction=0.40,
     saturation_fraction=0.98,
 ):
     """Expand capture search only after unilateral axis saturation.
@@ -214,11 +214,9 @@ def so101_adaptive_pre_capture_recenter_limit(
     catches up. Preserve the validated corridor unless contact is unilateral
     and at least one axis is already saturated. Immutable v0.2.0 combined-pilot
     traces then found two 40 mm cells pinned at the former (+12, +12) mm bound
-    with 15--17 N on one finger and no contact on the other. After freezing the
-    first-contact object reference, c17 required a stable 21.3 mm world-Y
-    correction while the 16 mm command bound left 1.65 mm of measured error.
-    Preserve the proven 30 mm endpoint while interpolating the 40 mm endpoint
-    to 45% of object width, capped at the evidence-bounded 18 mm command.
+    with 15--17 N on one finger and no contact on the other. Preserve the
+    proven 30 mm endpoint while interpolating the 40 mm endpoint to 40% of
+    object width, capped at 16 mm.
     """
     width = float(object_width_m)
     correction = tuple(float(value) for value in current_xy_correction_m)
@@ -1067,7 +1065,7 @@ def advance_so101_slow_close_target(
     closed_position,
     min_force=2.0,
     max_force=20.0,
-    unilateral_backoff_fraction=0.85,
+    unilateral_backoff_fraction=0.90,
     close_step=0.001,
     backoff_step=0.002,
     capture_admissible=True,
@@ -1090,10 +1088,12 @@ def advance_so101_slow_close_target(
     # Lower thresholds formed deterministic limit cycles on the outer,
     # high-yaw 40 mm pose: first at 9.6--10.0 N with 50%, then at roughly
     # 12 N with 60%, while the jaw remained too open for the second finger to
-    # engage.  A neighbouring validated red pose required a 16.93 N unilateral
-    # peak before bilateral capture, so permit that observed geometry at 85%
-    # of the unchanged force ceiling.  The independent 20 N controller ceiling
-    # and 30 N validation gate remain unchanged.
+    # engage. A neighbouring validated red pose required a 16.93 N unilateral
+    # peak before bilateral capture. The frozen-reference c17 r15 trace then
+    # formed a deterministic limit cycle at 17.08--17.09 N with the opposite
+    # finger still clear. Permit that observed geometry at 90% of the unchanged
+    # force ceiling. The independent 20 N controller ceiling and 30 N
+    # validation gate remain unchanged.
     unilateral_backoff_force = backoff_fraction * float(max_force)
     if min(forces) < float(min_force) and max(forces) >= unilateral_backoff_force:
         return {

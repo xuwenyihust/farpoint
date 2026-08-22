@@ -283,13 +283,13 @@ def test_so101_pre_capture_recenter_limit_preserves_validated_corridor():
 def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation():
     assert so101_adaptive_pre_capture_recenter_limit(
         0.04, (0.008, 0.008), unilateral_contact=True
-    ) == pytest.approx(0.018)
+    ) == pytest.approx(0.016)
     assert so101_adaptive_pre_capture_recenter_limit(
         0.03, (0.008, 0.008), unilateral_contact=True
     ) == pytest.approx(0.009)
     assert so101_adaptive_pre_capture_recenter_limit(
         0.04, (0.004, 0.008), unilateral_contact=True
-    ) == pytest.approx(0.018)
+    ) == pytest.approx(0.016)
     assert so101_adaptive_pre_capture_recenter_limit(
         0.03, (0.0, 0.008), unilateral_contact=True
     ) == pytest.approx(0.009)
@@ -298,7 +298,7 @@ def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation
     ) == pytest.approx(0.008)
     assert so101_adaptive_pre_capture_recenter_limit(
         0.035, (0.008, 0.008), unilateral_contact=True
-    ) == pytest.approx(0.013125)
+    ) == pytest.approx(0.01225)
 
 
 def test_so101_capture_contact_loss_grace_is_size_aware():
@@ -1047,7 +1047,7 @@ def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_of
     crossing = advance_so101_slow_close_target(
         0.40,
         0.405,
-        16.93,
+        17.09,
         0.0,
         open_position=1.7453,
         closed_position=-0.1746,
@@ -1057,7 +1057,7 @@ def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_of
     backoff = advance_so101_slow_close_target(
         crossing["position"],
         0.404,
-        17.0,
+        18.0,
         0.0,
         open_position=1.7453,
         closed_position=-0.1746,
