@@ -2339,10 +2339,17 @@ def run_attempt(
             grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
         verification_alignment = (
-            phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
+            phase is OraclePhase.VERIFY_CONTACT
+            and grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
+        # A proof lift is still a contact-constrained capture phase.  The r5
+        # c22 trace retained a rigid unilateral enclosure after one finger
+        # dropped, but VERIFY disabled the existing bounded XY recovery and
+        # spent the entire contact-loss grace only squeezing the jaw.  Carry
+        # the same contact memory and 2 mm recenter corridor through proof;
+        # force, lift, rigidity, and timeout gates remain unchanged.
         if (
-            (closing_alignment or settling_capture)
+            (closing_alignment or settling_capture or verification_alignment)
             and balanced_forces is not None
         ):
             recenter_memory = so101_recenter_contact_memory(
@@ -2353,7 +2360,11 @@ def run_attempt(
             recenter_forces = recenter_memory["forces"]
             capture_recenter_side = recenter_memory["side"]
             recenter_used_memory = bool(recenter_memory["used_memory"])
-        elif phase not in {OraclePhase.DESCEND, OraclePhase.CLOSE}:
+        elif phase not in {
+            OraclePhase.DESCEND,
+            OraclePhase.CLOSE,
+            OraclePhase.VERIFY_CONTACT,
+        }:
             capture_recenter_side = None
         unilateral_recenter = bool(
             recenter_forces is not None

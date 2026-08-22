@@ -30,6 +30,7 @@ def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
         GraspPhase.SLOW_CLOSE,
         GraspPhase.BILATERAL_SETTLE,
         GraspPhase.STATIC_HOLD,
+        GraspPhase.PROOF_LIFT,
     }
 
 

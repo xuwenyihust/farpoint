@@ -265,8 +265,8 @@ def test_unilateral_recenter_starts_before_bilateral_contact():
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.CONTACT_ALIGNMENT)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.SLOW_CLOSE)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.BILATERAL_SETTLE)
+    assert grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.APPROACH)
-    assert not grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
 
 
 def test_first_contact_memory_bridges_handoff_force_dropout():
