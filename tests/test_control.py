@@ -222,7 +222,7 @@ def test_so101_pre_capture_recenter_limit_preserves_validated_corridor():
     assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.008)
 
 
-def test_so101_adaptive_pre_capture_recenter_requires_unilateral_corner_saturation():
+def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation():
     assert so101_adaptive_pre_capture_recenter_limit(
         0.04, (0.008, 0.008), unilateral_contact=True
     ) == pytest.approx(0.012)
@@ -231,7 +231,10 @@ def test_so101_adaptive_pre_capture_recenter_requires_unilateral_corner_saturati
     ) == pytest.approx(0.009)
     assert so101_adaptive_pre_capture_recenter_limit(
         0.04, (0.004, 0.008), unilateral_contact=True
-    ) == pytest.approx(0.008)
+    ) == pytest.approx(0.012)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.03, (0.0, 0.008), unilateral_contact=True
+    ) == pytest.approx(0.009)
     assert so101_adaptive_pre_capture_recenter_limit(
         0.04, (0.008, 0.008), unilateral_contact=False
     ) == pytest.approx(0.008)

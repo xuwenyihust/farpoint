@@ -159,14 +159,14 @@ def so101_adaptive_pre_capture_recenter_limit(
     width_fraction=0.30,
     saturation_fraction=0.98,
 ):
-    """Expand capture search only after unilateral corner saturation.
+    """Expand capture search only after unilateral axis saturation.
 
-    Immutable v0.2.0 pilot evidence separates two cases: a one-axis offset
-    succeeds with the validated 8 mm corridor, while a persistent unilateral
-    contact at the outer workspace can saturate both XY axes.  Preserve the
-    validated corridor unless both axes are already at its boundary and the
-    contact is unilateral.  The expanded corridor remains size-aware and is
-    capped at 12 mm.
+    Immutable v0.2.0 pilot evidence separates two cases: a free-space offset
+    succeeds with the validated 8 mm corridor, while persistent unilateral
+    contact can pin either XY axis at that boundary before the other axis
+    catches up. Preserve the validated corridor unless contact is unilateral
+    and at least one axis is already saturated. The expanded corridor remains
+    size-aware and is capped at 12 mm.
     """
     width = float(object_width_m)
     correction = tuple(float(value) for value in current_xy_correction_m)
@@ -186,10 +186,10 @@ def so101_adaptive_pre_capture_recenter_limit(
         raise ValueError("width_fraction must be finite and between zero and 0.5")
     if not math.isfinite(saturation) or not 0.0 < saturation <= 1.0:
         raise ValueError("saturation_fraction must be finite and in (0, 1]")
-    corner_saturated = all(
+    axis_saturated = any(
         abs(value) >= base * saturation for value in correction
     )
-    if not unilateral_contact or not corner_saturated:
+    if not unilateral_contact or not axis_saturated:
         return base
     return max(base, min(maximum, fraction * width))
 
