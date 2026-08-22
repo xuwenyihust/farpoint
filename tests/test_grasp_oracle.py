@@ -13,6 +13,7 @@ from farpoint.grasp_oracle import (
     contact_constrained_joint_step_limit,
     contact_force_vectors_opposed,
     capture_preload_force_floor,
+    captured_force_imbalance_requires_recenter,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
@@ -47,6 +48,41 @@ def test_control_schedule_records_exactly_30_hz_from_120_hz():
     assert schedule.frame_index(116) == 29
     assert schedule.timestamp_seconds(116) == pytest.approx(29 / 30)
     assert schedule.steps_for_seconds(0.5) == 60
+
+
+def test_captured_force_imbalance_selects_recenter_only_for_bilateral_load():
+    assert captured_force_imbalance_requires_recenter(
+        2.18, 3.20, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+    assert not captured_force_imbalance_requires_recenter(
+        3.82, 5.66, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+    assert not captured_force_imbalance_requires_recenter(
+        0.0, 3.20, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"left_force_n": float("nan")},
+        {"right_force_n": -0.1},
+        {"minimum_force_n": 0.0},
+        {"proof_entry_force_n": 0.05},
+        {"minimum_balance_ratio": 0.0},
+        {"minimum_balance_ratio": 1.1},
+    ),
+)
+def test_captured_force_imbalance_rejects_invalid_contract(kwargs):
+    arguments = {
+        "left_force_n": 2.0,
+        "right_force_n": 3.0,
+        "minimum_force_n": 0.10,
+        "proof_entry_force_n": 4.0,
+    }
+    arguments.update(kwargs)
+    with pytest.raises(ValueError):
+        captured_force_imbalance_requires_recenter(**arguments)
 
 
 def test_control_schedule_rejects_aliased_recording_rate():

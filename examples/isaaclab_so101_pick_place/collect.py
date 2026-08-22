@@ -214,6 +214,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     cartesian_motion_command_base,
     capture_retention_force_floor,
     capture_preload_force_floor,
+    captured_force_imbalance_requires_recenter,
     contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
     contact_force_vectors_opposed,
@@ -2262,6 +2263,15 @@ def run_attempt(
             and grasp_machine.phase
             in {GraspPhase.BILATERAL_SETTLE, GraspPhase.STATIC_HOLD}
         )
+        settling_force_imbalanced = bool(
+            settling_capture
+            and balanced_forces is not None
+            and captured_force_imbalance_requires_recenter(
+                *balanced_forces,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+                proof_entry_force_n=grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
         if (
             grasp_jaw_hold is not None
             and balanced_forces is not None
@@ -2298,7 +2308,9 @@ def run_attempt(
                 # trip on a one-control-tick unilateral force spike.
                 max_force=20.0,
                 close_step=(
-                    0.0005
+                    0.0
+                    if settling_force_imbalanced
+                    else 0.0005
                     if settling_capture
                     else (0.001 if phase is OraclePhase.VERIFY_CONTACT else 0.002)
                 ),
@@ -2346,11 +2358,14 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         )
+        capture_recenter_required = bool(
+            unilateral_recenter or settling_force_imbalanced
+        )
         if (
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
             and recenter_forces is not None
-            and unilateral_recenter
+            and capture_recenter_required
             or (
                 grasp_hold_pose is not None
                 and (closing_alignment or verification_alignment)
@@ -2385,7 +2400,7 @@ def run_attempt(
                 correction_limit = so101_adaptive_pre_capture_recenter_limit(
                     object_spec["dimensions_m"][0],
                     current_xy_correction,
-                    unilateral_contact=unilateral_recenter,
+                    unilateral_contact=capture_recenter_required,
                 )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
