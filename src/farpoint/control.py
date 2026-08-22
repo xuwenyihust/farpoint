@@ -201,9 +201,9 @@ def so101_adaptive_pre_capture_recenter_limit(
     *,
     unilateral_contact=False,
     base_correction_m=0.008,
-    maximum_correction_m=0.016,
+    maximum_correction_m=0.018,
     width_fraction=0.30,
-    large_width_fraction=0.40,
+    large_width_fraction=0.45,
     saturation_fraction=0.98,
 ):
     """Expand capture search only after unilateral axis saturation.
@@ -214,9 +214,11 @@ def so101_adaptive_pre_capture_recenter_limit(
     catches up. Preserve the validated corridor unless contact is unilateral
     and at least one axis is already saturated. Immutable v0.2.0 combined-pilot
     traces then found two 40 mm cells pinned at the former (+12, +12) mm bound
-    with 15--17 N on one finger and no contact on the other. Preserve the
-    proven 30 mm endpoint while interpolating the 40 mm endpoint to 40% of
-    object width, capped at 16 mm.
+    with 15--17 N on one finger and no contact on the other. After freezing the
+    first-contact object reference, c17 required a stable 21.3 mm world-Y
+    correction while the 16 mm command bound left 1.65 mm of measured error.
+    Preserve the proven 30 mm endpoint while interpolating the 40 mm endpoint
+    to 45% of object width, capped at the evidence-bounded 18 mm command.
     """
     width = float(object_width_m)
     correction = tuple(float(value) for value in current_xy_correction_m)
