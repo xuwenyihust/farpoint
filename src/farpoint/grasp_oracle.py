@@ -388,7 +388,7 @@ def capture_hold_preload_for_force(
     proof_entry_force_n: float,
     overload_margin_n: float = 1.0,
     retention_preload_rad: float = 0.002,
-    balanced_preload_rad: float = 0.004,
+    balanced_preload_rad: float = 0.008,
     buildup_preload_rad: float = 0.008,
 ) -> float:
     """Select capture preload from the already-measured bilateral force.
@@ -398,9 +398,11 @@ def capture_hold_preload_for_force(
     shed both contacts if the hold relaxes too early.  Reduce to the original
     bounded 2 mrad retention hold only when both fingers are proof-ready *and*
     the stronger finger exceeds the floor by an evidence-bounded overload
-    margin.  A proof-ready capture below that overload boundary uses the 4 mrad
-    midpoint so it neither relaxes to zero nor chases the full buildup error;
-    the unchanged force controller and proof gates remain authoritative.
+    margin. A proof-ready capture below that overload boundary retains the
+    already-stable buildup target instead of opening the jaw at the settle
+    transition. Immutable c26 evidence showed that a 4 mrad midpoint relief
+    made bilateral force decay before even a slowed controller could recover.
+    Subsequent force correction and all proof gates remain authoritative.
     """
     values = (
         float(left_force_n),

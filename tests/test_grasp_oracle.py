@@ -205,7 +205,7 @@ def test_capture_hold_preload_uses_retention_only_after_proof_force():
         4.4,
         4.0,
         proof_entry_force_n=4.0,
-    ) == pytest.approx(0.004)
+    ) == pytest.approx(0.008)
     assert capture_hold_preload_for_force(
         6.1,
         3.9,
