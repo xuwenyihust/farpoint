@@ -178,8 +178,9 @@ def so101_adaptive_pre_capture_recenter_limit(
     *,
     unilateral_contact=False,
     base_correction_m=0.008,
-    maximum_correction_m=0.012,
+    maximum_correction_m=0.016,
     width_fraction=0.30,
+    large_width_fraction=0.40,
     saturation_fraction=0.98,
 ):
     """Expand capture search only after unilateral axis saturation.
@@ -188,14 +189,18 @@ def so101_adaptive_pre_capture_recenter_limit(
     succeeds with the validated 8 mm corridor, while persistent unilateral
     contact can pin either XY axis at that boundary before the other axis
     catches up. Preserve the validated corridor unless contact is unilateral
-    and at least one axis is already saturated. The expanded corridor remains
-    size-aware and is capped at 12 mm.
+    and at least one axis is already saturated. Immutable v0.2.0 combined-pilot
+    traces then found two 40 mm cells pinned at the former (+12, +12) mm bound
+    with 15--17 N on one finger and no contact on the other. Preserve the
+    proven 30 mm endpoint while interpolating the 40 mm endpoint to 40% of
+    object width, capped at 16 mm.
     """
     width = float(object_width_m)
     correction = tuple(float(value) for value in current_xy_correction_m)
     base = float(base_correction_m)
     maximum = float(maximum_correction_m)
     fraction = float(width_fraction)
+    large_fraction = float(large_width_fraction)
     saturation = float(saturation_fraction)
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
@@ -207,6 +212,14 @@ def so101_adaptive_pre_capture_recenter_limit(
         raise ValueError("maximum_correction_m must be finite and at least the base")
     if not math.isfinite(fraction) or not 0.0 < fraction < 0.5:
         raise ValueError("width_fraction must be finite and between zero and 0.5")
+    if (
+        not math.isfinite(large_fraction)
+        or not fraction <= large_fraction < 0.5
+    ):
+        raise ValueError(
+            "large_width_fraction must be finite, at least width_fraction, "
+            "and below 0.5"
+        )
     if not math.isfinite(saturation) or not 0.0 < saturation <= 1.0:
         raise ValueError("saturation_fraction must be finite and in (0, 1]")
     axis_saturated = any(
@@ -214,7 +227,11 @@ def so101_adaptive_pre_capture_recenter_limit(
     )
     if not unilateral_contact or not axis_saturated:
         return base
-    return max(base, min(maximum, fraction * width))
+    width_interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    effective_fraction = fraction + (
+        large_fraction - fraction
+    ) * width_interpolation
+    return max(base, min(maximum, effective_fraction * width))
 
 
 def so101_capture_contact_loss_grace_s(object_width_m):
