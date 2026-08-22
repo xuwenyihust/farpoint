@@ -196,6 +196,7 @@ from farpoint.control import (  # noqa: E402
     so101_capture_admission_ready,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_balanced_capture_close_step,
     so101_imbalanced_capture_close_step,
     so101_proof_entry_force_floor,
     so101_cube_contact_handoff,
@@ -2316,7 +2317,9 @@ def run_attempt(
                         object_spec["dimensions_m"][0],
                     )
                     if settling_force_imbalanced
-                    else 0.0005
+                    else so101_balanced_capture_close_step(
+                        object_spec["dimensions_m"][0],
+                    )
                     if settling_capture
                     else (0.001 if phase is OraclePhase.VERIFY_CONTACT else 0.002)
                 ),

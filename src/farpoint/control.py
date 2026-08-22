@@ -57,6 +57,29 @@ def so101_imbalanced_capture_close_step(
     return close_step * 0.5 * (1.0 - interpolation)
 
 
+def so101_balanced_capture_close_step(
+    object_width_m,
+    *,
+    balanced_close_step=0.0005,
+):
+    """Return a size-aware settle step for an admitted balanced capture.
+
+    Keep the validated 30 mm controller unchanged.  For the 40 mm cube, use
+    one quarter of the ordinary step: immutable c26 traces at 120 Hz showed
+    that the full step accumulated about 2 mrad between 30 Hz observations,
+    over-compressed an otherwise balanced enclosure, and ejected the cube.
+    The smaller non-zero endpoint still restores slowly decaying preload.
+    """
+    width = float(object_width_m)
+    close_step = float(balanced_close_step)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(close_step) or close_step < 0.0:
+        raise ValueError("balanced_close_step must be finite and non-negative")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return close_step * (1.0 - 0.75 * interpolation)
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 
