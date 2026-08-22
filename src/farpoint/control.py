@@ -1,6 +1,85 @@
 import math
 
 
+def so101_capture_admission_retention_fraction(object_width_m=None):
+    """Return the shared size-aware capture-admission force fraction.
+
+    Keep this policy in the dependency-light control module so both the
+    collector latch and the grasp state machine use exactly the same floor.
+    A split policy can freeze the active close controller on a weak contact
+    that the state machine correctly refuses to admit.
+    """
+    if object_width_m is None:
+        return 0.25
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 0.25 + 0.65 * interpolation
+
+
+def so101_proof_entry_force_floor(object_width_m):
+    """Return the size-aware bilateral preload required before proof lift.
+
+    The 30 mm exact mesh has successful immutable captures around 3.2--3.6 N
+    per finger, while the 40 mm cube can eject when proof starts with one side
+    at 3.82 N and the force controller is still closing.  Interpolate between
+    those evidence-bounded 3 N and 4 N floors so capture persistence remains
+    independent from the stronger contact-bound motion gate.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 3.0 + interpolation
+
+
+def so101_imbalanced_capture_close_step(
+    object_width_m,
+    *,
+    balanced_close_step=0.0005,
+):
+    """Return a bounded jaw recovery step for a weak imbalanced capture.
+
+    A 30 mm cube can enter static hold with a rigid bilateral enclosure whose
+    forces remain below proof-entry preload. Fully pausing jaw squeeze then
+    deadlocks the independent proof gate. Permit half of the ordinary settle
+    step for the smaller cube, tapering to zero at 40 mm where immutable
+    evidence shows that squeezing an off-centre enclosure can eject the cube.
+    """
+    width = float(object_width_m)
+    close_step = float(balanced_close_step)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(close_step) or close_step < 0.0:
+        raise ValueError("balanced_close_step must be finite and non-negative")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return close_step * 0.5 * (1.0 - interpolation)
+
+
+def so101_balanced_capture_close_step(
+    object_width_m,
+    *,
+    balanced_close_step=0.0005,
+):
+    """Return a size-aware settle step for an admitted balanced capture.
+
+    Keep the validated 30 mm controller unchanged.  For the 40 mm cube, use
+    one quarter of the ordinary step: immutable c26 traces at 120 Hz showed
+    that the full step accumulated about 2 mrad between 30 Hz observations,
+    over-compressed an otherwise balanced enclosure, and ejected the cube.
+    The smaller non-zero endpoint still restores slowly decaying preload.
+    """
+    width = float(object_width_m)
+    close_step = float(balanced_close_step)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(close_step) or close_step < 0.0:
+        raise ValueError("balanced_close_step must be finite and non-negative")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return close_step * (1.0 - 0.75 * interpolation)
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 
@@ -27,25 +106,27 @@ def so101_bilateral_capture_ready(
     *,
     object_width_m=None,
     minimum_force_n=0.5,
+    capture_contact_force_n=2.0,
 ):
     """Return whether bilateral force may enter capture confirmation.
 
     The 30 mm floor distinguishes sustained, cube-filtered contact from sensor
     noise without forcing the controller to cross its nominal 2 N target.
-    The 40 mm endpoint retains 1.5 N: immutable diagnostic evidence showed that
-    applying the small-object floor globally admits a wide-aperture capture too
-    early and loses contact during static hold.
+    The 40 mm endpoint uses the shared 90% admission floor. Immutable r6
+    evidence showed that a lower collector-only threshold latched a decaying
+    contact while the state machine correctly remained in active slow close.
     Capture still needs six consecutive control ticks,
     the independent relative-speed gate, bilateral settle, static hold, and
     proof lift; this hook does not change success validation.
     """
     forces = (float(left_force_n), float(right_force_n))
     if object_width_m is not None:
-        width = float(object_width_m)
-        if not math.isfinite(width) or width <= 0.0:
-            raise ValueError("object_width_m must be finite and positive")
-        interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-        threshold = 0.5 + interpolation
+        capture_force = float(capture_contact_force_n)
+        if not math.isfinite(capture_force) or capture_force <= 0.0:
+            raise ValueError("capture_contact_force_n must be finite and positive")
+        threshold = capture_force * so101_capture_admission_retention_fraction(
+            object_width_m
+        )
     else:
         threshold = float(minimum_force_n)
     if any(not math.isfinite(force) or force < 0.0 for force in forces):
@@ -103,24 +184,77 @@ def so101_pre_capture_recenter_limit(
     object_width_m,
     *,
     maximum_correction_m=0.008,
-    width_fraction=0.30,
 ):
-    """Bound capture search while leaving room for the opposite fingertip.
-
-    The former 4 mm bound saturated on every uncovered mass variation while
-    the cube moved 6--10 mm under unilateral contact.  Permit at most 30% of
-    the object width, capped at 8 mm, only before bilateral capture.
-    """
+    """Return the validated default bound for pre-capture XY search."""
     width = float(object_width_m)
     maximum = float(maximum_correction_m)
-    fraction = float(width_fraction)
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     if not math.isfinite(maximum) or maximum <= 0.0:
         raise ValueError("maximum_correction_m must be finite and positive")
+    return maximum
+
+
+def so101_adaptive_pre_capture_recenter_limit(
+    object_width_m,
+    current_xy_correction_m,
+    *,
+    unilateral_contact=False,
+    base_correction_m=0.008,
+    maximum_correction_m=0.016,
+    width_fraction=0.30,
+    large_width_fraction=0.40,
+    saturation_fraction=0.98,
+):
+    """Expand capture search only after unilateral axis saturation.
+
+    Immutable v0.2.0 pilot evidence separates two cases: a free-space offset
+    succeeds with the validated 8 mm corridor, while persistent unilateral
+    contact can pin either XY axis at that boundary before the other axis
+    catches up. Preserve the validated corridor unless contact is unilateral
+    and at least one axis is already saturated. Immutable v0.2.0 combined-pilot
+    traces then found two 40 mm cells pinned at the former (+12, +12) mm bound
+    with 15--17 N on one finger and no contact on the other. Preserve the
+    proven 30 mm endpoint while interpolating the 40 mm endpoint to 40% of
+    object width, capped at 16 mm.
+    """
+    width = float(object_width_m)
+    correction = tuple(float(value) for value in current_xy_correction_m)
+    base = float(base_correction_m)
+    maximum = float(maximum_correction_m)
+    fraction = float(width_fraction)
+    large_fraction = float(large_width_fraction)
+    saturation = float(saturation_fraction)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if len(correction) != 2 or any(not math.isfinite(value) for value in correction):
+        raise ValueError("current_xy_correction_m must contain two finite values")
+    if not math.isfinite(base) or base <= 0.0:
+        raise ValueError("base_correction_m must be finite and positive")
+    if not math.isfinite(maximum) or maximum < base:
+        raise ValueError("maximum_correction_m must be finite and at least the base")
     if not math.isfinite(fraction) or not 0.0 < fraction < 0.5:
         raise ValueError("width_fraction must be finite and between zero and 0.5")
-    return min(maximum, fraction * width)
+    if (
+        not math.isfinite(large_fraction)
+        or not fraction <= large_fraction < 0.5
+    ):
+        raise ValueError(
+            "large_width_fraction must be finite, at least width_fraction, "
+            "and below 0.5"
+        )
+    if not math.isfinite(saturation) or not 0.0 < saturation <= 1.0:
+        raise ValueError("saturation_fraction must be finite and in (0, 1]")
+    axis_saturated = any(
+        abs(value) >= base * saturation for value in correction
+    )
+    if not unilateral_contact or not axis_saturated:
+        return base
+    width_interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    effective_fraction = fraction + (
+        large_fraction - fraction
+    ) * width_interpolation
+    return max(base, min(maximum, effective_fraction * width))
 
 
 def so101_capture_contact_loss_grace_s(object_width_m):
@@ -222,6 +356,22 @@ def settle_release_separation_target(
         float(release_hold_position[1]),
         float(release_hold_position[2]) + distance,
     ]
+
+
+def so101_release_object_target(transport_object_target, release_height_m):
+    """Keep descent centered on the validated transport target.
+
+    Rebasing the descent target to the measured object position preserves any
+    residual transport error.  A cube can then tip outside the required target
+    footprint even though PREPLACE reached its validated interior waypoint.
+    """
+    if len(transport_object_target) != 3:
+        raise ValueError("transport_object_target must have three coordinates")
+    target = [float(value) for value in transport_object_target]
+    release_height = float(release_height_m)
+    if any(not math.isfinite(value) for value in (*target, release_height)):
+        raise ValueError("release target values must be finite")
+    return [target[0], target[1], release_height]
 
 
 def unsafe_so101_approach_contact(
@@ -915,6 +1065,7 @@ def advance_so101_slow_close_target(
     closed_position,
     min_force=2.0,
     max_force=20.0,
+    unilateral_backoff_fraction=0.85,
     close_step=0.001,
     backoff_step=0.002,
     capture_admissible=True,
@@ -931,7 +1082,17 @@ def advance_so101_slow_close_target(
     closed_value = float(closed_position)
     previous_target = _clamp(previous_command_target, closed_value, open_value)
     forces = (float(left_force), float(right_force))
-    unilateral_backoff_force = 0.5 * float(max_force)
+    backoff_fraction = float(unilateral_backoff_fraction)
+    if not math.isfinite(backoff_fraction) or not 0.0 < backoff_fraction < 1.0:
+        raise ValueError("unilateral_backoff_fraction must be between zero and one")
+    # Lower thresholds formed deterministic limit cycles on the outer,
+    # high-yaw 40 mm pose: first at 9.6--10.0 N with 50%, then at roughly
+    # 12 N with 60%, while the jaw remained too open for the second finger to
+    # engage. A neighbouring validated red pose required a 16.93 N unilateral
+    # peak before bilateral capture, so permit that observed geometry at 85%
+    # of the unchanged force ceiling. The independent 20 N controller ceiling
+    # and 30 N validation gate remain unchanged.
+    unilateral_backoff_force = backoff_fraction * float(max_force)
     if min(forces) < float(min_force) and max(forces) >= unilateral_backoff_force:
         return {
             "position": _clamp(

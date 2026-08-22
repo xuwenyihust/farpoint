@@ -19,15 +19,21 @@
         "splits": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}, "minProperties": 1}
       }
     },
+    "quota_identity_fields": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+    },
     "quotas": {
       "type": "array", "minItems": 1,
       "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["object_variant_id", "yaw_stratum_id", "region_band", "split", "count"],
+        "type": "object", "additionalProperties": {"type": ["string", "integer", "number", "boolean"]},
+        "required": ["split", "count"],
         "properties": {
           "object_variant_id": {"type": "string", "minLength": 1},
           "yaw_stratum_id": {"type": "string", "minLength": 1},
           "region_band": {"enum": ["outer", "middle", "core"]},
+          "target_profile_id": {"type": "string", "minLength": 1},
+          "camera_profile_id": {"type": "string", "minLength": 1},
           "split": {"enum": ["train", "validation"]},
           "count": {"type": "integer", "minimum": 0}
         }
@@ -39,7 +45,7 @@
       "required": ["maximum_attempts_per_variation", "global_attempt_limit", "replacement_policy"],
       "properties": {
         "maximum_attempts_per_variation": {"const": 3},
-        "global_attempt_limit": {"type": "null"},
+        "global_attempt_limit": {"type": ["null", "integer"], "minimum": 1},
         "replacement_policy": {"const": "same_quota_new_variation_seed"}
       }
     },

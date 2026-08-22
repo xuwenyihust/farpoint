@@ -37,6 +37,94 @@ class Sampler(Protocol):
 
 
 @dataclass(frozen=True)
+class DeterministicLatinHypercubeSampler:
+    """Deterministic Latin-hypercube samples with independent axis permutations.
+
+    The sampler deliberately has no knowledge of objects, targets, or cameras.
+    A caller supplies named numeric bounds and receives one point from every
+    stratum on every axis.  Hash-derived jitter keeps values continuous while
+    the frozen seed and population make the complete design reproducible.
+    """
+
+    bounds: tuple[tuple[str, float, float], ...]
+    population: int
+    seed: int
+
+    def __post_init__(self) -> None:
+        if self.population <= 0:
+            raise ValueError("Latin-hypercube population must be positive")
+        names = [name for name, _, _ in self.bounds]
+        if not names or len(names) != len(set(names)) or any(not name for name in names):
+            raise ValueError("Latin-hypercube axes must be non-empty and unique")
+        if any(
+            not math.isfinite(low) or not math.isfinite(high) or low >= high
+            for _, low, high in self.bounds
+        ):
+            raise ValueError("Latin-hypercube bounds must be finite and increasing")
+
+    def _permutation(self, axis: str) -> list[int]:
+        material = f"farpoint-latin-hypercube-v1:{self.seed}:{axis}".encode()
+        rng = random.Random(int.from_bytes(hashlib.sha256(material).digest()[:8], "big"))
+        values = list(range(self.population))
+        rng.shuffle(values)
+        return values
+
+    def _jitter(self, axis: str, slot: int) -> float:
+        material = (
+            f"farpoint-latin-hypercube-jitter-v1:{self.seed}:{axis}:{slot}".encode()
+        )
+        integer = int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+        return (integer + 0.5) / float(1 << 64)
+
+    def sample(self, slot: int) -> dict[str, Any]:
+        if not 0 <= slot < self.population:
+            raise ValueError("Latin-hypercube slot is outside the population")
+        values: dict[str, float] = {}
+        strata: dict[str, int] = {}
+        for axis, low, high in self.bounds:
+            stratum = self._permutation(axis)[slot]
+            unit = (stratum + self._jitter(axis, slot)) / self.population
+            values[axis] = round(low + unit * (high - low), 9)
+            strata[axis] = stratum
+        return {
+            "values": values,
+            "strata": strata,
+            "slot": slot,
+            "population": self.population,
+            "seed": self.seed,
+            "sampler_version": "farpoint.deterministic-latin-hypercube.v1",
+        }
+
+    def sample_in_strata(
+        self, strata: dict[str, int], *, slot: int
+    ) -> dict[str, Any]:
+        """Resample continuous jitter while preserving a frozen LHS design."""
+        expected = {name for name, _, _ in self.bounds}
+        if set(strata) != expected:
+            raise ValueError("Latin-hypercube replacement strata do not match axes")
+        if not 0 <= slot < self.population:
+            raise ValueError("Latin-hypercube slot is outside the population")
+        values = {}
+        normalized = {}
+        for axis, low, high in self.bounds:
+            stratum = int(strata[axis])
+            if not 0 <= stratum < self.population:
+                raise ValueError("Latin-hypercube replacement stratum is outside population")
+            unit = (stratum + self._jitter(axis, slot)) / self.population
+            values[axis] = round(low + unit * (high - low), 9)
+            normalized[axis] = stratum
+        return {
+            "values": values,
+            "strata": normalized,
+            "slot": slot,
+            "population": self.population,
+            "seed": self.seed,
+            "sampler_version": "farpoint.deterministic-latin-hypercube.v1",
+            "replacement_preserves_strata": True,
+        }
+
+
+@dataclass(frozen=True)
 class StratifiedGridSampler:
     x_bounds_m: tuple[float, float]
     y_bounds_m: tuple[float, float]

@@ -20,8 +20,9 @@ FORMAL_SEGMENT_KIND = "self_healing_campaign_segment"
 
 
 def is_v010_episode_plan(plan: dict[str, Any]) -> bool:
-    """Return whether a plan must emit the v0.1.0 episode v4 contract."""
-    return (plan.get("pilot") or {}).get("kind") == PILOT_KIND or (
+    """Return whether a campaign plan must emit the episode v4 contract."""
+    pilot = plan.get("pilot") or {}
+    return pilot.get("kind") == PILOT_KIND or pilot.get("episode_contract") == "farpoint.episode.v4" or (
         plan.get("collection") or {}
     ).get("kind") == FORMAL_SEGMENT_KIND
 
@@ -85,7 +86,7 @@ def build_so101_episode_v4(
 ) -> dict[str, Any]:
     """Bind immutable campaign/segment provenance to one measured episode."""
     if not is_v010_episode_plan(plan):
-        raise ValueError("episode v4 writer requires a v0.1.0 plan")
+        raise ValueError("episode v4 writer requires a campaign collection plan")
     campaign_errors = validate_campaign_semantics(campaign)
     segment_errors = validate_segment_semantics(segment)
     if campaign_errors or segment_errors:

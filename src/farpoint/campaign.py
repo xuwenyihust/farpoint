@@ -21,6 +21,12 @@ SEGMENT_SCHEMA = "farpoint.collection-segment.v1"
 EVENT_SCHEMA = "farpoint.collection-event.v1"
 EXECUTION_STATUSES = {"RUNNING", "FINISHED", "ABORTED", "PAUSED"}
 QUALITY_STATUSES = {"NOT_EVALUATED", "PASS", "FAIL"}
+LEGACY_QUOTA_IDENTITY_FIELDS = (
+    "object_variant_id",
+    "yaw_stratum_id",
+    "region_band",
+    "split",
+)
 
 
 def canonical_sha256(value: Any, *, omit: Iterable[str] = ()) -> str:
@@ -139,6 +145,41 @@ def variation_seed(
     return int.from_bytes(hashlib.sha256(material.encode()).digest()[:8], "big") & ((1 << 63) - 1)
 
 
+def quota_identity_fields(campaign: dict[str, Any]) -> tuple[str, ...]:
+    """Return the declared quota axes, with the published v0.1.x default."""
+    values = campaign.get("quota_identity_fields") or LEGACY_QUOTA_IDENTITY_FIELDS
+    fields = tuple(str(value) for value in values)
+    if not fields or len(fields) != len(set(fields)) or "split" not in fields:
+        raise ValueError("campaign quota_identity_fields must be unique and include split")
+    return fields
+
+
+def generic_variation_seed(
+    campaign_sha256: str,
+    *,
+    quota: dict[str, Any],
+    quota_ordinal: int,
+    replacement_index: int = 0,
+) -> int:
+    """Derive a seed from arbitrary, explicitly named campaign quota axes."""
+    _check_hash(campaign_sha256, "campaign_sha256", errors := [])
+    if errors:
+        raise ValueError(errors[0])
+    if quota_ordinal < 0 or replacement_index < 0:
+        raise ValueError("quota ordinal and replacement index must be non-negative")
+    canonical_quota = json.dumps(quota, sort_keys=True, separators=(",", ":"))
+    material = ":".join(
+        (
+            "farpoint-variation-seed-v2",
+            campaign_sha256,
+            canonical_quota,
+            str(quota_ordinal),
+            str(replacement_index),
+        )
+    )
+    return int.from_bytes(hashlib.sha256(material.encode()).digest()[:8], "big") & ((1 << 63) - 1)
+
+
 def attempt_seed(variation_seed_value: int, attempt_index: int) -> int:
     if variation_seed_value < 0:
         raise ValueError("variation seed must be non-negative")
@@ -163,6 +204,21 @@ def validate_campaign_semantics(campaign: dict[str, Any]) -> list[str]:
         errors.append("campaign_sha256 does not match canonical campaign content")
     target = campaign["target"]
     quotas = campaign["quotas"]
+    try:
+        identity_fields = quota_identity_fields(campaign)
+    except ValueError as error:
+        errors.append(str(error))
+        identity_fields = ()
+    identities = set()
+    for index, row in enumerate(quotas):
+        missing = [field for field in identity_fields if field not in row]
+        if missing:
+            errors.append(f"campaign quota[{index}] is missing identity fields: {missing}")
+            continue
+        identity = tuple(row[field] for field in identity_fields)
+        if identity in identities:
+            errors.append(f"campaign quota[{index}] duplicates identity {identity}")
+        identities.add(identity)
     if sum(int(row["count"]) for row in quotas) != int(target["successful_episodes"]):
         errors.append("campaign quotas do not sum to the success target")
     split_counts: dict[str, int] = {}
@@ -172,8 +228,12 @@ def validate_campaign_semantics(campaign: dict[str, Any]) -> list[str]:
         errors.append("campaign quotas do not match target split counts")
     if campaign["attempt_policy"].get("maximum_attempts_per_variation") != 3:
         errors.append("campaign must allow exactly three attempts per variation")
-    if campaign["attempt_policy"].get("global_attempt_limit") is not None:
-        errors.append("campaign must not define a global attempt limit")
+    global_limit = campaign["attempt_policy"].get("global_attempt_limit")
+    if global_limit is not None:
+        maximum = int(campaign["attempt_policy"]["maximum_attempts_per_variation"])
+        successes = int(target["successful_episodes"])
+        if not successes <= int(global_limit) <= successes * maximum:
+            errors.append("global attempt limit must be between target and maximum budget")
     return errors
 
 

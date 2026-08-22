@@ -7,6 +7,8 @@ from enum import Enum
 
 import numpy as np
 
+from farpoint.control import so101_capture_admission_retention_fraction
+
 
 class GraspPhase(str, Enum):
     APPROACH = "approach"
@@ -28,7 +30,44 @@ def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
         GraspPhase.SLOW_CLOSE,
         GraspPhase.BILATERAL_SETTLE,
         GraspPhase.STATIC_HOLD,
+        GraspPhase.PROOF_LIFT,
     }
+
+
+def contact_force_vectors_opposed(
+    left_vector_n,
+    right_vector_n,
+    *,
+    maximum_cosine: float = -0.5,
+    minimum_force_n: float = 0.10,
+) -> bool:
+    """Return whether two cube-contact forces form a real opposing grasp.
+
+    Bilateral force magnitudes alone also admit corner wedges where both
+    fingertips load the cube in nearly orthogonal directions.  Such a wedge
+    can remain quasi-static through the capture window and then eject the
+    cube on the first proof-lift sample.  Requiring a bounded negative cosine
+    distinguishes opposing sidewall contact without depending on cube yaw or
+    a world-space force axis.
+    """
+    left = np.asarray(left_vector_n, dtype=np.float64)
+    right = np.asarray(right_vector_n, dtype=np.float64)
+    cosine_limit = float(maximum_cosine)
+    force_floor = float(minimum_force_n)
+    if left.shape != (3,) or right.shape != (3,):
+        raise ValueError("contact force vectors must have shape (3,)")
+    if not np.all(np.isfinite(left)) or not np.all(np.isfinite(right)):
+        raise ValueError("contact force vectors must be finite")
+    if not np.isfinite(cosine_limit) or not -1.0 < cosine_limit < 0.0:
+        raise ValueError("maximum_cosine must be finite and between -1 and 0")
+    if not np.isfinite(force_floor) or force_floor <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+    left_norm = float(np.linalg.norm(left))
+    right_norm = float(np.linalg.norm(right))
+    if left_norm < force_floor or right_norm < force_floor:
+        return False
+    cosine = float(np.dot(left, right) / (left_norm * right_norm))
+    return cosine <= cosine_limit
 
 
 def capture_aperture_laterally_aligned(
@@ -56,10 +95,20 @@ def advance_proof_lift_command(
     current_height_m: float,
     *,
     just_armed: bool,
-    increment_m: float = 0.0000625,
+    contact_retained: bool = True,
+    increment_m: float = 0.000015625,
     maximum_height_m: float = 0.010,
 ) -> tuple[np.ndarray, float]:
-    """Advance proof lift without erasing accumulated gravity compensation."""
+    """Advance proof lift without erasing accumulated gravity compensation.
+
+    At 120 Hz the default is a 1.875 mm/s ramp.  Frozen 40 mm-cube evidence
+    showed that the former 7.5 mm/s target could retain a quasi-static,
+    bilateral capture for the full admission and hold windows, then peel one
+    fingertip off on the first proof-lift samples.  Keeping this ramp below the
+    capture-motion ceiling gives the existing force controller time to retain
+    the same grasp; contact thresholds and the 5 mm physical proof remain
+    unchanged.
+    """
     command_base = cartesian_motion_command_base(
         commanded_joints, measured_joints, entering_motion=just_armed
     )
@@ -69,8 +118,88 @@ def advance_proof_lift_command(
         raise ValueError("proof-lift increment and maximum must be positive")
     if current_height_m > maximum_height_m:
         raise ValueError("current proof-lift height exceeds the maximum")
-    next_height = min(maximum_height_m, current_height_m + increment_m)
+    if not isinstance(contact_retained, bool):
+        raise ValueError("contact_retained must be a boolean")
+    # The state machine permits a short, bounded contact-loss recovery window.
+    # Do not make that recovery chase a moving Z target: hold the accumulated
+    # proof height until bilateral contact is restored, then resume the same
+    # ramp.  The physical proof requirement and recovery timeout are unchanged.
+    next_height = (
+        min(maximum_height_m, current_height_m + increment_m)
+        if contact_retained
+        else current_height_m
+    )
     return command_base, float(next_height)
+
+
+def proof_lift_recovery_holds_xy(
+    *, proof_lift_armed: bool, unilateral_contact: bool
+) -> bool:
+    """Keep a live unilateral proof recovery from dragging the held object.
+
+    Once proof lift is armed, a single retained fixed-finger contact means the
+    jaw still has a bounded opportunity to close. Tracking the displaced
+    object in XY moves that fixed finger with the object and prevents the
+    moving jaw from catching it. Bilateral geometry repair and pre-proof
+    capture alignment remain eligible for physical-offset tracking.
+    """
+    if not isinstance(proof_lift_armed, bool) or not isinstance(
+        unilateral_contact, bool
+    ):
+        raise ValueError("proof-lift recovery flags must be booleans")
+    return proof_lift_armed and unilateral_contact
+
+
+def contact_constrained_joint_step_limit(
+    default_max_joint_step: float,
+    *,
+    proof_lift_armed: bool,
+    maximum_proof_lift_joint_step: float = 0.001,
+) -> float:
+    """Bound resolved-rate IK more tightly while proving a live grasp.
+
+    A tiny Cartesian proof-lift target can still produce a saturated joint
+    update near a poorly conditioned arm pose.  Limiting that contact-bound
+    transition separately suppresses the first-tick acceleration without
+    slowing free-space motion or weakening the physical proof requirement.
+    """
+    default_limit = float(default_max_joint_step)
+    proof_limit = float(maximum_proof_lift_joint_step)
+    if not np.isfinite(default_limit) or default_limit <= 0.0:
+        raise ValueError("default_max_joint_step must be finite and positive")
+    if not np.isfinite(proof_limit) or proof_limit <= 0.0:
+        raise ValueError(
+            "maximum_proof_lift_joint_step must be finite and positive"
+        )
+    return min(default_limit, proof_limit) if proof_lift_armed else default_limit
+
+
+def capture_retention_force_floor(
+    default_force_n: float,
+    *,
+    capture_validation_active: bool,
+    minimum_capture_force_n: float = 4.0,
+) -> float:
+    """Keep a modest bilateral preload while validating a captured object.
+
+    Static captures can sit safely just below 4 N on one finger while the
+    weaker admission or default force controller remains idle. That margin can
+    disappear during bilateral settle or at the first contact-bound Cartesian
+    samples before the controller has time to recover. Raising only the
+    capture-validation control floor preserves the independent grasp evidence,
+    force ceilings, and physical lift proof.
+    """
+    default_force = float(default_force_n)
+    capture_force = float(minimum_capture_force_n)
+    if not np.isfinite(default_force) or default_force < 0.0:
+        raise ValueError("default_force_n must be finite and non-negative")
+    if not np.isfinite(capture_force) or capture_force < 0.0:
+        raise ValueError("minimum_capture_force_n must be finite and non-negative")
+    return (
+        max(default_force, capture_force)
+        if capture_validation_active
+        else default_force
+    )
 
 
 def cartesian_motion_command_base(
@@ -182,6 +311,29 @@ def gripper_xy_target_for_object_local_offset(
     return target
 
 
+def latch_pre_capture_recenter_object_reference(
+    object_position_world,
+    previous_reference=None,
+) -> np.ndarray:
+    """Latch the first contacted object position for pre-capture recentering.
+
+    A live object target creates positive feedback when one finger pushes the
+    object: the recenter target follows the displaced object, so the same
+    finger keeps translating it without ever closing the opposite side. Keep
+    the first finite contact position immutable for the remainder of the grasp
+    attempt. The ordinary correction corridor still bounds arm motion.
+    """
+    current = np.asarray(object_position_world, dtype=np.float64)
+    if current.shape != (3,) or not np.all(np.isfinite(current)):
+        raise ValueError("object_position_world must contain three finite values")
+    if previous_reference is None:
+        return current.astype(np.float32)
+    previous = np.asarray(previous_reference, dtype=np.float64)
+    if previous.shape != (3,) or not np.all(np.isfinite(previous)):
+        raise ValueError("previous_reference must contain three finite values")
+    return previous.astype(np.float32)
+
+
 def rotary_jaw_capture_hold_target(
     measured_position: float,
     *,
@@ -189,16 +341,20 @@ def rotary_jaw_capture_hold_target(
     open_position: float,
     preload_rad: float = 0.008,
     relative_speed_mps: float | None = None,
-    moving_capture_preload_rad: float = 0.004,
+    moving_capture_preload_rad: float = 0.008,
     moving_capture_threshold_mps: float = 0.001,
+    moving_capture_ceiling_mps: float = 0.002,
 ) -> float:
-    """Hold a captured rotary jaw with a motion-aware closing preload.
+    """Hold a captured rotary jaw with a continuously tapered preload.
 
-    Quasi-static exact-mesh captures need the validated 8 mrad preload to keep
-    bilateral contact.  A capture whose object is still moving uses the lower
-    4 mrad preload so the transition command does not eject the cube.  This
-    changes only the hold target after capture admission; force limits and
-    grasp-success evidence remain unchanged.
+    Exact-mesh captures need the validated 8 mrad preload to keep bilateral
+    contact.  The independent capture-speed gate already rejects a moving
+    enclosure above 2 mm/s, so the default hold must not weaken again inside
+    that admitted window. Immutable outer-workspace evidence showed the former
+    4 mrad moving endpoint entering BILATERAL_SETTLE correctly, then shedding a
+    finger before force control could recover.  The taper remains configurable
+    for explicit experiments; force limits and grasp-success evidence remain
+    unchanged.
     """
     if closed_position > open_position:
         raise ValueError("closed_position must not exceed open_position")
@@ -211,6 +367,13 @@ def rotary_jaw_capture_hold_target(
         or moving_capture_threshold_mps < 0.0
     ):
         raise ValueError("moving_capture_threshold_mps must be non-negative")
+    if (
+        not np.isfinite(moving_capture_ceiling_mps)
+        or moving_capture_ceiling_mps <= moving_capture_threshold_mps
+    ):
+        raise ValueError(
+            "moving_capture_ceiling_mps must exceed moving_capture_threshold_mps"
+        )
     if relative_speed_mps is not None and (
         not np.isfinite(relative_speed_mps) or relative_speed_mps < 0.0
     ):
@@ -220,7 +383,18 @@ def rotary_jaw_capture_hold_target(
         relative_speed_mps is not None
         and relative_speed_mps > moving_capture_threshold_mps
     ):
-        effective_preload = min(effective_preload, float(moving_capture_preload_rad))
+        moving_fraction = float(
+            np.clip(
+                (relative_speed_mps - moving_capture_threshold_mps)
+                / (moving_capture_ceiling_mps - moving_capture_threshold_mps),
+                0.0,
+                1.0,
+            )
+        )
+        effective_preload = effective_preload + moving_fraction * (
+            min(effective_preload, float(moving_capture_preload_rad))
+            - effective_preload
+        )
     return float(
         np.clip(
             float(measured_position) - effective_preload,
@@ -228,6 +402,63 @@ def rotary_jaw_capture_hold_target(
             float(open_position),
         )
     )
+
+
+def capture_hold_preload_for_force(
+    left_force_n: float,
+    right_force_n: float,
+    *,
+    proof_entry_force_n: float,
+    overload_margin_n: float = 1.0,
+    retention_preload_rad: float = 0.002,
+    balanced_preload_rad: float = 0.008,
+    buildup_preload_rad: float = 0.008,
+) -> float:
+    """Select capture preload from the already-measured bilateral force.
+
+    A capture below the independent proof-entry floor still needs the full
+    buildup preload.  Even a balanced capture only barely above that floor can
+    shed both contacts if the hold relaxes too early.  Reduce to the original
+    bounded 2 mrad retention hold only when both fingers are proof-ready *and*
+    the stronger finger exceeds the floor by an evidence-bounded overload
+    margin. A proof-ready capture below that overload boundary retains the
+    already-stable buildup target instead of opening the jaw at the settle
+    transition. Immutable c26 evidence showed that a 4 mrad midpoint relief
+    made bilateral force decay before even a slowed controller could recover.
+    Subsequent force correction and all proof gates remain authoritative.
+    """
+    values = (
+        float(left_force_n),
+        float(right_force_n),
+        float(proof_entry_force_n),
+        float(overload_margin_n),
+        float(retention_preload_rad),
+        float(balanced_preload_rad),
+        float(buildup_preload_rad),
+    )
+    (
+        left_force,
+        right_force,
+        proof_floor,
+        overload_margin,
+        retention_preload,
+        balanced_preload,
+        buildup_preload,
+    ) = values
+    if any(not np.isfinite(value) or value < 0.0 for value in values):
+        raise ValueError("capture forces, floor, and preloads must be non-negative")
+    if proof_floor == 0.0:
+        raise ValueError("proof_entry_force_n must be positive")
+    if not retention_preload <= balanced_preload <= buildup_preload:
+        raise ValueError(
+            "capture preloads must satisfy retention <= balanced <= buildup"
+        )
+    proof_ready = min(left_force, right_force) >= proof_floor
+    if not proof_ready:
+        return buildup_preload
+    if max(left_force, right_force) >= proof_floor + overload_margin:
+        return retention_preload
+    return balanced_preload
 
 
 def capture_preload_force_floor(
@@ -253,14 +484,14 @@ def capture_preload_force_floor(
 
 
 def capture_admission_retention_fraction(object_width_m: float | None) -> float:
-    """Return the evidence-bounded capture floor fraction for object width."""
-    if object_width_m is None:
-        return 0.25
-    width = float(object_width_m)
-    if not np.isfinite(width) or width <= 0.0:
-        raise ValueError("object_width_m must be finite and positive")
-    interpolation = float(np.clip((width - 0.03) / 0.01, 0.0, 1.0))
-    return 0.25 + 0.50 * interpolation
+    """Return the evidence-bounded capture floor fraction for object width.
+
+    Large cubes require the same 90% force floor used by bilateral settle.
+    Admitting a 40 mm capture below that floor can transition away from the
+    active slow-close/recenter controller while one fingertip is already
+    losing contact.  The 30 mm hysteresis remains unchanged.
+    """
+    return so101_capture_admission_retention_fraction(object_width_m)
 
 
 def unilateral_contact_requires_recenter(
@@ -275,6 +506,48 @@ def unilateral_contact_requires_recenter(
     return (
         min(float(left_force_n), float(right_force_n)) < minimum_force_n
         <= max(float(left_force_n), float(right_force_n))
+    )
+
+
+def captured_force_imbalance_requires_squeeze_pause(
+    left_force_n: float,
+    right_force_n: float,
+    *,
+    minimum_force_n: float,
+    proof_entry_force_n: float,
+    minimum_balance_ratio: float = 0.75,
+) -> bool:
+    """Return whether a bilateral capture is too asymmetric to squeeze safely.
+
+    Once both fingers contact the object, blindly increasing rotary-jaw preload
+    can amplify an off-centre enclosure and eject the object.  Keep the force
+    evidence thresholds independent: this helper only selects a squeeze pause
+    while neither finger has reached proof-entry preload and the weaker finger
+    carries less than a fixed fraction of the stronger finger.  The caller
+    pauses rotary-jaw squeeze without moving the
+    just-measured Cartesian capture pose: pre-capture aperture calibration is
+    not a valid post-capture recenter target.  A strong one-sided preload
+    remains eligible for ordinary force restoration.
+    """
+    forces = (float(left_force_n), float(right_force_n))
+    force_floor = float(minimum_force_n)
+    proof_force = float(proof_entry_force_n)
+    balance_ratio = float(minimum_balance_ratio)
+    if any(not np.isfinite(force) or force < 0.0 for force in forces):
+        raise ValueError("contact forces must be finite and non-negative")
+    if not np.isfinite(force_floor) or force_floor <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+    if not np.isfinite(proof_force) or proof_force < force_floor:
+        raise ValueError(
+            "proof_entry_force_n must be finite and at least minimum_force_n"
+        )
+    if not np.isfinite(balance_ratio) or not 0.0 < balance_ratio <= 1.0:
+        raise ValueError("minimum_balance_ratio must be finite and in (0, 1]")
+    weaker, stronger = min(forces), max(forces)
+    return (
+        weaker >= force_floor
+        and stronger < proof_force
+        and weaker / stronger < balance_ratio
     )
 
 
@@ -333,6 +606,7 @@ class GraspEvidence:
     right_force_n: float
     aperture_aligned: bool = False
     capture_admissible: bool = True
+    contact_geometry_valid: bool = True
     relative_translation_error_m: float = float("inf")
     relative_speed_mps: float = float("inf")
     proof_lift_m: float = 0.0
@@ -346,11 +620,16 @@ class GraspDecision:
     rebase_joint_command: bool
     hold_cartesian_pose: bool
     failure_reason: str | None
+    rebase_capture_candidate_tracking: bool = False
 
     @property
     def rebase_relative_tracking(self) -> bool:
-        """Return whether object-in-gripper tracking must start from this capture."""
-        return self.entered_phase and self.phase is GraspPhase.BILATERAL_SETTLE
+        """Return whether object-in-gripper tracking needs a new rigid reference."""
+        return (
+            self.rebase_capture_candidate_tracking
+            or self.entered_phase
+            and self.phase is GraspPhase.BILATERAL_SETTLE
+        )
 
 
 @dataclass
@@ -361,6 +640,7 @@ class ContactAwareGraspStateMachine:
     object_width_m: float | None = None
     minimum_contact_force_n: float = 0.10
     capture_contact_force_n: float | None = None
+    minimum_proof_entry_force_n: float | None = None
     capture_confirmation_s: float = 0.05
     maximum_capture_relative_speed_mps: float = 0.002
     maximum_force_n: float = 60.0
@@ -377,6 +657,7 @@ class ContactAwareGraspStateMachine:
     stable_steps: int = 0
     contact_loss_steps: int = 0
     capture_steps: int = 0
+    capture_rebase_steps: int = 0
     failure_reason: str | None = None
 
     def __post_init__(self) -> None:
@@ -401,6 +682,17 @@ class ContactAwareGraspStateMachine:
                 "capture contact force must be at least the minimum contact "
                 "force and below the maximum force"
             )
+        if self.minimum_proof_entry_force_n is None:
+            self.minimum_proof_entry_force_n = self.minimum_contact_force_n
+        if not (
+            self.minimum_contact_force_n
+            <= self.minimum_proof_entry_force_n
+            < self.maximum_force_n
+        ):
+            raise ValueError(
+                "proof-entry contact force must be at least the minimum contact "
+                "force and below the maximum force"
+            )
         if self.capture_confirmation_s < 0:
             raise ValueError("capture confirmation duration must be non-negative")
         if (
@@ -423,6 +715,7 @@ class ContactAwareGraspStateMachine:
         self.stable_steps = 0
         self.contact_loss_steps = 0
         self.capture_steps = 0
+        self.capture_rebase_steps = 0
 
     def _fail(self, reason: str) -> None:
         self.phase = GraspPhase.FAILED
@@ -430,6 +723,7 @@ class ContactAwareGraspStateMachine:
 
     def step(self, evidence: GraspEvidence) -> GraspDecision:
         previous = self.phase
+        rebase_capture_candidate_tracking = False
         if self.phase in {GraspPhase.VALIDATED, GraspPhase.FAILED}:
             return GraspDecision(self.phase, False, False, True, self.failure_reason)
         self.phase_steps += 1
@@ -460,6 +754,7 @@ class ContactAwareGraspStateMachine:
                 ),
             )
             and evidence.capture_admissible
+            and evidence.contact_geometry_valid
         )
         rigid = (
             evidence.relative_translation_error_m
@@ -474,19 +769,57 @@ class ContactAwareGraspStateMachine:
         elif self.phase is GraspPhase.CONTACT_ALIGNMENT and evidence.aperture_aligned:
             self._enter(GraspPhase.SLOW_CLOSE)
         elif self.phase is GraspPhase.SLOW_CLOSE:
-            self.capture_steps = self.capture_steps + 1 if capture_bilateral else 0
-            if (
-                self.capture_steps >= self.capture_confirmation_steps
+            # Confirmation is a joint force-and-motion window. Counting
+            # translating bilateral samples and checking motion only on the
+            # final tick lets a sliding edge enclosure accumulate the whole
+            # force window, pause momentarily, and enter capture before the
+            # cube is settled in the aperture. Both instantaneous speed and
+            # displacement since first bilateral contact must therefore stay
+            # bounded throughout the consecutive confirmation window.
+            capture_motion_stable = (
+                capture_bilateral
                 and evidence.relative_speed_mps
                 <= self.maximum_capture_relative_speed_mps
-            ):
+            )
+            capture_stable = (
+                capture_motion_stable
+                and evidence.relative_translation_error_m
+                <= self.maximum_relative_translation_error_m
+            )
+            self.capture_steps = self.capture_steps + 1 if capture_stable else 0
+            # Recenter is allowed before capture and can deliberately move the
+            # cube far from the first weak bilateral-contact reference. Do not
+            # make that historical displacement a permanent admission veto.
+            # A new candidate reference is allowed only after a full settle
+            # window of uninterrupted force, geometry, aperture and low-speed
+            # evidence. A transient sliding edge enclosure cannot satisfy this
+            # longer window; after rebasing, the ordinary consecutive capture
+            # window still has to pass before BILATERAL_SETTLE.
+            needs_candidate_rebase = (
+                capture_motion_stable
+                and evidence.relative_translation_error_m
+                > self.maximum_relative_translation_error_m
+            )
+            self.capture_rebase_steps = (
+                self.capture_rebase_steps + 1 if needs_candidate_rebase else 0
+            )
+            if self.capture_rebase_steps >= self._steps(self.bilateral_settle_s):
+                self.capture_rebase_steps = 0
+                rebase_capture_candidate_tracking = True
+            if self.capture_steps >= self.capture_confirmation_steps:
                 self._enter(GraspPhase.BILATERAL_SETTLE)
         elif self.phase is GraspPhase.BILATERAL_SETTLE:
             self.stable_steps = self.stable_steps + 1 if bilateral and rigid else 0
             if self.stable_steps >= self._steps(self.bilateral_settle_s):
                 self._enter(GraspPhase.STATIC_HOLD)
         elif self.phase is GraspPhase.STATIC_HOLD:
-            self.stable_steps = self.stable_steps + 1 if bilateral and rigid else 0
+            proof_entry_bilateral = (
+                evidence.left_force_n >= self.minimum_proof_entry_force_n
+                and evidence.right_force_n >= self.minimum_proof_entry_force_n
+            )
+            self.stable_steps = (
+                self.stable_steps + 1 if proof_entry_bilateral and rigid else 0
+            )
             if self.stable_steps >= self._steps(self.static_hold_s):
                 self._enter(GraspPhase.PROOF_LIFT)
         elif self.phase is GraspPhase.PROOF_LIFT:
@@ -524,4 +857,5 @@ class ContactAwareGraspStateMachine:
                 GraspPhase.STATIC_HOLD,
             },
             failure_reason=self.failure_reason,
+            rebase_capture_candidate_tracking=rebase_capture_candidate_tracking,
         )

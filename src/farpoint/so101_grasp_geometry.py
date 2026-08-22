@@ -129,6 +129,41 @@ def so101_capture_aperture_reference(jaw_position_rad: float) -> np.ndarray:
     )
 
 
+def so101_pre_capture_recenter_aperture_reference(
+    jaw_position_rad: float,
+    object_width_m: float,
+    *,
+    small_width_m: float = 0.030,
+    large_width_m: float = 0.040,
+    large_cube_local_x_m: float = 0.016,
+) -> np.ndarray:
+    """Return the evidence-calibrated recenter reference for slow close.
+
+    The validated 30 mm path retains the exact-mesh aperture reference.  For
+    the 40 mm cube, only local X moves to the median first-bilateral-contact
+    position measured across successful red pilot grasps.  Intermediate
+    widths interpolate between those endpoints; local Y and Z remain pinned
+    to the exact-mesh calibration.
+    """
+    width = float(object_width_m)
+    small = float(small_width_m)
+    large = float(large_width_m)
+    large_x = float(large_cube_local_x_m)
+    if not np.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not np.isfinite(small) or not np.isfinite(large) or not 0.0 < small < large:
+        raise ValueError("width anchors must be finite, positive, and ordered")
+    if not np.isfinite(large_x):
+        raise ValueError("large_cube_local_x_m must be finite")
+
+    reference = so101_capture_aperture_reference(jaw_position_rad)
+    fraction = float(np.clip((width - small) / (large - small), 0.0, 1.0))
+    reference[0] = float(reference[0]) + fraction * (
+        large_x - float(reference[0])
+    )
+    return reference
+
+
 def _vector(value, *, length: int, name: str) -> np.ndarray:
     result = np.asarray(value, dtype=np.float64)
     if result.shape != (length,) or not np.isfinite(result).all():

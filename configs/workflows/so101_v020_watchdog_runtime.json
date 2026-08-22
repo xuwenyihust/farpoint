@@ -1,0 +1,14 @@
+{
+  "schema_version": "farpoint.so101-watchdog-policy.v1",
+  "recent_window_attempts": 10,
+  "minimum_recent_attempts": 10,
+  "recent_failure_fraction": 0.7,
+  "minimum_recent_success_rate": 0.0,
+  "consecutive_failure_limit": 5,
+  "distinct_variations_for_consecutive_failure": false,
+  "no_success_timeout_seconds": 7200,
+  "minimum_free_disk_bytes": 536870912000,
+  "stale_run_state_seconds": 60,
+  "stale_manifest_seconds": 60,
+  "structural_failure_classes": ["runner_error", "contact_force_limit", "bilateral_contact_lost", "collision", "object_dropped", "phase_timeout", "camera_integrity", "metadata_integrity", "hash_mismatch"]
+}
