@@ -219,6 +219,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
+    proof_lift_retention_force_floor,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
@@ -2277,7 +2278,10 @@ def run_attempt(
                         grasp_machine.capture_contact_force_n
                     )
                     if settling_capture
-                    else 3.0
+                    else proof_lift_retention_force_floor(
+                        3.0,
+                        proof_lift_armed=phase is OraclePhase.VERIFY_CONTACT,
+                    )
                 ),
                 # Back off before the independent 30 N safety validator can
                 # trip on a one-control-tick unilateral force spike.

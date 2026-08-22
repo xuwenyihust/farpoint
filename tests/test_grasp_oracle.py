@@ -17,6 +17,7 @@ from farpoint.grasp_oracle import (
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
     point_in_local_frame,
+    proof_lift_retention_force_floor,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
@@ -386,6 +387,30 @@ def test_proof_lift_uses_tighter_contact_constrained_joint_step_limit():
     assert contact_constrained_joint_step_limit(
         0.0005, proof_lift_armed=True
     ) == pytest.approx(0.0005)
+
+
+def test_proof_lift_raises_only_the_controller_retention_floor():
+    assert proof_lift_retention_force_floor(
+        3.0, proof_lift_armed=False
+    ) == pytest.approx(3.0)
+    assert proof_lift_retention_force_floor(
+        3.0, proof_lift_armed=True
+    ) == pytest.approx(4.0)
+    assert proof_lift_retention_force_floor(
+        5.0, proof_lift_armed=True
+    ) == pytest.approx(5.0)
+
+
+@pytest.mark.parametrize("value", (-0.1, float("nan"), float("inf")))
+def test_proof_lift_retention_force_floor_rejects_invalid_values(value):
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        proof_lift_retention_force_floor(value, proof_lift_armed=False)
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        proof_lift_retention_force_floor(
+            3.0,
+            proof_lift_armed=True,
+            minimum_proof_lift_force_n=value,
+        )
 
 
 @pytest.mark.parametrize("value", (0.0, -0.001, float("nan"), float("inf")))
