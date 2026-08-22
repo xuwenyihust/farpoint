@@ -381,6 +381,49 @@ def rotary_jaw_capture_hold_target(
     )
 
 
+def capture_hold_preload_for_force(
+    left_force_n: float,
+    right_force_n: float,
+    *,
+    proof_entry_force_n: float,
+    retention_preload_rad: float = 0.002,
+    buildup_preload_rad: float = 0.008,
+) -> float:
+    """Select capture preload from the already-measured bilateral force.
+
+    A capture below the independent proof-entry floor still needs the full
+    buildup preload.  Once both fingers already exceed that floor, continuing
+    to chase the same 8 mrad error can over-compress an exact-mesh enclosure;
+    retain only the original bounded 2 mrad hold while the unchanged force
+    controller and proof gates remain authoritative.
+    """
+    left_force, right_force, proof_floor, retention_preload, buildup_preload = (
+        float(left_force_n),
+        float(right_force_n),
+        float(proof_entry_force_n),
+        float(retention_preload_rad),
+        float(buildup_preload_rad),
+    )
+    values = (
+        left_force,
+        right_force,
+        proof_floor,
+        retention_preload,
+        buildup_preload,
+    )
+    if any(not np.isfinite(value) or value < 0.0 for value in values):
+        raise ValueError("capture forces, floor, and preloads must be non-negative")
+    if proof_floor == 0.0:
+        raise ValueError("proof_entry_force_n must be positive")
+    if retention_preload > buildup_preload:
+        raise ValueError("retention_preload_rad must not exceed buildup_preload_rad")
+    return (
+        retention_preload
+        if min(left_force, right_force) >= proof_floor
+        else buildup_preload
+    )
+
+
 def capture_preload_force_floor(
     capture_contact_force_n: float,
     *,

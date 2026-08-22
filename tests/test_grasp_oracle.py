@@ -9,6 +9,7 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_hold_preload_for_force,
     capture_retention_force_floor,
     contact_constrained_joint_step_limit,
     contact_force_vectors_opposed,
@@ -192,6 +193,43 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
             moving_capture_threshold_mps=0.002,
             moving_capture_ceiling_mps=0.002,
         )
+
+
+def test_capture_hold_preload_uses_retention_only_after_proof_force():
+    assert capture_hold_preload_for_force(
+        6.1,
+        4.5,
+        proof_entry_force_n=4.0,
+    ) == pytest.approx(0.002)
+    assert capture_hold_preload_for_force(
+        6.1,
+        3.9,
+        proof_entry_force_n=4.0,
+    ) == pytest.approx(0.008)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"left_force_n": -0.1, "right_force_n": 4.0, "proof_entry_force_n": 4.0},
+        {
+            "left_force_n": 4.0,
+            "right_force_n": float("nan"),
+            "proof_entry_force_n": 4.0,
+        },
+        {"left_force_n": 4.0, "right_force_n": 4.0, "proof_entry_force_n": 0.0},
+        {
+            "left_force_n": 4.0,
+            "right_force_n": 4.0,
+            "proof_entry_force_n": 4.0,
+            "retention_preload_rad": 0.009,
+            "buildup_preload_rad": 0.008,
+        },
+    ),
+)
+def test_capture_hold_preload_rejects_invalid_inputs(kwargs):
+    with pytest.raises(ValueError, match="non-negative|positive|must not exceed"):
+        capture_hold_preload_for_force(**kwargs)
 
 
 def test_capture_preload_force_floor_tracks_admission_threshold():

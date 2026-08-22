@@ -214,6 +214,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_hold_preload_for_force,
     capture_retention_force_floor,
     capture_preload_force_floor,
     captured_force_imbalance_requires_squeeze_pause,
@@ -3216,15 +3217,24 @@ def run_attempt(
             # command computed earlier in this tick. Continuing to close for
             # even one 120 Hz step can turn bilateral contact into a one-sided
             # squeeze on the rotary jaw.
-            # A zero-error position target lets the contact force relax to
-            # zero immediately. The reusable Oracle helper owns the calibrated
-            # bounded preload so repairs can tune it without changing the
-            # simulator collector.
+            # A zero-error position target lets contact force relax to zero
+            # immediately. Use the full buildup preload only while either
+            # finger is still below the independent proof-entry floor. The
+            # immutable v0.2.0 c22 trace entered with 6.1/4.5 N, then the
+            # unnecessary 8 mrad chase over-compressed the exact mesh and
+            # shed the moving finger. Force control and all proof gates remain
+            # unchanged after this one-time capture decision.
             grasp_jaw_hold = rotary_jaw_capture_hold_target(
                 float(current[5].item()),
                 closed_position=closed_jaw,
                 open_position=open_jaw,
                 relative_speed_mps=relative_speed,
+                preload_rad=capture_hold_preload_for_force(
+                    *finger_forces,
+                    proof_entry_force_n=(
+                        grasp_machine.minimum_proof_entry_force_n
+                    ),
+                ),
             )
             grasp_jaw_reference = grasp_jaw_hold
             grasp_hold_pose = gripper_pose[:3].copy()
