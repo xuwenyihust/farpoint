@@ -2436,7 +2436,10 @@ def run_attempt(
                 )
                 object_world = (
                     live_object_world
-                    if pre_capture_recenter_object_reference is None
+                    if (
+                        capture_retention_fallback
+                        or pre_capture_recenter_object_reference is None
+                    )
                     else pre_capture_recenter_object_reference
                 )
                 active_recenter_reference = pre_capture_recenter_aperture_reference
