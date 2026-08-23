@@ -17,6 +17,7 @@ from farpoint.v020_plan import (  # noqa: E402
     build_v020_continuation_plan,
     initialize_v020_campaign,
     load_v020_config,
+    remaining_v020_attempt_budget,
 )
 
 
@@ -52,7 +53,7 @@ def main() -> int:
         raise ValueError("continuation requires prior segment evidence")
     campaign = _read(args.campaign_root / "campaign.json")
     requests = build_continuation_requests(campaign, evidence)
-    remaining = 450 - total_attempts
+    remaining = remaining_v020_attempt_budget(campaign, total_attempts)
     plan = build_v020_continuation_plan(
         load_v020_config(args.config, project_root=PROJECT_ROOT),
         project_root=PROJECT_ROOT,

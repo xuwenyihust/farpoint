@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 import json
+import pytest
 from pathlib import Path
 
 from farpoint.campaign import validate_campaign_semantics
@@ -11,6 +12,7 @@ from farpoint.v020_plan import (
     build_v020_plan,
     canonical_sha256,
     load_v020_config,
+    remaining_v020_attempt_budget,
 )
 
 
@@ -139,6 +141,14 @@ def test_v020_plan_is_deterministic_and_records_target_camera_provenance():
     assert trial["camera_profile"]["resolved_profile"]["cameras"][1]["mount"] == (
         json.loads((ROOT / "configs/cameras/so101_front_wrist_v1.json").read_text())["cameras"][1]["mount"]
     )
+
+
+def test_v020_continuation_uses_campaign_attempt_limit():
+    campaign = {"attempt_policy": {"global_attempt_limit": 45}}
+    assert remaining_v020_attempt_budget(campaign, 40) == 5
+    assert remaining_v020_attempt_budget({"attempt_policy": {}}, 40) == 410
+    with pytest.raises(ValueError, match="exceed"):
+        remaining_v020_attempt_budget(campaign, 46)
 
 
 def test_v020_replacement_changes_jitter_but_preserves_quota_and_lhs_strata():

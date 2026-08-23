@@ -407,6 +407,16 @@ def initialize_v020_campaign(root: str | Path, plan: dict[str, Any], *, git_comm
     return {"campaign": campaign, "plan": plan, "segment": segment}
 
 
+def remaining_v020_attempt_budget(campaign: dict[str, Any], total_attempts: int) -> int:
+    """Return the frozen campaign budget remaining across continuation segments."""
+    configured = (campaign.get("attempt_policy") or {}).get("global_attempt_limit")
+    limit = 450 if configured is None else int(configured)
+    remaining = limit - int(total_attempts)
+    if remaining < 0:
+        raise ValueError("prior attempts exceed the campaign global limit")
+    return remaining
+
+
 def build_v020_continuation_plan(
     config: dict[str, Any],
     *,
