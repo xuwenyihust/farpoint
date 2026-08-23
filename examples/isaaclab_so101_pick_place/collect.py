@@ -2396,7 +2396,18 @@ def run_attempt(
         # v0.2.0 c22 trace showed that chasing the old calibration after proof
         # contact loss followed the sliding cube for 2.16 mm without restoring
         # the weak finger.
-        capture_recenter_required = unilateral_recenter
+        capture_retention_fallback = bool(
+            recenter_forces is not None
+            and capture_retention_recenter_fallback_active(
+                grasp_machine.phase,
+                grasp_machine.phase_steps,
+                *recenter_forces,
+                grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
+        capture_recenter_required = (
+            unilateral_recenter or capture_retention_fallback
+        )
         if (
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
@@ -2429,12 +2440,7 @@ def run_attempt(
                     else pre_capture_recenter_object_reference
                 )
                 active_recenter_reference = pre_capture_recenter_aperture_reference
-                if capture_retention_recenter_fallback_active(
-                    grasp_machine.phase,
-                    grasp_machine.phase_steps,
-                    *recenter_forces,
-                    grasp_machine.minimum_proof_entry_force_n,
-                ):
+                if capture_retention_fallback:
                     active_recenter_reference = capture_object_in_gripper
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
