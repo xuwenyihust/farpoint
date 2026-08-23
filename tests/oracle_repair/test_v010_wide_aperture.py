@@ -24,8 +24,8 @@ def test_supported_widths_interpolate_monotonically_within_mesh_anchors():
 
 def test_wide_corner_contact_cannot_arm_capture_before_enclosure():
     assert not so101_capture_admission_ready(1.36, 0.04)
-    assert so101_capture_admission_ready(1.02, 0.04)
-    assert not so101_capture_admission_ready(1.021, 0.04)
+    assert so101_capture_admission_ready(1.05, 0.04)
+    assert not so101_capture_admission_ready(1.051, 0.04)
     assert so101_capture_admission_ready(0.78, 0.04)
     assert so101_capture_admission_ready(0.53, 0.04)
 

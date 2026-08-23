@@ -86,7 +86,10 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     Six-tick confirmation and the independent capture-speed gate reject the
     transient corner contacts that motivated the original 0.9-rad ceiling.
     Keep that ceiling for the 30 mm cube, while allowing the 40 mm exact mesh
-    to arm at the measured 1.02-rad stable-enclosure boundary.
+    to arm at the measured 1.05-rad stable-enclosure boundary.  The v0.2.0
+    combined-pilot traces for c15 and c21 stopped deterministically at 1.0444
+    and 1.0200 rad with sustained bilateral force, so the former 1.02-rad
+    boundary rejected physically enclosed cubes on numerical geometry alone.
     """
     jaw = float(measured_jaw_position_rad)
     width = float(object_width_m)
@@ -95,7 +98,7 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-    maximum_capture_jaw = 0.90 + 0.12 * interpolation
+    maximum_capture_jaw = 0.90 + 0.15 * interpolation
     return jaw <= maximum_capture_jaw + 1e-6
 
 
