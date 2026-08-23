@@ -14,6 +14,7 @@ from farpoint.so101_collection import (
 )
 from farpoint.so101_pilot import build_so101_pilot_plan, build_so101_yaw_pilot_plan
 from farpoint.so101_pilot_report import (
+    _is_deterministic_failed_retry_group,
     _expectation_errors,
     _pilot_status,
     _required_success_cell_errors,
@@ -433,6 +434,50 @@ def test_pilot_gate_failure_is_not_invalid_evidence():
         _pilot_status("FINISHED", "FAIL", 9, 10, ["missing_episode"], [])
         == "INVALID_EVIDENCE"
     )
+
+
+def test_pilot_report_allows_only_identical_deterministic_failed_retries():
+    group = {
+        "episode_dirs": ["/episodes/a", "/episodes/b"],
+        "observations_sha256": "same",
+    }
+    attempts = {
+        "a": {
+            "attempt_id": "attempt-a",
+            "attempt_seed": 1,
+            "variation_id": "cell-a",
+            "success": False,
+            "selected": False,
+            "failure_category": "oracle",
+            "failure_reason": "grasp_phase_timeout:static_hold",
+        },
+        "b": {
+            "attempt_id": "attempt-b",
+            "attempt_seed": 2,
+            "variation_id": "cell-a",
+            "success": False,
+            "selected": False,
+            "failure_category": "oracle",
+            "failure_reason": "grasp_phase_timeout:static_hold",
+        },
+    }
+    episodes = [
+        {"episode_dir": "/episodes/a", "metadata_sha256": "metadata-a"},
+        {"episode_dir": "/episodes/b", "metadata_sha256": "metadata-b"},
+    ]
+
+    assert _is_deterministic_failed_retry_group(group, attempts, episodes)
+
+    attempts["b"]["selected"] = True
+    assert not _is_deterministic_failed_retry_group(group, attempts, episodes)
+    attempts["b"]["selected"] = False
+
+    attempts["b"]["variation_id"] = "cell-b"
+    assert not _is_deterministic_failed_retry_group(group, attempts, episodes)
+    attempts["b"]["variation_id"] = "cell-a"
+
+    attempts["b"]["failure_reason"] = "contact_force_limit"
+    assert not _is_deterministic_failed_retry_group(group, attempts, episodes)
 
 
 def test_targeted_pilot_expectations_check_success_and_failure_roles():

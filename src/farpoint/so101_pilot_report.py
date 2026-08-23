@@ -378,6 +378,39 @@ def audit_yaw_mass_episodes(
     return audits, errors
 
 
+def _is_deterministic_failed_retry_group(
+    group: dict[str, Any],
+    attempt_by_episode: dict[str, dict[str, Any]],
+    episodes: list[dict[str, Any]],
+) -> bool:
+    """Accept byte-identical deterministic retries without weakening identity gates."""
+    episode_names = [Path(path).name for path in group["episode_dirs"]]
+    attempts = [attempt_by_episode.get(name) for name in episode_names]
+    if any(attempt is None for attempt in attempts):
+        return False
+    typed_attempts = [attempt for attempt in attempts if attempt is not None]
+    if any(attempt.get("success") or attempt.get("selected") for attempt in typed_attempts):
+        return False
+    if len({attempt.get("variation_id") for attempt in typed_attempts}) != 1:
+        return False
+    outcomes = {
+        (attempt.get("failure_category"), attempt.get("failure_reason"))
+        for attempt in typed_attempts
+    }
+    if len(outcomes) != 1:
+        return False
+    if len({attempt.get("attempt_id") for attempt in typed_attempts}) != len(typed_attempts):
+        return False
+    if len({attempt.get("attempt_seed") for attempt in typed_attempts}) != len(typed_attempts):
+        return False
+    metadata_by_name = {
+        Path(episode["episode_dir"]).name: episode["metadata_sha256"]
+        for episode in episodes
+    }
+    metadata_hashes = [metadata_by_name.get(name) for name in episode_names]
+    return None not in metadata_hashes and len(set(metadata_hashes)) == len(metadata_hashes)
+
+
 def build_so101_pilot_report(
     plan: dict[str, Any],
     manifest: dict[str, Any],
@@ -407,9 +440,23 @@ def build_so101_pilot_report(
             terminal_runner_attempts.append(attempt["episode_id"])
     episode_dirs = [root / attempt["episode_id"] for attempt in analyzable_attempts]
     analysis = analyze_so101_episodes(episode_dirs, verify_images=True)
+    attempt_by_episode = {
+        attempt["episode_id"]: attempt for attempt in analyzable_attempts
+    }
+    deterministic_failed_retry_duplicates = bool(
+        analysis["duplicate_observation_groups"]
+    ) and all(
+        _is_deterministic_failed_retry_group(
+            group,
+            attempt_by_episode,
+            analysis["episodes"],
+        )
+        for group in analysis["duplicate_observation_groups"]
+    )
     errors = so101_episode_evidence_errors(
         analysis,
         len(analyzable_attempts),
+        allow_duplicate_observations=deterministic_failed_retry_duplicates,
         required_cameras=required_cameras,
     )
     errors.extend(evidence_errors)
