@@ -327,6 +327,35 @@ def validate_v020_pilot_authorization(
     if combined.get("pilot_status") != "PASS" or combined.get("success_count") != 30 or combined.get("required_successes") != 30:
         raise ValueError("combined pilot must pass 30/30")
     for record in (pad, combined):
+        if record.get("evidence_kind") == "self_healing_campaign":
+            value = record.get("evidence_index_sha256")
+            if not isinstance(value, str) or len(value) != 64:
+                raise ValueError(
+                    "pilot authorization evidence_index_sha256 must be a SHA256"
+                )
+            hash_lists = (
+                "plan_sha256s",
+                "manifest_sha256s",
+                "report_sha256s",
+            )
+            sizes = []
+            for field in hash_lists:
+                values = record.get(field)
+                if (
+                    not isinstance(values, list)
+                    or not values
+                    or any(
+                        not isinstance(item, str) or len(item) != 64
+                        for item in values
+                    )
+                ):
+                    raise ValueError(
+                        f"pilot authorization {field} must contain SHA256 values"
+                    )
+                sizes.append(len(values))
+            if len(set(sizes)) != 1:
+                raise ValueError("campaign pilot evidence lists must align by segment")
+            continue
         for field in ("plan_sha256", "manifest_sha256", "report_sha256"):
             value = record.get(field)
             if not isinstance(value, str) or len(value) != 64:
@@ -340,16 +369,14 @@ def build_v020_pilot_authorization(
     pad_manifest_path: str | Path,
     pad_report_path: str | Path,
     combined_plan: dict[str, Any],
-    combined_manifest_path: str | Path,
-    combined_report_path: str | Path,
+    combined_manifest_path: str | Path | None = None,
+    combined_report_path: str | Path | None = None,
+    combined_campaign_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Bind exact immutable 12/12 and 30/30 evidence for formal planning."""
     pad_manifest_path = Path(pad_manifest_path)
     pad_report_path = Path(pad_report_path)
-    combined_manifest_path = Path(combined_manifest_path)
-    combined_report_path = Path(combined_report_path)
     pad_report = json.loads(pad_report_path.read_text(encoding="utf-8"))
-    combined_report = json.loads(combined_report_path.read_text(encoding="utf-8"))
     selected_dimensions = deepcopy((pad_plan.get("pilot") or {}).get("pad_dimensions_m"))
     if (combined_plan.get("pilot") or {}).get("pad_dimensions_m") != selected_dimensions:
         raise ValueError("combined pilot did not use the pad selected by pad pilot")
@@ -364,17 +391,37 @@ def build_v020_pilot_authorization(
             "required_successes": int(report.get("required_successes", 0)),
         }
 
+    if combined_campaign_record is not None:
+        combined_record = deepcopy(combined_campaign_record)
+        if combined_manifest_path is not None or combined_report_path is not None:
+            raise ValueError("combined campaign evidence cannot be mixed with legacy files")
+        if combined_record.get("evidence_kind") != "self_healing_campaign":
+            raise ValueError("combined campaign record has the wrong evidence kind")
+        if combined_plan["plan_sha256"] not in (
+            combined_record.get("plan_sha256s") or []
+        ):
+            raise ValueError("combined campaign record does not bind the initial plan")
+    else:
+        if combined_manifest_path is None or combined_report_path is None:
+            raise ValueError("combined pilot manifest and report are required")
+        combined_manifest_path = Path(combined_manifest_path)
+        combined_report_path = Path(combined_report_path)
+        combined_report = json.loads(
+            combined_report_path.read_text(encoding="utf-8")
+        )
+        combined_record = record(
+            combined_plan,
+            combined_manifest_path,
+            combined_report_path,
+            combined_report,
+        )
+
     authorization = {
         "schema_version": AUTHORIZATION_SCHEMA,
         "config_sha256": canonical_sha256(config),
         "selected_pad_dimensions_m": selected_dimensions,
         "pad_pilot": record(pad_plan, pad_manifest_path, pad_report_path, pad_report),
-        "combined_pilot": record(
-            combined_plan,
-            combined_manifest_path,
-            combined_report_path,
-            combined_report,
-        ),
+        "combined_pilot": combined_record,
     }
     validate_v020_pilot_authorization(
         authorization, config=config, pad_dimensions_m=selected_dimensions

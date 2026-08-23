@@ -9,11 +9,13 @@ from farpoint.campaign import validate_campaign_semantics
 from farpoint.so101_collection import create_manifest, create_pilot_manifest
 from farpoint.v020_plan import (
     build_v020_attempt_budget_extension,
+    build_v020_pilot_authorization,
     build_v020_continuation_plan,
     build_v020_plan,
     canonical_sha256,
     load_v020_config,
     remaining_v020_attempt_budget,
+    validate_v020_pilot_authorization,
 )
 
 
@@ -253,3 +255,77 @@ def test_v020_pilot_continuation_drops_source_pilot_profile():
     )
     assert manifest["required_successes"] == 1
     assert manifest["maximum_attempts"] == 2
+
+
+def test_v020_authorization_accepts_hash_bound_multisegment_campaign(tmp_path):
+    config = _config()
+    pad_plan = build_v020_plan(
+        config, project_root=ROOT, plan_id="v020-pad-auth", mode="pad-pilot"
+    )
+    combined_plan = build_v020_plan(
+        config,
+        project_root=ROOT,
+        plan_id="v020-combined-auth",
+        mode="combined-pilot",
+    )
+    pad_manifest = tmp_path / "pad-manifest.json"
+    pad_report = tmp_path / "pad-report.json"
+    pad_manifest.write_text("{}\n")
+    pad_report.write_text(
+        json.dumps(
+            {
+                "pilot_status": "PASS",
+                "success_count": 12,
+                "required_successes": 12,
+            }
+        )
+        + "\n"
+    )
+    campaign_record = {
+        "evidence_kind": "self_healing_campaign",
+        "evidence_index_sha256": "1" * 64,
+        "campaign_sha256": combined_plan["campaign_sha256"],
+        "segment_ids": ["segment-000", "segment-001"],
+        "plan_sha256s": [combined_plan["plan_sha256"], "2" * 64],
+        "manifest_sha256s": ["3" * 64, "4" * 64],
+        "report_sha256s": ["5" * 64, "6" * 64],
+        "pilot_status": "PASS",
+        "success_count": 30,
+        "required_successes": 30,
+        "attempted_count": 45,
+    }
+    authorization = build_v020_pilot_authorization(
+        config,
+        pad_plan=pad_plan,
+        pad_manifest_path=pad_manifest,
+        pad_report_path=pad_report,
+        combined_plan=combined_plan,
+        combined_campaign_record=campaign_record,
+    )
+    assert authorization["combined_pilot"] == campaign_record
+    validate_v020_pilot_authorization(
+        authorization,
+        config=config,
+        pad_dimensions_m=[0.09, 0.09, 0.01],
+    )
+
+
+def test_v020_authorization_rejects_misaligned_campaign_evidence_lists():
+    config = _config()
+    authorization = _authorization(config)
+    authorization["combined_pilot"] = {
+        "evidence_kind": "self_healing_campaign",
+        "evidence_index_sha256": "1" * 64,
+        "plan_sha256s": ["2" * 64, "3" * 64],
+        "manifest_sha256s": ["4" * 64],
+        "report_sha256s": ["5" * 64, "6" * 64],
+        "pilot_status": "PASS",
+        "success_count": 30,
+        "required_successes": 30,
+    }
+    with pytest.raises(ValueError, match="align by segment"):
+        validate_v020_pilot_authorization(
+            authorization,
+            config=config,
+            pad_dimensions_m=[0.09, 0.09, 0.01],
+        )
