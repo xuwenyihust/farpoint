@@ -2287,6 +2287,16 @@ def run_attempt(
                 proof_entry_force_n=grasp_machine.minimum_proof_entry_force_n,
             )
         )
+        retention_preload_fallback = bool(
+            settling_capture
+            and balanced_forces is not None
+            and capture_retention_recenter_fallback_active(
+                grasp_machine.phase,
+                grasp_machine.phase_steps,
+                *balanced_forces,
+                grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
         if (
             grasp_jaw_hold is not None
             and balanced_forces is not None
@@ -2334,7 +2344,19 @@ def run_attempt(
                     else (0.001 if phase is OraclePhase.VERIFY_CONTACT else 0.002)
                 ),
                 backoff_step=0.001,
-                max_preload_error=(0.012 if settling_capture else 0.030),
+                # The immutable c26 r24 trace showed that the state-driven
+                # retention fallback improved both finger forces while the
+                # jaw command remained pinned at the normal 12 mrad preload
+                # cap.  Give only that already-gated recovery path another
+                # 6 mrad; normal capture and the independent force/range
+                # safety limits remain unchanged.
+                max_preload_error=(
+                    0.018
+                    if retention_preload_fallback
+                    else 0.012
+                    if settling_capture
+                    else 0.030
+                ),
                 preload_reference_position=grasp_jaw_reference,
             )
             grasp_jaw_hold = float(jaw_update["position"])
