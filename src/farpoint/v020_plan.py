@@ -413,6 +413,7 @@ def build_v020_attempt_budget_extension(
     *,
     diagnosis_sha256: str,
     extended_global_attempt_limit: int,
+    out_of_lineage_attempt_count: int = 0,
 ) -> dict[str, Any]:
     """Bind an owner-approved pilot budget relaxation without mutating a campaign."""
     base_limit = int((campaign.get("attempt_policy") or {})["global_attempt_limit"])
@@ -423,12 +424,16 @@ def build_v020_attempt_budget_extension(
         raise ValueError("combined pilot budget extension must be 45 to 60 attempts")
     if not isinstance(diagnosis_sha256, str) or len(diagnosis_sha256) != 64:
         raise ValueError("attempt budget extension requires a diagnosis SHA256")
+    excluded_attempts = int(out_of_lineage_attempt_count)
+    if excluded_attempts < 0:
+        raise ValueError("out-of-lineage attempt count must be non-negative")
     extension = {
         "schema_version": ATTEMPT_BUDGET_EXTENSION_SCHEMA,
         "campaign_sha256": campaign["campaign_sha256"],
         "base_global_attempt_limit": base_limit,
         "extended_global_attempt_limit": extended_limit,
         "diagnosis_sha256": diagnosis_sha256,
+        "out_of_lineage_attempt_count": excluded_attempts,
         "reason": "owner_approved_combined_pilot_gate_relaxation",
     }
     extension["extension_sha256"] = canonical_sha256(extension)
@@ -442,6 +447,7 @@ def validate_v020_attempt_budget_extension(
         campaign,
         diagnosis_sha256=extension.get("diagnosis_sha256"),
         extended_global_attempt_limit=extension.get("extended_global_attempt_limit"),
+        out_of_lineage_attempt_count=extension.get("out_of_lineage_attempt_count", 0),
     )
     if extension != expected:
         raise ValueError("attempt budget extension content or hash mismatch")
@@ -459,7 +465,12 @@ def remaining_v020_attempt_budget(
     if attempt_budget_extension is not None:
         validate_v020_attempt_budget_extension(attempt_budget_extension, campaign)
         limit = int(attempt_budget_extension["extended_global_attempt_limit"])
-    remaining = limit - int(total_attempts)
+    consumed_attempts = int(total_attempts)
+    if attempt_budget_extension is not None:
+        consumed_attempts += int(
+            attempt_budget_extension.get("out_of_lineage_attempt_count", 0)
+        )
+    remaining = limit - consumed_attempts
     if remaining < 0:
         raise ValueError("prior attempts exceed the campaign global limit")
     return remaining

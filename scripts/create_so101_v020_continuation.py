@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import sys
@@ -17,6 +16,7 @@ from farpoint.v020_plan import (  # noqa: E402
     build_v020_continuation_plan,
     initialize_v020_campaign,
     load_v020_config,
+    canonical_sha256,
     remaining_v020_attempt_budget,
 )
 
@@ -70,7 +70,7 @@ def main() -> int:
         source_plan=plans,
         requests=requests,
         segment_id=args.segment_id,
-        parent_manifest_sha256=hashlib.sha256(parent_manifest_path.read_bytes()).hexdigest(),
+        parent_manifest_sha256=canonical_sha256(manifest),
         remaining_global_attempts=remaining,
         attempt_budget_extension=budget_extension,
     )

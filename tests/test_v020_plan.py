@@ -161,11 +161,15 @@ def test_v020_combined_pilot_budget_extension_is_hash_bound_and_non_mutating():
     campaign.pop("campaign_sha256", None)
     campaign["campaign_sha256"] = canonical_sha256(campaign)
     extension = build_v020_attempt_budget_extension(
-        campaign, diagnosis_sha256="d" * 64, extended_global_attempt_limit=60
+        campaign,
+        diagnosis_sha256="d" * 64,
+        extended_global_attempt_limit=60,
+        out_of_lineage_attempt_count=1
     )
     assert remaining_v020_attempt_budget(
-        campaign, 41, attempt_budget_extension=extension
+        campaign, 40, attempt_budget_extension=extension
     ) == 19
+    assert extension["out_of_lineage_attempt_count"] == 1
     assert campaign["attempt_policy"]["global_attempt_limit"] == 45
     changed = dict(extension)
     changed["diagnosis_sha256"] = "e" * 64
