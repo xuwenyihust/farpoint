@@ -809,6 +809,90 @@ def test_proof_lift_waits_for_full_bilateral_preload_window():
     ).phase is GraspPhase.PROOF_LIFT
 
 
+def test_static_hold_rebases_only_after_stable_proof_ready_recovery():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        capture_confirmation_s=0.0,
+        bilateral_settle_s=0.2,
+        static_hold_s=0.2,
+        minimum_proof_entry_force_n=4.0,
+        maximum_relative_translation_error_m=0.003,
+        maximum_capture_relative_speed_mps=0.002,
+    )
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    assert machine.step(
+        _evidence(left_force_n=5.0, right_force_n=5.0)
+    ).phase is GraspPhase.STATIC_HOLD
+
+    first = machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.001,
+        )
+    )
+    second = machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.001,
+        )
+    )
+    assert not first.rebase_relative_tracking
+    assert second.rebase_recovered_capture_tracking
+    assert second.rebase_relative_tracking
+    assert second.phase is GraspPhase.STATIC_HOLD
+
+    assert machine.step(
+        _evidence(left_force_n=5.0, right_force_n=5.0)
+    ).phase is GraspPhase.STATIC_HOLD
+    assert machine.step(
+        _evidence(left_force_n=5.0, right_force_n=5.0)
+    ).phase is GraspPhase.PROOF_LIFT
+
+
+def test_static_hold_recovery_rebase_resets_after_dynamic_sample():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        capture_confirmation_s=0.0,
+        bilateral_settle_s=0.2,
+        minimum_proof_entry_force_n=4.0,
+        maximum_relative_translation_error_m=0.003,
+        maximum_capture_relative_speed_mps=0.002,
+    )
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+
+    machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.001,
+        )
+    )
+    dynamic = machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.003,
+        )
+    )
+    assert not dynamic.rebase_relative_tracking
+    assert machine.recovery_rebase_steps == 0
+
+
 def test_capture_threshold_is_distinct_from_contact_persistence_threshold():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,

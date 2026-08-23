@@ -655,12 +655,14 @@ class GraspDecision:
     hold_cartesian_pose: bool
     failure_reason: str | None
     rebase_capture_candidate_tracking: bool = False
+    rebase_recovered_capture_tracking: bool = False
 
     @property
     def rebase_relative_tracking(self) -> bool:
         """Return whether object-in-gripper tracking needs a new rigid reference."""
         return (
             self.rebase_capture_candidate_tracking
+            or self.rebase_recovered_capture_tracking
             or self.entered_phase
             and self.phase is GraspPhase.BILATERAL_SETTLE
         )
@@ -692,6 +694,7 @@ class ContactAwareGraspStateMachine:
     contact_loss_steps: int = 0
     capture_steps: int = 0
     capture_rebase_steps: int = 0
+    recovery_rebase_steps: int = 0
     failure_reason: str | None = None
 
     def __post_init__(self) -> None:
@@ -750,6 +753,7 @@ class ContactAwareGraspStateMachine:
         self.contact_loss_steps = 0
         self.capture_steps = 0
         self.capture_rebase_steps = 0
+        self.recovery_rebase_steps = 0
 
     def _fail(self, reason: str) -> None:
         self.phase = GraspPhase.FAILED
@@ -758,6 +762,7 @@ class ContactAwareGraspStateMachine:
     def step(self, evidence: GraspEvidence) -> GraspDecision:
         previous = self.phase
         rebase_capture_candidate_tracking = False
+        rebase_recovered_capture_tracking = False
         if self.phase in {GraspPhase.VALIDATED, GraspPhase.FAILED}:
             return GraspDecision(self.phase, False, False, True, self.failure_reason)
         self.phase_steps += 1
@@ -851,6 +856,31 @@ class ContactAwareGraspStateMachine:
                 evidence.left_force_n >= self.minimum_proof_entry_force_n
                 and evidence.right_force_n >= self.minimum_proof_entry_force_n
             )
+            recovery_rebase_candidate = (
+                proof_entry_bilateral
+                and evidence.capture_admissible
+                and evidence.contact_geometry_valid
+                and evidence.relative_speed_mps
+                <= self.maximum_capture_relative_speed_mps
+                and evidence.relative_translation_error_m
+                > self.maximum_relative_translation_error_m
+            )
+            self.recovery_rebase_steps = (
+                self.recovery_rebase_steps + 1
+                if recovery_rebase_candidate
+                else 0
+            )
+            # A bounded retention servo can deliberately move a captured cube
+            # beyond the original rigidity reference. Accept that new physical
+            # capture only after a full low-speed, proof-force, valid-geometry
+            # window, then require the ordinary static-hold window again from
+            # the rebased reference. No force, rigidity, or proof threshold is
+            # weakened.
+            if self.recovery_rebase_steps >= self._steps(
+                self.bilateral_settle_s
+            ):
+                self.recovery_rebase_steps = 0
+                rebase_recovered_capture_tracking = True
             self.stable_steps = (
                 self.stable_steps + 1 if proof_entry_bilateral and rigid else 0
             )
@@ -892,4 +922,5 @@ class ContactAwareGraspStateMachine:
             },
             failure_reason=self.failure_reason,
             rebase_capture_candidate_tracking=rebase_capture_candidate_tracking,
+            rebase_recovered_capture_tracking=rebase_recovered_capture_tracking,
         )

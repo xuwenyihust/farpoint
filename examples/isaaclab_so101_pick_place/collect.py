@@ -2563,6 +2563,9 @@ def run_attempt(
             and settling_capture
             and capture_object_minus_grasp is not None
             and grasp_hold_nominal_pose is not None
+            and balanced_forces is not None
+            and min(balanced_forces)
+            < grasp_machine.minimum_proof_entry_force_n
         ):
             # Contact forces can remain balanced while a constrained arm
             # drifts far enough to fail the independent rigidity check.  In
