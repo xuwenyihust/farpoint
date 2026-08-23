@@ -24,14 +24,20 @@ from farpoint.control import (
     relative_object_grasp_servo_target,
     rmpflow_world_target,
     settle_release_separation_target,
+    so101_release_object_target,
     simulation_stop_reason,
     so101_approach_jaw_target,
+    so101_adaptive_pre_capture_recenter_limit,
     so101_capture_admission_ready,
+    so101_capture_admission_retention_fraction,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_balanced_capture_close_step,
     so101_cube_contact_handoff,
+    so101_imbalanced_capture_close_step,
     so101_minimum_safe_descent_fraction,
     so101_post_capture_recenter_step,
+    so101_proof_entry_force_floor,
     so101_pre_capture_recenter_limit,
     so101_reset_support_is_stable,
     tactile_contact_hold_target,
@@ -49,8 +55,8 @@ from farpoint.control import (
 
 def test_so101_capture_admission_requires_calibrated_enclosure():
     assert not so101_capture_admission_ready(1.40, 0.04)
-    assert so101_capture_admission_ready(1.02, 0.04)
-    assert not so101_capture_admission_ready(1.021, 0.04)
+    assert so101_capture_admission_ready(1.05, 0.04)
+    assert not so101_capture_admission_ready(1.051, 0.04)
     assert not so101_capture_admission_ready(0.91, 0.03)
     assert so101_capture_admission_ready(0.90, 0.04)
     assert so101_capture_admission_ready(0.55, 0.03)
@@ -75,14 +81,14 @@ def test_so101_bilateral_capture_ready_uses_bounded_force_hysteresis():
     )
     assert not so101_bilateral_capture_ready(0.5, 0.499, True)
     assert so101_bilateral_capture_ready(
-        1.5,
-        1.5,
+        1.8,
+        1.8,
         True,
         object_width_m=0.04,
     )
     assert not so101_bilateral_capture_ready(
-        1.5,
-        1.499,
+        1.8,
+        1.799,
         True,
         object_width_m=0.04,
     )
@@ -93,6 +99,83 @@ def test_so101_bilateral_capture_ready_uses_bounded_force_hysteresis():
         True,
         minimum_force_n=2.0,
     )
+
+
+def test_so101_capture_admission_floor_is_shared_across_cube_sizes():
+    assert so101_capture_admission_retention_fraction(None) == pytest.approx(0.25)
+    assert so101_capture_admission_retention_fraction(0.03) == pytest.approx(0.25)
+    assert so101_capture_admission_retention_fraction(0.035) == pytest.approx(0.575)
+    assert so101_capture_admission_retention_fraction(0.04) == pytest.approx(0.90)
+
+
+def test_so101_proof_entry_force_floor_is_size_aware():
+    assert so101_proof_entry_force_floor(0.03) == pytest.approx(3.0)
+    assert so101_proof_entry_force_floor(0.035) == pytest.approx(3.5)
+    assert so101_proof_entry_force_floor(0.04) == pytest.approx(4.0)
+    assert so101_proof_entry_force_floor(0.02) == pytest.approx(3.0)
+    assert so101_proof_entry_force_floor(0.05) == pytest.approx(4.0)
+
+
+def test_so101_imbalanced_capture_close_step_tapers_to_large_cube_pause():
+    assert so101_imbalanced_capture_close_step(0.03) == pytest.approx(0.00025)
+    assert so101_imbalanced_capture_close_step(0.035) == pytest.approx(0.000125)
+    assert so101_imbalanced_capture_close_step(0.04) == pytest.approx(0.0)
+    assert so101_imbalanced_capture_close_step(0.02) == pytest.approx(0.00025)
+    assert so101_imbalanced_capture_close_step(0.05) == pytest.approx(0.0)
+
+
+def test_so101_balanced_capture_close_step_slows_large_cube_settle():
+    assert so101_balanced_capture_close_step(0.03) == pytest.approx(0.0005)
+    assert so101_balanced_capture_close_step(0.035) == pytest.approx(0.0003125)
+    assert so101_balanced_capture_close_step(0.04) == pytest.approx(0.000125)
+    assert so101_balanced_capture_close_step(0.02) == pytest.approx(0.0005)
+    assert so101_balanced_capture_close_step(0.05) == pytest.approx(0.000125)
+
+
+@pytest.mark.parametrize(
+    ("object_width_m", "balanced_close_step"),
+    (
+        (0.0, 0.0005),
+        (float("nan"), 0.0005),
+        (0.03, -0.0005),
+        (0.03, float("nan")),
+    ),
+)
+def test_so101_imbalanced_capture_close_step_rejects_invalid_contract(
+    object_width_m,
+    balanced_close_step,
+):
+    with pytest.raises(ValueError):
+        so101_imbalanced_capture_close_step(
+            object_width_m,
+            balanced_close_step=balanced_close_step,
+        )
+
+
+@pytest.mark.parametrize(
+    ("object_width_m", "balanced_close_step"),
+    (
+        (0.0, 0.0005),
+        (float("nan"), 0.0005),
+        (0.03, -0.0005),
+        (0.03, float("nan")),
+    ),
+)
+def test_so101_balanced_capture_close_step_rejects_invalid_contract(
+    object_width_m,
+    balanced_close_step,
+):
+    with pytest.raises(ValueError):
+        so101_balanced_capture_close_step(
+            object_width_m,
+            balanced_close_step=balanced_close_step,
+        )
+
+
+@pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
+def test_so101_proof_entry_force_floor_rejects_invalid_width(width):
+    with pytest.raises(ValueError, match="finite and positive"):
+        so101_proof_entry_force_floor(width)
 
 
 @pytest.mark.parametrize(
@@ -192,10 +275,30 @@ def test_so101_cube_contact_handoff_uses_first_filtered_finger_contact():
     assert so101_cube_contact_handoff(0.731, 0.0)
 
 
-def test_so101_pre_capture_recenter_limit_expands_formal_cube_corridor():
+def test_so101_pre_capture_recenter_limit_preserves_validated_corridor():
     assert so101_pre_capture_recenter_limit(0.03) == pytest.approx(0.008)
     assert so101_pre_capture_recenter_limit(0.04) == pytest.approx(0.008)
-    assert so101_pre_capture_recenter_limit(0.02) == pytest.approx(0.006)
+
+
+def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation():
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.04, (0.008, 0.008), unilateral_contact=True
+    ) == pytest.approx(0.016)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.03, (0.008, 0.008), unilateral_contact=True
+    ) == pytest.approx(0.009)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.04, (0.004, 0.008), unilateral_contact=True
+    ) == pytest.approx(0.016)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.03, (0.0, 0.008), unilateral_contact=True
+    ) == pytest.approx(0.009)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.04, (0.008, 0.008), unilateral_contact=False
+    ) == pytest.approx(0.008)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.035, (0.008, 0.008), unilateral_contact=True
+    ) == pytest.approx(0.01225)
 
 
 def test_so101_capture_contact_loss_grace_is_size_aware():
@@ -240,12 +343,34 @@ def test_so101_capture_contact_loss_grace_rejects_invalid_width(value):
         {"object_width_m": 0.0},
         {"object_width_m": float("nan")},
         {"object_width_m": 0.03, "maximum_correction_m": 0.0},
-        {"object_width_m": 0.03, "width_fraction": 0.5},
     ),
 )
 def test_so101_pre_capture_recenter_limit_rejects_invalid_contract(kwargs):
     with pytest.raises(ValueError):
         so101_pre_capture_recenter_limit(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"object_width_m": 0.0, "current_xy_correction_m": (0.0, 0.0)},
+        {"object_width_m": 0.04, "current_xy_correction_m": (0.0,)},
+        {"object_width_m": 0.04, "current_xy_correction_m": (0.0, float("nan"))},
+        {
+            "object_width_m": 0.04,
+            "current_xy_correction_m": (0.0, 0.0),
+            "maximum_correction_m": 0.007,
+        },
+        {
+            "object_width_m": 0.04,
+            "current_xy_correction_m": (0.008, 0.008),
+            "large_width_fraction": 0.29,
+        },
+    ),
+)
+def test_so101_adaptive_pre_capture_recenter_rejects_invalid_contract(kwargs):
+    with pytest.raises(ValueError):
+        so101_adaptive_pre_capture_recenter_limit(**kwargs)
 
 
 @pytest.mark.parametrize(
@@ -288,6 +413,17 @@ def test_settle_release_separation_ramps_and_caps_vertical_clearance():
     assert settle_release_separation_target(
         start, 500, control_hz=120
     ) == pytest.approx([0.20, 0.10, 0.10])
+
+
+def test_release_descent_preserves_validated_transport_xy():
+    assert so101_release_object_target(
+        [0.153, 0.073, 0.091], 0.080
+    ) == pytest.approx([0.153, 0.073, 0.080])
+
+
+def test_release_descent_rejects_nonfinite_targets():
+    with pytest.raises(ValueError, match="finite"):
+        so101_release_object_target([0.153, float("nan"), 0.091], 0.080)
 
 
 def test_unsafe_so101_approach_contact_rejects_route_and_early_insertion():
@@ -907,11 +1043,21 @@ def test_so101_slow_close_force_actions_preserve_limits():
     assert -0.1746 <= high_force["position"] <= 1.7453
 
 
-def test_so101_slow_close_backs_off_before_unilateral_force_limit():
-    update = advance_so101_slow_close_target(
+def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_off():
+    crossing = advance_so101_slow_close_target(
         0.40,
         0.405,
-        10.0,
+        16.93,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        min_force=2.0,
+        max_force=20.0,
+    )
+    backoff = advance_so101_slow_close_target(
+        crossing["position"],
+        0.404,
+        17.0,
         0.0,
         open_position=1.7453,
         closed_position=-0.1746,
@@ -919,7 +1065,22 @@ def test_so101_slow_close_backs_off_before_unilateral_force_limit():
         max_force=20.0,
     )
 
-    assert update == {"position": pytest.approx(0.407), "action": "backoff"}
+    assert crossing == {"position": pytest.approx(0.399), "action": "close"}
+    assert backoff == {"position": pytest.approx(0.406), "action": "backoff"}
+
+
+@pytest.mark.parametrize("fraction", (0.0, 1.0, float("nan")))
+def test_so101_slow_close_rejects_invalid_unilateral_backoff_fraction(fraction):
+    with pytest.raises(ValueError, match="unilateral_backoff_fraction"):
+        advance_so101_slow_close_target(
+            0.40,
+            0.405,
+            0.0,
+            0.0,
+            open_position=1.7453,
+            closed_position=-0.1746,
+            unilateral_backoff_fraction=fraction,
+        )
 
 
 def test_gripper_aperture_alignment_uses_finger_bounds_midpoint():
@@ -975,6 +1136,36 @@ def test_relative_object_grasp_servo_recovers_yaw30_static_hold_drift():
         result["position"][axis] - measured_grasp[axis] for axis in range(3)
     ]
     assert all(value > 0.0 for value in correction)
+    assert sum(value * value for value in correction) ** 0.5 == pytest.approx(
+        0.000125
+    )
+
+
+def test_relative_object_grasp_servo_recovers_c22_physical_capture_offset():
+    captured_object = [0.1854020655, -0.0461667143, 0.0521944426]
+    captured_grasp = [0.1527982503, -0.1056722030, 0.0845712945]
+    capture_offset = [
+        captured_object[axis] - captured_grasp[axis] for axis in range(3)
+    ]
+    measured_object = [0.1868820041, -0.0458244756, 0.0525271036]
+    planar_object = measured_object.copy()
+    planar_object[2] = capture_offset[2] + captured_grasp[2]
+
+    result = relative_object_grasp_servo_target(
+        planar_object,
+        capture_offset,
+        captured_grasp,
+        captured_grasp,
+        max_step=0.000125,
+        max_correction=[0.002, 0.002, 0.0],
+    )
+
+    correction = [
+        result["position"][axis] - captured_grasp[axis] for axis in range(3)
+    ]
+    assert correction[0] > 0.0
+    assert abs(correction[0]) > abs(correction[1])
+    assert correction[2] == pytest.approx(0.0)
     assert sum(value * value for value in correction) ** 0.5 == pytest.approx(
         0.000125
     )

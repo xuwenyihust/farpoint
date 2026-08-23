@@ -191,14 +191,18 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     relative_object_grasp_servo_target,
     settle_release_separation_target,
+    so101_release_object_target,
     so101_approach_jaw_target,
     so101_capture_admission_ready,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_balanced_capture_close_step,
+    so101_imbalanced_capture_close_step,
+    so101_proof_entry_force_floor,
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
+    so101_adaptive_pre_capture_recenter_limit,
     so101_post_capture_recenter_step,
-    so101_pre_capture_recenter_limit,
     so101_reset_support_is_stable,
     unilateral_contact_recenter_target,
     unsafe_so101_approach_contact,
@@ -211,12 +215,20 @@ from farpoint.grasp_oracle import (  # noqa: E402
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_hold_preload_for_force,
+    capture_retention_recenter_fallback_active,
+    capture_retention_force_floor,
     capture_preload_force_floor,
+    captured_force_imbalance_requires_squeeze_pause,
+    contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
+    contact_force_vectors_opposed,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
+    latch_pre_capture_recenter_object_reference,
     point_in_local_frame,
+    proof_lift_recovery_holds_xy,
     quaternion_rotation_matrix_xyzw,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
@@ -263,6 +275,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     so101_capture_aperture_reference,
     so101_capture_channel_direction_world,
     so101_level_capture_orientation_xyzw,
+    so101_pre_capture_recenter_aperture_reference,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -345,6 +358,12 @@ def _move_object(obj, position, device, orientation_xyzw=(0.0, 0.0, 0.0, 1.0)):
     obj.write_root_velocity_to_sim(torch.zeros((1, 6), dtype=torch.float32, device=device))
 
 
+def _move_static_frame(frame, position, device):
+    """Move a non-rigid AssetBase through Isaac Lab's frame-view API."""
+    positions = torch.tensor([position], dtype=torch.float32, device=device)
+    frame.set_world_poses(positions=positions)
+
+
 def _image(camera, device):
     return np.asarray(_numpy(camera.data.output["rgb"][0, ..., :3]), dtype=np.uint8)
 
@@ -383,10 +402,19 @@ def _policy_action(state: np.ndarray, images: dict[str, np.ndarray], task: str):
     return np.asarray(response["action"], dtype=np.float32), response.get("execution", {})
 
 
-def _aim_front_camera(scene, device) -> None:
-    """Set the fixed front camera from an unambiguous eye/target pair."""
-    eye = torch.tensor([[0.42, -0.38, 0.34]], dtype=torch.float32, device=device)
-    target = torch.tensor([[0.20, 0.02, 0.06]], dtype=torch.float32, device=device)
+def _aim_front_camera(scene, device, camera_view=None) -> None:
+    """Set the front camera from an explicit, episode-bound eye/look-at pair."""
+    camera_view = camera_view or {}
+    eye = torch.tensor(
+        [camera_view.get("eye_m", [0.42, -0.38, 0.34])],
+        dtype=torch.float32,
+        device=device,
+    )
+    target = torch.tensor(
+        [camera_view.get("look_at_m", [0.20, 0.02, 0.06])],
+        dtype=torch.float32,
+        device=device,
+    )
     scene["front_camera"].set_world_poses_from_view(eye, target)
 
 
@@ -446,6 +474,23 @@ def _cube_contact_forces(sensors) -> tuple[float, float]:
     if len(forces) != 2:
         raise RuntimeError(f"expected two SO-101 finger sensors, got {len(forces)}")
     return forces[0], forces[1]
+
+
+def _cube_contact_force_vectors(sensors) -> tuple[np.ndarray, np.ndarray]:
+    """Return peak cube-filtered force vectors for both finger sensors."""
+    vectors = []
+    for sensor in sensors:
+        peak = np.zeros(3, dtype=np.float32)
+        if hasattr(sensor.data, "force_matrix_w"):
+            candidates = sensor.data.force_matrix_w.reshape(-1, 3)
+            norms = torch.linalg.vector_norm(candidates, dim=-1)
+            peak = _numpy(candidates[int(torch.argmax(norms).item())]).astype(
+                np.float32
+            )
+        vectors.append(peak)
+    if len(vectors) != 2:
+        raise RuntimeError(f"expected two SO-101 finger sensors, got {len(vectors)}")
+    return vectors[0], vectors[1]
 
 
 def _body_index(robot) -> int:
@@ -1927,7 +1972,15 @@ def run_attempt(
     # the first observation can be a stale pre-reset pose.
     # Send the same explicit pose as the first manager action; using the stale
     # tensor cached before write_joint_state would restore the USD default.
-    _aim_front_camera(scene, device)
+    camera_view = copy.deepcopy(trial.get("front_camera_view") or {})
+    _aim_front_camera(scene, device, camera_view)
+    target_spec = copy.deepcopy(
+        (trial.get("target_profile") or {}).get("resolved")
+        or v010_context["plan"]["target"]
+    )
+    target_position = np.asarray(target_spec["position_m"], dtype=np.float32)
+    target_dimensions = np.asarray(target_spec["dimensions_m"], dtype=np.float32)
+    _move_static_frame(scene["target_pad"], target_position.tolist(), device)
     # Spawn just above the table and let PhysX establish support before the
     # oracle reads its first target. A failed audit is a deterministic scene
     # error and must not be hidden by retrying the same pose.
@@ -2044,9 +2097,12 @@ def run_attempt(
     )
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
-    target_spec = v010_context["plan"]["target"]
-    target_position = np.asarray(target_spec["position_m"], dtype=np.float32)
-    target_dimensions = np.asarray(target_spec["dimensions_m"], dtype=np.float32)
+    pre_capture_recenter_aperture_reference = (
+        so101_pre_capture_recenter_aperture_reference(
+            approach_jaw,
+            object_spec["dimensions_m"][0],
+        )
+    )
     # Release above the raised target pad instead of driving the fingertips
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
@@ -2079,6 +2135,14 @@ def run_attempt(
         # around 0.1--1.9 N before being rejected by the former 2 N floor.
         minimum_contact_force_n=0.10,
         capture_contact_force_n=2.0,
+        # Require an evidence-bounded, size-aware bilateral preload before
+        # contact-bound motion. A fixed 4 N floor correctly blocked the 40 mm
+        # c08 ejection but also rejected a stable 30 mm capture at 3.61 N.
+        # This changes only proof entry readiness, not persistence, force
+        # ceilings, or the independent 5 mm physical proof.
+        minimum_proof_entry_force_n=so101_proof_entry_force_floor(
+            object_spec["dimensions_m"][0],
+        ),
         maximum_force_n=30.0,
         bilateral_settle_s=0.125,
         static_hold_s=0.20,
@@ -2117,10 +2181,9 @@ def run_attempt(
     transport_object_target = None
     transport_recovering_height = False
     transport_recovery_xy = None
-    placement_object_xy = None
+    placement_descent_initialized = False
     lift_object_start_position = None
     transport_lift_target_m = 0.0
-    bilateral_capture_steps = 0
     verify_bilateral_steps = 0
     verify_capture_latched = False
     close_capture_confirmed = False
@@ -2131,6 +2194,7 @@ def run_attempt(
     grasp_relative_reference = None
     previous_object_in_gripper = None
     capture_recenter_side = None
+    pre_capture_recenter_object_reference = None
     capture_object_minus_grasp = None
     descent_lateral_correction = 0.0
     pregrasp_route_index = 0
@@ -2214,6 +2278,25 @@ def run_attempt(
             and grasp_machine.phase
             in {GraspPhase.BILATERAL_SETTLE, GraspPhase.STATIC_HOLD}
         )
+        settling_force_imbalanced = bool(
+            settling_capture
+            and balanced_forces is not None
+            and captured_force_imbalance_requires_squeeze_pause(
+                *balanced_forces,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+                proof_entry_force_n=grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
+        retention_preload_fallback = bool(
+            settling_capture
+            and balanced_forces is not None
+            and capture_retention_recenter_fallback_active(
+                grasp_machine.phase,
+                grasp_machine.phase_steps,
+                *balanced_forces,
+                grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
         if (
             grasp_jaw_hold is not None
             and balanced_forces is not None
@@ -2234,23 +2317,46 @@ def run_attempt(
                 # controller reacted. Retain 90% of the unchanged admission
                 # force so the rotary jaw closes while contact still exists;
                 # persistence and maximum-force validation remain independent.
-                min_force=(
-                    capture_preload_force_floor(
-                        grasp_machine.capture_contact_force_n
-                    )
-                    if settling_capture
-                    else 3.0
+                min_force=capture_retention_force_floor(
+                    (
+                        capture_preload_force_floor(
+                            grasp_machine.capture_contact_force_n
+                        )
+                        if settling_capture
+                        else 3.0
+                    ),
+                    capture_validation_active=(
+                        settling_capture or phase is OraclePhase.VERIFY_CONTACT
+                    ),
                 ),
                 # Back off before the independent 30 N safety validator can
                 # trip on a one-control-tick unilateral force spike.
                 max_force=20.0,
                 close_step=(
-                    0.0005
+                    so101_imbalanced_capture_close_step(
+                        object_spec["dimensions_m"][0],
+                    )
+                    if settling_force_imbalanced
+                    else so101_balanced_capture_close_step(
+                        object_spec["dimensions_m"][0],
+                    )
                     if settling_capture
                     else (0.001 if phase is OraclePhase.VERIFY_CONTACT else 0.002)
                 ),
                 backoff_step=0.001,
-                max_preload_error=(0.012 if settling_capture else 0.030),
+                # The immutable c26 r24 trace showed that the state-driven
+                # retention fallback improved both finger forces while the
+                # jaw command remained pinned at the normal 12 mrad preload
+                # cap.  Give only that already-gated recovery path another
+                # 6 mrad; normal capture and the independent force/range
+                # safety limits remain unchanged.
+                max_preload_error=(
+                    0.018
+                    if retention_preload_fallback
+                    else 0.012
+                    if settling_capture
+                    else 0.030
+                ),
                 preload_reference_position=grasp_jaw_reference,
             )
             grasp_jaw_hold = float(jaw_update["position"])
@@ -2259,14 +2365,28 @@ def run_attempt(
         relative_recenter_active = False
         recenter_used_memory = False
         recenter_forces = balanced_forces
+        contact_geometry_valid = False
+        if balanced_forces is not None:
+            contact_force_vectors = _cube_contact_force_vectors(contact)
+            contact_geometry_valid = contact_force_vectors_opposed(
+                *contact_force_vectors,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )
         closing_alignment = phase is OraclePhase.CLOSE and (
             grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
         verification_alignment = (
-            phase is OraclePhase.VERIFY_CONTACT and not verify_grasp_armed
+            phase is OraclePhase.VERIFY_CONTACT
+            and grasp_phase_allows_unilateral_recenter(grasp_machine.phase)
         )
+        # A proof lift is still a contact-constrained capture phase.  The r5
+        # c22 trace retained a rigid unilateral enclosure after one finger
+        # dropped, but VERIFY disabled the existing bounded XY recovery and
+        # spent the entire contact-loss grace only squeezing the jaw.  Carry
+        # the same contact memory and 2 mm recenter corridor through proof;
+        # force, lift, rigidity, and timeout gates remain unchanged.
         if (
-            (closing_alignment or settling_capture)
+            (closing_alignment or settling_capture or verification_alignment)
             and balanced_forces is not None
         ):
             recenter_memory = so101_recenter_contact_memory(
@@ -2277,15 +2397,51 @@ def run_attempt(
             recenter_forces = recenter_memory["forces"]
             capture_recenter_side = recenter_memory["side"]
             recenter_used_memory = bool(recenter_memory["used_memory"])
-        elif phase not in {OraclePhase.DESCEND, OraclePhase.CLOSE}:
+        elif phase not in {
+            OraclePhase.DESCEND,
+            OraclePhase.CLOSE,
+            OraclePhase.VERIFY_CONTACT,
+        }:
             capture_recenter_side = None
+        unilateral_recenter = bool(
+            recenter_forces is not None
+            and unilateral_contact_requires_recenter(
+                *recenter_forces,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            )
+        )
+        # A bilateral force imbalance pauses jaw squeeze.  Pre-capture
+        # calibration remains useful while CLOSE is still finding the
+        # enclosure, but is not a valid post-capture recenter reference.  Once
+        # BILATERAL_SETTLE records a physical capture, recover that measured
+        # object/gripper offset through settle and proof lift.  The immutable
+        # v0.2.0 c22 trace showed that chasing the old calibration after proof
+        # contact loss followed the sliding cube for 2.16 mm without restoring
+        # the weak finger.
+        capture_retention_fallback = bool(
+            recenter_forces is not None
+            and capture_retention_recenter_fallback_active(
+                grasp_machine.phase,
+                grasp_machine.phase_steps,
+                *recenter_forces,
+                grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
+        capture_recenter_required = (
+            unilateral_recenter or capture_retention_fallback
+        )
         if (
             grasp_hold_pose is not None
             and (closing_alignment or settling_capture or verification_alignment)
             and recenter_forces is not None
-            and unilateral_contact_requires_recenter(
-                *recenter_forces,
-                minimum_force_n=grasp_machine.minimum_contact_force_n,
+            and capture_recenter_required
+            or (
+                grasp_hold_pose is not None
+                and (closing_alignment or verification_alignment)
+                and recenter_forces is not None
+                and min(recenter_forces)
+                >= grasp_machine.minimum_contact_force_n
+                and not contact_geometry_valid
             )
         ):
             if closing_alignment:
@@ -2297,17 +2453,34 @@ def run_attempt(
                 live_gripper_pose = _numpy(
                     robot.data.body_link_pose_w.torch[0, body_index]
                 )
-                object_world = _numpy(
+                live_object_world = _numpy(
                     scene[active_name].data.root_pos_w[0, :3]
                 )
+                object_world = (
+                    live_object_world
+                    if (
+                        capture_retention_fallback
+                        or pre_capture_recenter_object_reference is None
+                    )
+                    else pre_capture_recenter_object_reference
+                )
+                active_recenter_reference = pre_capture_recenter_aperture_reference
+                if capture_retention_fallback:
+                    active_recenter_reference = capture_object_in_gripper
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
                     live_gripper_pose,
-                    capture_object_in_gripper,
+                    active_recenter_reference,
                 )
                 desired_object_minus_grasp = object_world - desired_gripper
-                correction_limit = so101_pre_capture_recenter_limit(
-                    object_spec["dimensions_m"][0]
+                current_xy_correction = (
+                    np.asarray(grasp_hold_pose[:2], dtype=np.float64)
+                    - np.asarray(grasp_hold_nominal_pose[:2], dtype=np.float64)
+                )
+                correction_limit = so101_adaptive_pre_capture_recenter_limit(
+                    object_spec["dimensions_m"][0],
+                    current_xy_correction,
+                    unilateral_contact=capture_recenter_required,
                 )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
@@ -2324,6 +2497,44 @@ def run_attempt(
                 recenter = {
                     "position": aligned["position"],
                     "active": float(np.linalg.norm(aligned["error"][:2])) > 1e-6,
+                }
+            elif proof_lift_recovery_holds_xy(
+                proof_lift_armed=verify_grasp_armed,
+                unilateral_contact=unilateral_recenter,
+            ):
+                # The moving jaw can still recover inside the unchanged
+                # contact-loss grace. Holding XY prevents the retained fixed
+                # finger from dragging the cube away at the same rate that
+                # the jaw closes toward it.
+                recenter = {
+                    "position": grasp_hold_pose,
+                    "active": False,
+                }
+            elif capture_object_minus_grasp is not None:
+                object_world = _numpy(
+                    scene[active_name].data.root_pos_w[0, :3]
+                )
+                # This is an XY enclosure repair, not a second lift command.
+                # Project the object's Z onto the current proof-lift base so
+                # the relative servo cannot fold measured proof motion back
+                # into grasp_hold_pose before verify_lift_height is added.
+                planar_object_world = object_world.copy()
+                planar_object_world[2] = (
+                    float(capture_object_minus_grasp[2])
+                    + float(grasp_hold_pose[2])
+                )
+                aligned = relative_object_grasp_servo_target(
+                    planar_object_world,
+                    capture_object_minus_grasp,
+                    grasp_hold_pose,
+                    grasp_hold_nominal_pose,
+                    max_step=so101_post_capture_recenter_step(),
+                    max_correction=(0.002, 0.002, 0.0),
+                )
+                recenter = {
+                    "position": aligned["position"],
+                    "active": float(np.linalg.norm(aligned["error"][:2]))
+                    > 1e-6,
                 }
             else:
                 jaw_center = _numpy(
@@ -2352,6 +2563,9 @@ def run_attempt(
             and settling_capture
             and capture_object_minus_grasp is not None
             and grasp_hold_nominal_pose is not None
+            and balanced_forces is not None
+            and min(balanced_forces)
+            < grasp_machine.minimum_proof_entry_force_n
         ):
             # Contact forces can remain balanced while a constrained arm
             # drifts far enough to fail the independent rigidity check.  In
@@ -2478,67 +2692,44 @@ def run_attempt(
                 *finger_forces,
                 capture_admissible,
                 object_width_m=object_spec["dimensions_m"][0],
-            ):
-                # Both cube sidewalls constrain the arm even before the
-                # three-sample confirmation is complete. Rebase the joint
-                # command on every such sample to discard the pre-contact IK
-                # tail, but keep the original follow-down reference and wrist
-                # posture until the grasp is actually confirmed. Rebasing the
-                # descent reference on a transient impact makes the next miss
-                # apply the full 12 mm follow-down a second time.
+                capture_contact_force_n=grasp_machine.capture_contact_force_n,
+            ) and contact_geometry_valid:
+                # Both cube sidewalls constrain the arm before the grasp state
+                # machine has completed its force *and* relative-speed window.
+                # Rebase the joint command on every such sample to discard the
+                # pre-contact IK tail and keep closing gently, but do not latch
+                # a capture here.  The state machine below is the single owner
+                # of capture admission and overrides this action in the exact
+                # tick that BILATERAL_SETTLE is entered.  A second collector-
+                # local latch used to ignore the relative-speed gate, freeze a
+                # still-moving 40 mm cube, and leave the state machine stuck in
+                # SLOW_CLOSE after bilateral force decayed.
                 commanded_joints = _numpy(current).astype(np.float32).copy()
                 target = ee_position.copy()
-                bilateral_capture_steps += 1
-                if bilateral_capture_steps < grasp_machine.capture_confirmation_steps:
-                    # A single bilateral sample can be an edge-impact pulse.
-                    # Continue closing gently until both contacts persist for
-                    # the same window required by the state machine.
-                    jaw = max(closed_jaw, float(current[5].item()) - 0.005)
-                    gripper_control = "confirm_bilateral"
-                    target = grasp_hold_pose
-                else:
-                    # Capture the measured aperture before another full close
-                    # step can squeeze the cube out. A bounded 0.002 rad preload
-                    # compensates actuator/contact relaxation: a zero-preload
-                    # hold was observed to decay from bilateral 1 N contact to
-                    # zero within seven control frames before proof lift.
-                    grasp_hold_pose = ee_position.copy()
-                    grasp_hold_nominal_pose = grasp_hold_pose.copy()
-                    grasp_hold_nominal_y = float(grasp_hold_pose[1])
-                    # ``target`` still refers to the pre-capture follow-down
-                    # array. Rebind it in this same control step so the arm does
-                    # not execute one final downward/lateral correction after a
-                    # valid bilateral grasp has already formed.
-                    target = grasp_hold_pose
-                    # Approach IK integrates in command space so the small arm can
-                    # overcome gravity. At contact that command may be several
-                    # simulation ticks ahead of the measured joints. Rebase once
-                    # here so no pre-contact command tail moves the closed fingers.
-                    commanded_joints = _numpy(current).astype(np.float32).copy()
-                    # The wrist settles measurably between first unilateral
-                    # contact and confirmed bilateral enclosure. Latch the
-                    # posture that actually produced the grasp, not the earlier
-                    # side-contact pose; returning to the latter opens the
-                    # contact geometry during VERIFY.
-                    grasp_hold_posture = _numpy(current[3:5]).astype(np.float32).copy()
-                    preload = 0.002
-                    grasp_jaw_hold = float(
-                        np.clip(float(current[5].item()) - preload, closed_jaw, open_jaw)
-                    )
-                    grasp_jaw_reference = grasp_jaw_hold
-                    # Freeze both the measured aperture and Cartesian hold as
-                    # soon as CLOSE proves sustained bilateral enclosure.  If
-                    # the latch is delayed until VERIFY, the intervening CLOSE
-                    # frames re-enable force control and recentering; on the
-                    # rotary SO-101 jaw that command tail can peel one finger
-                    # off an otherwise valid grasp before VERIFY begins.
-                    verify_capture_latched = True
-                    close_capture_confirmed = True
-                    verify_capture_wait_steps = 0
-                    jaw = grasp_jaw_hold
-                    gripper_control = "capture_aperture"
+                # A single bilateral sample can be an edge-impact pulse.
+                # Continue closing with the same bounded preload used after
+                # capture until the shared state machine observes its full
+                # confirmation window at or below the capture-speed gate.
+                # Using a smaller confirmation-only preload produced a stable
+                # 40 mm limit cycle immediately around the unchanged 90%
+                # force floor, so six consecutive samples could never accrue.
+                jaw = rotary_jaw_capture_hold_target(
+                    float(current[5].item()),
+                    closed_position=closed_jaw,
+                    open_position=open_jaw,
+                )
+                # Hold the wrists at the measured bilateral-contact posture
+                # immediately.  Waiting until BILATERAL_SETTLE let the generic
+                # CLOSE posture override keep chasing the pre-grasp 0.5/0.5
+                # target for one extra actuator-response window.  The frozen
+                # v0.2.0 c10 r29c trace showed that tail peeling both contacts
+                # away after six otherwise-valid confirmation samples.
+                grasp_hold_posture = (
+                    _numpy(current[3:5]).astype(np.float32).copy()
+                )
+                gripper_control = "confirm_bilateral"
+                target = grasp_hold_pose
             else:
-                bilateral_capture_steps = 0
                 # The validated calibration stops Cartesian insertion at first
                 # contact and closes quasi-statically at the measured pose.
                 # Continuing to chase the displaced cube recreates the old
@@ -2559,7 +2750,9 @@ def run_attempt(
             # change produces enough acceleration to shed a small cube before
             # contact persistence can be evaluated.
             just_armed_proof_lift = False
-            bilateral_capture = min(balanced_forces) >= 0.10
+            bilateral_capture = (
+                min(balanced_forces) >= 0.10 and contact_geometry_valid
+            )
             if bilateral_capture and not verify_capture_latched:
                 # Re-capture the measured aperture as soon as recentering has
                 # restored both contacts. Continuing toward the older, tighter
@@ -2628,6 +2821,7 @@ def run_attempt(
                     _numpy(current),
                     verify_lift_height,
                     just_armed=just_armed_proof_lift,
+                    contact_retained=bilateral_capture,
                 )
             target = grasp_hold_pose + np.asarray((0.0, 0.0, verify_lift_height))
             jaw = grasp_jaw_hold if grasp_jaw_hold is not None else closed_jaw
@@ -2741,19 +2935,16 @@ def run_attempt(
             # lets the arm target run ahead of its measured pose and produces
             # a lateral acceleration that shears the cube from the fingers.
         elif phase is OraclePhase.PLACE_DESCEND:
-            if placement_object_xy is None:
-                placement_object_xy = _numpy(
-                    scene[active_name].data.root_pos_w[0, :2]
-                ).copy()
+            if not placement_descent_initialized:
+                placement_descent_initialized = True
                 commanded_joints = _numpy(current).astype(np.float32).copy()
             if placement_grasp_offset is None:
                 placement_grasp_offset = (
                     ee_position - _numpy(scene[active_name].data.root_pos_w[0])
                 )
             release_object_position = np.asarray(
-                (
-                    placement_object_xy[0],
-                    placement_object_xy[1],
+                so101_release_object_target(
+                    transport_object_target,
                     release_position[2],
                 ),
                 dtype=np.float32,
@@ -2868,9 +3059,13 @@ def run_attempt(
                     }
                     else 0.20
                 ),
-                max_joint_step=0.02
-                * schedule.recording_hz
-                / schedule.control_hz,
+                max_joint_step=contact_constrained_joint_step_limit(
+                    0.02 * schedule.recording_hz / schedule.control_hz,
+                    proof_lift_armed=(
+                        phase is OraclePhase.VERIFY_CONTACT
+                        and verify_grasp_armed
+                    ),
+                ),
                 lock_wrist=(
                     grasp_hold_posture is not None
                     and phase
@@ -2949,6 +3144,16 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )["side"]
         object_pose = _numpy(scene[active_name].data.root_pose_w[0])
+        if (
+            phase in {OraclePhase.DESCEND, OraclePhase.CLOSE}
+            and max(contact_forces) >= grasp_machine.minimum_contact_force_n
+        ):
+            pre_capture_recenter_object_reference = (
+                latch_pre_capture_recenter_object_reference(
+                    object_pose[:3],
+                    pre_capture_recenter_object_reference,
+                )
+            )
         gripper_pose = _numpy(
             robot.data.body_link_pose_w.torch[0, body_index]
         )
@@ -3038,6 +3243,7 @@ def run_attempt(
                     capture_object_in_gripper,
                 ),
                 capture_admissible=capture_admissible,
+                contact_geometry_valid=contact_geometry_valid,
                 relative_translation_error_m=relative_translation_error,
                 relative_speed_mps=relative_speed,
                 proof_lift_m=(
@@ -3066,11 +3272,11 @@ def run_attempt(
             if grasp_hold_pose is not None:
                 grasp_hold_pose = gripper_pose[:3].copy()
         if grasp_decision.rebase_relative_tracking:
-            # The first weak bilateral sample can occur while slow-close is
-            # still moving the cube.  Rigidity must be measured from the exact
-            # physical capture that entered BILATERAL_SETTLE, not from that
-            # earlier transient; otherwise a settled grasp can never reduce
-            # its historical translation error and only exits by timeout.
+            # The first weak bilateral sample can occur while slow-close or
+            # unilateral recenter is still moving the cube. Rigidity is
+            # measured from a state-machine-approved stable capture candidate
+            # and again from the exact capture entering BILATERAL_SETTLE, not
+            # permanently from that earlier transient.
             grasp_relative_reference = object_in_gripper.copy()
             previous_object_in_gripper = object_in_gripper.copy()
         if (
@@ -3081,15 +3287,26 @@ def run_attempt(
             # command computed earlier in this tick. Continuing to close for
             # even one 120 Hz step can turn bilateral contact into a one-sided
             # squeeze on the rotary jaw.
-            # A zero-error position target lets the contact force relax to
-            # zero immediately. The reusable Oracle helper owns the calibrated
-            # bounded preload so repairs can tune it without changing the
-            # simulator collector.
+            # A zero-error position target lets contact force relax to zero
+            # immediately. Retain the full 8 mrad buildup target unless both
+            # fingers are proof-ready and the stronger side has at least 1 N
+            # overload margin, where 2 mrad relief prevents over-compression.
+            # The immutable v0.2.0 c22 trace entered around 5.4/4.3 N and
+            # passed with relief. c26 around 4.7/4.5 N shed both contacts when
+            # a 4 mrad transition opened the jaw; its subsequent correction is
+            # independently slowed by the size-aware settle controller. Force
+            # control and all proof gates remain otherwise unchanged.
             grasp_jaw_hold = rotary_jaw_capture_hold_target(
                 float(current[5].item()),
                 closed_position=closed_jaw,
                 open_position=open_jaw,
                 relative_speed_mps=relative_speed,
+                preload_rad=capture_hold_preload_for_force(
+                    *finger_forces,
+                    proof_entry_force_n=(
+                        grasp_machine.minimum_proof_entry_force_n
+                    ),
+                ),
             )
             grasp_jaw_reference = grasp_jaw_hold
             grasp_hold_pose = gripper_pose[:3].copy()
@@ -3201,6 +3418,12 @@ def run_attempt(
                 "gripper_control": gripper_control,
                 "recenter_contact_memory_side": capture_recenter_side,
                 "recenter_used_contact_memory": recenter_used_memory,
+                "pre_capture_recenter_object_reference_m": (
+                    None
+                    if pre_capture_recenter_object_reference is None
+                    else pre_capture_recenter_object_reference.tolist()
+                ),
+                "contact_geometry_valid": contact_geometry_valid,
                 "relative_grasp_recenter_active": relative_recenter_active,
                 "descent_lateral_correction_m": descent_lateral_correction,
                 "grasp_lateral_correction_m": (
@@ -3219,6 +3442,9 @@ def run_attempt(
                 "approach_jaw_target_rad": approach_jaw,
                 "capture_aperture_reference_local_m": (
                     capture_object_in_gripper.tolist()
+                ),
+                "pre_capture_recenter_aperture_reference_local_m": (
+                    pre_capture_recenter_aperture_reference.tolist()
                 ),
                 "proof_lift_target_m": float(verify_lift_height),
                 "transport_lift_target_m": float(transport_lift_target_m),
@@ -3426,9 +3652,13 @@ def run_attempt(
     resolved_variation["entities"]["pick_object"]["physics"]["mass_audit"] = (
         copy.deepcopy(mass_audit)
     )
+    episode_camera_profile = (
+        (trial.get("camera_profile") or {}).get("resolved_profile")
+        or camera_profile
+    )
     resolved_camera_records = (
-        _runtime_camera_records(scene, camera_profile)
-        if camera_profile is not None
+        _runtime_camera_records(scene, episode_camera_profile)
+        if episode_camera_profile is not None
         else None
     )
     if resolved_camera_records is not None:
@@ -3449,7 +3679,7 @@ def run_attempt(
         _write_json(
             root / "camera-evidence.json",
             {
-                "profile": copy.deepcopy(camera_profile),
+                "profile": copy.deepcopy(episode_camera_profile),
                 "resolved_cameras": copy.deepcopy(resolved_camera_records),
                 "same_control_tick": True,
                 "recording_stride": schedule.recording_stride,
@@ -3640,6 +3870,12 @@ def main():
         from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
 
         env_cfg = SO101CubePickPlaceEnvCfg()
+        if is_v010_episode_plan(plan):
+            target_dimensions = (plan.get("target") or {}).get("dimensions_m")
+            if target_dimensions is not None:
+                env_cfg.scene.target_pad.spawn.size = tuple(
+                    float(value) for value in target_dimensions
+                )
         # Seed the construction path as well as every reset. Isaac Lab warns
         # and may initialize manager state nondeterministically when this is None.
         env_cfg.seed = 0

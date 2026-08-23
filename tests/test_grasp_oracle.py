@@ -9,16 +9,82 @@ from farpoint.grasp_oracle import (
     GraspPhase,
     advance_proof_lift_command,
     cartesian_motion_command_base,
+    capture_hold_preload_for_force,
+    capture_retention_recenter_fallback_active,
+    capture_retention_force_floor,
+    contact_constrained_joint_step_limit,
+    contact_force_vectors_opposed,
     capture_preload_force_floor,
+    captured_force_imbalance_requires_squeeze_pause,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
     gripper_target_for_object_local_offset,
     gripper_xy_target_for_object_local_offset,
+    latch_pre_capture_recenter_object_reference,
     point_in_local_frame,
+    proof_lift_recovery_holds_xy,
     rotary_jaw_capture_hold_target,
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
+
+
+def test_capture_retention_recenter_fallback_requires_stalled_static_hold():
+    assert capture_retention_recenter_fallback_active(
+        GraspPhase.STATIC_HOLD,
+        8,
+        2.6,
+        1.7,
+        4.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.STATIC_HOLD,
+        7,
+        2.6,
+        1.7,
+        4.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.STATIC_HOLD,
+        8,
+        4.1,
+        4.2,
+        4.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.BILATERAL_SETTLE,
+        20,
+        2.6,
+        1.7,
+        4.0,
+    )
+
+
+def test_pre_capture_recenter_reference_latches_first_contact_position():
+    first = latch_pre_capture_recenter_object_reference([0.20, -0.08, 0.052])
+    retained = latch_pre_capture_recenter_object_reference(
+        [0.23, -0.05, 0.052],
+        first,
+    )
+
+    assert first.tolist() == pytest.approx([0.20, -0.08, 0.052])
+    assert retained.tolist() == pytest.approx(first.tolist())
+
+
+@pytest.mark.parametrize(
+    ("current", "previous"),
+    (
+        ([0.0, 0.0], None),
+        ([0.0, float("nan"), 0.0], None),
+        ([0.0, 0.0, 0.0], [0.0, float("inf"), 0.0]),
+    ),
+)
+def test_pre_capture_recenter_reference_rejects_invalid_positions(
+    current,
+    previous,
+):
+    with pytest.raises(ValueError, match="three finite values"):
+        latch_pre_capture_recenter_object_reference(current, previous)
 
 
 def _evidence(**overrides):
@@ -46,6 +112,41 @@ def test_control_schedule_records_exactly_30_hz_from_120_hz():
     assert schedule.steps_for_seconds(0.5) == 60
 
 
+def test_captured_force_imbalance_pauses_squeeze_only_for_bilateral_load():
+    assert captured_force_imbalance_requires_squeeze_pause(
+        2.18, 3.20, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+    assert not captured_force_imbalance_requires_squeeze_pause(
+        3.82, 5.66, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+    assert not captured_force_imbalance_requires_squeeze_pause(
+        0.0, 3.20, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"left_force_n": float("nan")},
+        {"right_force_n": -0.1},
+        {"minimum_force_n": 0.0},
+        {"proof_entry_force_n": 0.05},
+        {"minimum_balance_ratio": 0.0},
+        {"minimum_balance_ratio": 1.1},
+    ),
+)
+def test_captured_force_imbalance_rejects_invalid_contract(kwargs):
+    arguments = {
+        "left_force_n": 2.0,
+        "right_force_n": 3.0,
+        "minimum_force_n": 0.10,
+        "proof_entry_force_n": 4.0,
+    }
+    arguments.update(kwargs)
+    with pytest.raises(ValueError):
+        captured_force_imbalance_requires_squeeze_pause(**arguments)
+
+
 def test_control_schedule_rejects_aliased_recording_rate():
     with pytest.raises(ValueError, match="integer multiple"):
         ControlRecordingSchedule(control_hz=100, recording_hz=30)
@@ -65,19 +166,54 @@ def test_gripper_local_offset_tracks_rotated_gripper_frame():
     )
 
 
+def test_contact_force_vectors_require_opposing_sidewall_loads():
+    assert contact_force_vectors_opposed([2.0, -4.0, 0.5], [-3.0, 3.0, 0.0])
+    assert not contact_force_vectors_opposed(
+        [-0.9, -3.85, 0.98], [-4.18, 1.44, -0.02]
+    )
+    assert not contact_force_vectors_opposed([0.01, 0.0, 0.0], [-1.0, 0.0, 0.0])
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "kwargs"),
+    (
+        ([1.0, 2.0], [-1.0, -2.0, 0.0], {}),
+        ([float("nan"), 0.0, 0.0], [-1.0, 0.0, 0.0], {}),
+        ([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], {"maximum_cosine": 0.0}),
+        ([1.0, 0.0, 0.0], [-1.0, 0.0, 0.0], {"minimum_force_n": 0.0}),
+    ),
+)
+def test_contact_force_vectors_reject_invalid_inputs(left, right, kwargs):
+    with pytest.raises(ValueError):
+        contact_force_vectors_opposed(left, right, **kwargs)
+
+
 def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
     assert rotary_jaw_capture_hold_target(
         1.2328,
         closed_position=-0.175,
         open_position=1.7453,
         relative_speed_mps=0.0011,
-    ) == pytest.approx(1.2288)
+    ) == pytest.approx(1.2248)
     assert rotary_jaw_capture_hold_target(
         1.2328,
         closed_position=-0.175,
         open_position=1.7453,
         relative_speed_mps=0.0007,
     ) == pytest.approx(1.2248)
+    assert rotary_jaw_capture_hold_target(
+        1.2328,
+        closed_position=-0.175,
+        open_position=1.7453,
+        relative_speed_mps=0.002,
+    ) == pytest.approx(1.2248)
+    assert rotary_jaw_capture_hold_target(
+        1.2328,
+        closed_position=-0.175,
+        open_position=1.7453,
+        relative_speed_mps=0.002,
+        moving_capture_preload_rad=0.004,
+    ) == pytest.approx(1.2288)
     assert rotary_jaw_capture_hold_target(
         -0.174, closed_position=-0.175, open_position=1.7453
     ) == pytest.approx(-0.175)
@@ -109,6 +245,63 @@ def test_rotary_jaw_capture_hold_applies_bounded_closing_preload():
             open_position=1.7453,
             moving_capture_threshold_mps=float("inf"),
         )
+    with pytest.raises(ValueError, match="moving_capture_ceiling_mps"):
+        rotary_jaw_capture_hold_target(
+            1.0,
+            closed_position=-0.175,
+            open_position=1.7453,
+            moving_capture_threshold_mps=0.002,
+            moving_capture_ceiling_mps=0.002,
+        )
+
+
+def test_capture_hold_preload_uses_retention_only_after_proof_force():
+    assert capture_hold_preload_for_force(
+        6.1,
+        4.5,
+        proof_entry_force_n=4.0,
+    ) == pytest.approx(0.002)
+    assert capture_hold_preload_for_force(
+        4.4,
+        4.0,
+        proof_entry_force_n=4.0,
+    ) == pytest.approx(0.008)
+    assert capture_hold_preload_for_force(
+        6.1,
+        3.9,
+        proof_entry_force_n=4.0,
+    ) == pytest.approx(0.008)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"left_force_n": -0.1, "right_force_n": 4.0, "proof_entry_force_n": 4.0},
+        {
+            "left_force_n": 4.0,
+            "right_force_n": float("nan"),
+            "proof_entry_force_n": 4.0,
+        },
+        {"left_force_n": 4.0, "right_force_n": 4.0, "proof_entry_force_n": 0.0},
+        {
+            "left_force_n": 4.0,
+            "right_force_n": 4.0,
+            "proof_entry_force_n": 4.0,
+            "overload_margin_n": -0.1,
+        },
+        {
+            "left_force_n": 4.0,
+            "right_force_n": 4.0,
+            "proof_entry_force_n": 4.0,
+            "retention_preload_rad": 0.009,
+            "balanced_preload_rad": 0.0085,
+            "buildup_preload_rad": 0.008,
+        },
+    ),
+)
+def test_capture_hold_preload_rejects_invalid_inputs(kwargs):
+    with pytest.raises(ValueError, match="non-negative|positive|capture preloads"):
+        capture_hold_preload_for_force(**kwargs)
 
 
 def test_capture_preload_force_floor_tracks_admission_threshold():
@@ -121,8 +314,35 @@ def test_capture_preload_force_floor_tracks_admission_threshold():
 def test_capture_admission_retention_fraction_is_size_aware():
     assert capture_admission_retention_fraction(None) == pytest.approx(0.25)
     assert capture_admission_retention_fraction(0.03) == pytest.approx(0.25)
-    assert capture_admission_retention_fraction(0.035) == pytest.approx(0.50)
-    assert capture_admission_retention_fraction(0.04) == pytest.approx(0.75)
+    assert capture_admission_retention_fraction(0.035) == pytest.approx(0.575)
+    assert capture_admission_retention_fraction(0.04) == pytest.approx(0.90)
+
+
+def test_large_cube_capture_waits_for_settle_force_floor():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        object_width_m=0.04,
+        capture_contact_force_n=2.0,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(3):
+        decision = machine.step(
+            _evidence(left_force_n=1.79, right_force_n=2.64)
+        )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+
+    for _ in range(3):
+        decision = machine.step(
+            _evidence(left_force_n=1.80, right_force_n=2.64)
+        )
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
 
 
 @pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
@@ -156,8 +376,8 @@ def test_unilateral_recenter_starts_before_bilateral_contact():
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.CONTACT_ALIGNMENT)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.SLOW_CLOSE)
     assert grasp_phase_allows_unilateral_recenter(GraspPhase.BILATERAL_SETTLE)
+    assert grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
     assert not grasp_phase_allows_unilateral_recenter(GraspPhase.APPROACH)
-    assert not grasp_phase_allows_unilateral_recenter(GraspPhase.PROOF_LIFT)
 
 
 def test_first_contact_memory_bridges_handoff_force_dropout():
@@ -294,14 +514,136 @@ def test_proof_lift_rebases_once_then_preserves_accumulated_command():
         ahead, measured, 0.0, just_armed=True
     )
     np.testing.assert_allclose(base, measured)
-    assert height == pytest.approx(0.0000625)
+    assert height == pytest.approx(0.000015625)
 
     accumulated = base + 0.01
     base, height = advance_proof_lift_command(
         accumulated, measured, height, just_armed=False
     )
     np.testing.assert_allclose(base, accumulated)
-    assert height == pytest.approx(0.000125)
+    assert height == pytest.approx(0.00003125)
+
+
+def test_proof_lift_freezes_height_during_bounded_contact_recovery():
+    commanded = np.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    measured = commanded - 0.01
+
+    held, height = advance_proof_lift_command(
+        commanded,
+        measured,
+        0.00125,
+        just_armed=False,
+        contact_retained=False,
+    )
+
+    assert held == pytest.approx(commanded)
+    assert height == pytest.approx(0.00125)
+
+    resumed, height = advance_proof_lift_command(
+        held,
+        measured,
+        height,
+        just_armed=False,
+        contact_retained=True,
+    )
+
+    assert resumed == pytest.approx(commanded)
+    assert height == pytest.approx(0.001265625)
+
+
+@pytest.mark.parametrize("value", (None, 0, 1, "yes"))
+def test_proof_lift_rejects_non_boolean_contact_retained(value):
+    with pytest.raises(ValueError, match="contact_retained"):
+        advance_proof_lift_command(
+            np.zeros(6),
+            np.zeros(6),
+            0.0,
+            just_armed=False,
+            contact_retained=value,
+        )
+
+
+@pytest.mark.parametrize(
+    ("proof_lift_armed", "unilateral_contact", "expected"),
+    (
+        (False, False, False),
+        (False, True, False),
+        (True, False, False),
+        (True, True, True),
+    ),
+)
+def test_proof_lift_unilateral_recovery_holds_xy(
+    proof_lift_armed, unilateral_contact, expected
+):
+    assert (
+        proof_lift_recovery_holds_xy(
+            proof_lift_armed=proof_lift_armed,
+            unilateral_contact=unilateral_contact,
+        )
+        is expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("proof_lift_armed", "unilateral_contact"),
+    ((1, True), (True, 1), (None, False), (False, None)),
+)
+def test_proof_lift_xy_hold_rejects_non_boolean_flags(
+    proof_lift_armed, unilateral_contact
+):
+    with pytest.raises(ValueError, match="flags"):
+        proof_lift_recovery_holds_xy(
+            proof_lift_armed=proof_lift_armed,
+            unilateral_contact=unilateral_contact,
+        )
+
+
+def test_proof_lift_uses_tighter_contact_constrained_joint_step_limit():
+    assert contact_constrained_joint_step_limit(
+        0.005, proof_lift_armed=False
+    ) == pytest.approx(0.005)
+    assert contact_constrained_joint_step_limit(
+        0.005, proof_lift_armed=True
+    ) == pytest.approx(0.001)
+    assert contact_constrained_joint_step_limit(
+        0.0005, proof_lift_armed=True
+    ) == pytest.approx(0.0005)
+
+
+def test_capture_validation_raises_only_the_controller_retention_floor():
+    assert capture_retention_force_floor(
+        3.0, capture_validation_active=False
+    ) == pytest.approx(3.0)
+    assert capture_retention_force_floor(
+        3.0, capture_validation_active=True
+    ) == pytest.approx(4.0)
+    assert capture_retention_force_floor(
+        5.0, capture_validation_active=True
+    ) == pytest.approx(5.0)
+
+
+@pytest.mark.parametrize("value", (-0.1, float("nan"), float("inf")))
+def test_capture_retention_force_floor_rejects_invalid_values(value):
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        capture_retention_force_floor(value, capture_validation_active=False)
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        capture_retention_force_floor(
+            3.0,
+            capture_validation_active=True,
+            minimum_capture_force_n=value,
+        )
+
+
+@pytest.mark.parametrize("value", (0.0, -0.001, float("nan"), float("inf")))
+def test_contact_constrained_joint_step_limit_rejects_invalid_limits(value):
+    with pytest.raises(ValueError, match="finite and positive"):
+        contact_constrained_joint_step_limit(value, proof_lift_armed=False)
+    with pytest.raises(ValueError, match="finite and positive"):
+        contact_constrained_joint_step_limit(
+            0.005,
+            proof_lift_armed=True,
+            maximum_proof_lift_joint_step=value,
+        )
 
 
 def test_cartesian_motion_command_rebases_only_on_phase_entry():
@@ -436,6 +778,121 @@ def test_low_force_capture_still_requires_physical_proof_lift():
     ).phase is GraspPhase.VALIDATED
 
 
+def test_proof_lift_waits_for_full_bilateral_preload_window():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        minimum_contact_force_n=0.10,
+        capture_contact_force_n=2.0,
+        minimum_proof_entry_force_n=4.0,
+        capture_confirmation_s=0.0,
+        bilateral_settle_s=0.1,
+        static_hold_s=0.2,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence())
+    assert machine.step(_evidence()).phase is GraspPhase.STATIC_HOLD
+
+    for _ in range(4):
+        decision = machine.step(
+            _evidence(left_force_n=5.28, right_force_n=3.82)
+        )
+
+    assert decision.phase is GraspPhase.STATIC_HOLD
+    assert machine.stable_steps == 0
+    assert machine.step(
+        _evidence(left_force_n=5.87, right_force_n=4.72)
+    ).phase is GraspPhase.STATIC_HOLD
+    assert machine.step(
+        _evidence(left_force_n=5.87, right_force_n=4.72)
+    ).phase is GraspPhase.PROOF_LIFT
+
+
+def test_static_hold_rebases_only_after_stable_proof_ready_recovery():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        capture_confirmation_s=0.0,
+        bilateral_settle_s=0.2,
+        static_hold_s=0.2,
+        minimum_proof_entry_force_n=4.0,
+        maximum_relative_translation_error_m=0.003,
+        maximum_capture_relative_speed_mps=0.002,
+    )
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    assert machine.step(
+        _evidence(left_force_n=5.0, right_force_n=5.0)
+    ).phase is GraspPhase.STATIC_HOLD
+
+    first = machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.001,
+        )
+    )
+    second = machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.001,
+        )
+    )
+    assert not first.rebase_relative_tracking
+    assert second.rebase_recovered_capture_tracking
+    assert second.rebase_relative_tracking
+    assert second.phase is GraspPhase.STATIC_HOLD
+
+    assert machine.step(
+        _evidence(left_force_n=5.0, right_force_n=5.0)
+    ).phase is GraspPhase.STATIC_HOLD
+    assert machine.step(
+        _evidence(left_force_n=5.0, right_force_n=5.0)
+    ).phase is GraspPhase.PROOF_LIFT
+
+
+def test_static_hold_recovery_rebase_resets_after_dynamic_sample():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=10,
+        capture_confirmation_s=0.0,
+        bilateral_settle_s=0.2,
+        minimum_proof_entry_force_n=4.0,
+        maximum_relative_translation_error_m=0.003,
+        maximum_capture_relative_speed_mps=0.002,
+    )
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=0.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+    machine.step(_evidence(left_force_n=5.0, right_force_n=5.0))
+
+    machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.001,
+        )
+    )
+    dynamic = machine.step(
+        _evidence(
+            left_force_n=5.0,
+            right_force_n=5.0,
+            relative_translation_error_m=0.004,
+            relative_speed_mps=0.003,
+        )
+    )
+    assert not dynamic.rebase_relative_tracking
+    assert machine.recovery_rebase_steps == 0
+
+
 def test_capture_threshold_is_distinct_from_contact_persistence_threshold():
     machine = ContactAwareGraspStateMachine(
         control_hz=120,
@@ -494,6 +951,24 @@ def test_capture_confirmation_requires_consecutive_strong_bilateral_samples():
     decision = machine.step(_evidence())
 
     assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
+def test_capture_confirmation_rejects_nonopposing_contact_geometry():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(machine.capture_confirmation_steps + 2):
+        decision = machine.step(_evidence(contact_geometry_valid=False))
+        assert decision.phase is GraspPhase.SLOW_CLOSE
+
+    for _ in range(machine.capture_confirmation_steps):
+        decision = machine.step(_evidence(contact_geometry_valid=True))
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
     assert decision.rebase_relative_tracking
 
 
@@ -534,11 +1009,165 @@ def test_capture_confirmation_rejects_dynamic_bilateral_contact():
         decision = machine.step(_evidence(relative_speed_mps=0.004))
 
     assert decision.phase is GraspPhase.SLOW_CLOSE
-    assert machine.capture_steps == 4
+    assert machine.capture_steps == 0
 
     decision = machine.step(_evidence(relative_speed_mps=0.001))
 
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 1
+    machine.step(_evidence(relative_speed_mps=0.001))
+    decision = machine.step(_evidence(relative_speed_mps=0.001))
+
     assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
+def test_capture_confirmation_resets_after_dynamic_tick():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        maximum_capture_relative_speed_mps=0.002,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    machine.step(_evidence(relative_speed_mps=0.001))
+    machine.step(_evidence(relative_speed_mps=0.001))
+    decision = machine.step(_evidence(relative_speed_mps=0.004))
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+    machine.step(_evidence(relative_speed_mps=0.001))
+    machine.step(_evidence(relative_speed_mps=0.001))
+    decision = machine.step(_evidence(relative_speed_mps=0.001))
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
+def test_capture_confirmation_rejects_translating_bilateral_enclosure():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(4):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.00495,
+                relative_speed_mps=0.001,
+            )
+        )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+
+    for _ in range(machine.capture_confirmation_steps):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.002,
+                relative_speed_mps=0.001,
+            )
+        )
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+    assert decision.rebase_relative_tracking
+
+
+def test_capture_confirmation_resets_after_translation_drift_tick():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    decision = machine.step(_evidence(relative_translation_error_m=0.00495))
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert machine.capture_steps == 0
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    machine.step(_evidence(relative_translation_error_m=0.002))
+    decision = machine.step(_evidence(relative_translation_error_m=0.002))
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
+def test_stable_recentered_capture_rebases_candidate_before_admission():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        bilateral_settle_s=0.10,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for _ in range(11):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.01258,
+                relative_speed_mps=0.00004,
+            )
+        )
+        assert not decision.rebase_relative_tracking
+
+    decision = machine.step(
+        _evidence(
+            relative_translation_error_m=0.01258,
+            relative_speed_mps=0.00004,
+        )
+    )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert decision.rebase_capture_candidate_tracking
+    assert decision.rebase_relative_tracking
+    assert machine.capture_steps == 0
+
+    for _ in range(machine.capture_confirmation_steps):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.00002,
+                relative_speed_mps=0.00004,
+            )
+        )
+
+    assert decision.phase is GraspPhase.BILATERAL_SETTLE
+
+
+def test_transient_sliding_edge_cannot_rebase_capture_candidate():
+    machine = ContactAwareGraspStateMachine(
+        control_hz=120,
+        capture_confirmation_s=0.025,
+        bilateral_settle_s=0.10,
+        maximum_relative_translation_error_m=0.003,
+    )
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+    machine.step(_evidence(right_force_n=0.0))
+
+    for speed in (0.00255, 0.00356, 0.00321, 0.00137):
+        decision = machine.step(
+            _evidence(
+                relative_translation_error_m=0.00495,
+                relative_speed_mps=speed,
+            )
+        )
+
+    assert decision.phase is GraspPhase.SLOW_CLOSE
+    assert not decision.rebase_relative_tracking
+    assert machine.capture_rebase_steps == 1
+    decision = machine.step(_evidence(right_force_n=0.0))
+    assert not decision.rebase_relative_tracking
+    assert machine.capture_rebase_steps == 0
 
 
 def test_capture_admission_blocks_force_only_corner_contact():
@@ -585,6 +1214,8 @@ def test_sustain_threshold_applies_after_strong_capture():
     (
         {"capture_contact_force_n": 0.05},
         {"capture_contact_force_n": 60.0},
+        {"minimum_proof_entry_force_n": 0.05},
+        {"minimum_proof_entry_force_n": 60.0},
         {"capture_confirmation_s": -0.01},
         {"maximum_capture_relative_speed_mps": float("inf")},
     ),

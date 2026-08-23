@@ -155,10 +155,16 @@ def create_manifest(
             attempt_limit = _maximum_attempts_per_variation(plan)
             if attempt_limit != 3:
                 raise ValueError("self-healing segments require three attempts per variation")
-            expected_maximum = sum(
+            remaining_budget = sum(
                 attempt_limit - _prior_attempt_count(trial, attempt_limit)
                 for trial in trials
             )
+            global_limit = profile.get("global_attempts_remaining")
+            if global_limit is None:
+                global_limit = ((plan.get("campaign_contract") or {}).get("attempt_policy") or {}).get(
+                    "global_attempt_limit"
+                )
+            expected_maximum = min(remaining_budget, int(global_limit)) if global_limit is not None else remaining_budget
             if frozen_maximum != expected_maximum:
                 raise ValueError(
                     "self-healing segment attempt budget must equal the sum of "
@@ -198,6 +204,33 @@ def create_pilot_manifest(
     required_successes = int(pilot.get("required_successes", 0))
     maximum_attempts = int(pilot.get("maximum_attempts", 0))
     kind = pilot.get("kind")
+    if kind in {"v020_pad_pilot", "v020_combined_pilot"}:
+        expected = 12 if kind == "v020_pad_pilot" else 30
+        expected_maximum = 18 if kind == "v020_pad_pilot" else 60
+        frozen_ids = pilot.get("trial_ids") or []
+        if (
+            len(trials) != expected
+            or maximum_attempts != expected_maximum
+            or required_successes != expected
+        ):
+            raise ValueError(
+                f"{kind} must freeze {expected} cell successes within "
+                f"{expected_maximum} attempts"
+            )
+        if [trial["trial_id"] for trial in trials] != frozen_ids:
+            raise ValueError("v0.2.0 pilot ordering does not match its frozen ids")
+        if any(trial.get("target_profile_id") is None or trial.get("camera_profile_id") is None for trial in trials):
+            raise ValueError("v0.2.0 pilot requires target and camera identities")
+        return _new_manifest(
+            plan,
+            collection_id=collection_id,
+            git_commit=git_commit,
+            required_successes=required_successes,
+            maximum_attempts=maximum_attempts,
+            release_status="PILOT",
+            completion_policy="success_target",
+            stop_when_success_target_unreachable=True,
+        )
     if kind == "v010_integration_pilot":
         frozen_ids = pilot.get("trial_ids") or []
         if len(trials) != 12 or maximum_attempts != 12 or required_successes != 10:

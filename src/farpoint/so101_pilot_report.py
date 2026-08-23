@@ -378,6 +378,39 @@ def audit_yaw_mass_episodes(
     return audits, errors
 
 
+def _is_deterministic_failed_retry_group(
+    group: dict[str, Any],
+    attempt_by_episode: dict[str, dict[str, Any]],
+    episodes: list[dict[str, Any]],
+) -> bool:
+    """Accept byte-identical deterministic retries without weakening identity gates."""
+    episode_names = [Path(path).name for path in group["episode_dirs"]]
+    attempts = [attempt_by_episode.get(name) for name in episode_names]
+    if any(attempt is None for attempt in attempts):
+        return False
+    typed_attempts = [attempt for attempt in attempts if attempt is not None]
+    if any(attempt.get("success") or attempt.get("selected") for attempt in typed_attempts):
+        return False
+    if len({attempt.get("variation_id") for attempt in typed_attempts}) != 1:
+        return False
+    outcomes = {
+        (attempt.get("failure_category"), attempt.get("failure_reason"))
+        for attempt in typed_attempts
+    }
+    if len(outcomes) != 1:
+        return False
+    if len({attempt.get("attempt_id") for attempt in typed_attempts}) != len(typed_attempts):
+        return False
+    if len({attempt.get("attempt_seed") for attempt in typed_attempts}) != len(typed_attempts):
+        return False
+    metadata_by_name = {
+        Path(episode["episode_dir"]).name: episode["metadata_sha256"]
+        for episode in episodes
+    }
+    metadata_hashes = [metadata_by_name.get(name) for name in episode_names]
+    return None not in metadata_hashes and len(set(metadata_hashes)) == len(metadata_hashes)
+
+
 def build_so101_pilot_report(
     plan: dict[str, Any],
     manifest: dict[str, Any],
@@ -407,9 +440,23 @@ def build_so101_pilot_report(
             terminal_runner_attempts.append(attempt["episode_id"])
     episode_dirs = [root / attempt["episode_id"] for attempt in analyzable_attempts]
     analysis = analyze_so101_episodes(episode_dirs, verify_images=True)
+    attempt_by_episode = {
+        attempt["episode_id"]: attempt for attempt in analyzable_attempts
+    }
+    deterministic_failed_retry_duplicates = bool(
+        analysis["duplicate_observation_groups"]
+    ) and all(
+        _is_deterministic_failed_retry_group(
+            group,
+            attempt_by_episode,
+            analysis["episodes"],
+        )
+        for group in analysis["duplicate_observation_groups"]
+    )
     errors = so101_episode_evidence_errors(
         analysis,
         len(analyzable_attempts),
+        allow_duplicate_observations=deterministic_failed_retry_duplicates,
         required_cameras=required_cameras,
     )
     errors.extend(evidence_errors)
@@ -424,7 +471,8 @@ def build_so101_pilot_report(
             errors.append(f"{attempt['episode_id']}:manifest_episode_validity_mismatch")
     yaw_audits, yaw_errors = audit_yaw_mass_episodes(plan, attempts, by_name, root)
     errors.extend(yaw_errors)
-    if (plan.get("pilot") or {}).get("kind") == "v010_integration_pilot":
+    pilot_contract = plan.get("pilot") or {}
+    if pilot_contract.get("kind") == "v010_integration_pilot" or pilot_contract.get("episode_contract") == "farpoint.episode.v4":
         for attempt in episode_attempts:
             episode_root = root / attempt["episode_id"]
             metadata_path = episode_root / "metadata.json"
@@ -435,6 +483,34 @@ def build_so101_pilot_report(
                 errors.append(f"{attempt['episode_id']}:episode_v4_required")
                 continue
             errors.extend(_v010_video_errors(episode_root, metadata))
+            if str(pilot_contract.get("kind", "")).startswith("v020_"):
+                trial = next(
+                    (
+                        row
+                        for row in plan.get("trials") or []
+                        if row["variation_id"] == attempt.get("variation_id")
+                    ),
+                    None,
+                )
+                if trial is None:
+                    errors.append(f"{attempt['episode_id']}:v020_trial_missing")
+                    continue
+                resolved = (metadata.get("variation") or {}).get("resolved") or {}
+                for field in ("target_profile_id", "camera_profile_id"):
+                    if resolved.get(field) != trial.get(field):
+                        errors.append(
+                            f"{attempt['episode_id']}:{field}_provenance_mismatch"
+                        )
+                cameras = (metadata.get("recording") or {}).get("cameras") or []
+                front = next(
+                    (row for row in cameras if row.get("camera_id") == "front"), {}
+                )
+                if front.get("config_version") != (
+                    trial["camera_profile"]["resolved_profile"]["profile_id"]
+                ):
+                    errors.append(
+                        f"{attempt['episode_id']}:front_camera_profile_mismatch"
+                    )
     selected = [attempt for attempt in attempts if attempt.get("selected_for_dataset")]
     selected_evidence = []
     selected_nominal_proof_lifts = []
