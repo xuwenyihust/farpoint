@@ -10,6 +10,7 @@ from farpoint.grasp_oracle import (
     advance_proof_lift_command,
     cartesian_motion_command_base,
     capture_hold_preload_for_force,
+    capture_retention_recenter_fallback_active,
     capture_retention_force_floor,
     contact_constrained_joint_step_limit,
     contact_force_vectors_opposed,
@@ -26,6 +27,37 @@ from farpoint.grasp_oracle import (
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
+
+
+def test_capture_retention_recenter_fallback_requires_stalled_static_hold():
+    assert capture_retention_recenter_fallback_active(
+        GraspPhase.STATIC_HOLD,
+        8,
+        2.6,
+        1.7,
+        4.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.STATIC_HOLD,
+        7,
+        2.6,
+        1.7,
+        4.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.STATIC_HOLD,
+        8,
+        4.1,
+        4.2,
+        4.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.BILATERAL_SETTLE,
+        20,
+        2.6,
+        1.7,
+        4.0,
+    )
 
 
 def test_pre_capture_recenter_reference_latches_first_contact_position():

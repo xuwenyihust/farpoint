@@ -34,6 +34,40 @@ def grasp_phase_allows_unilateral_recenter(phase: GraspPhase) -> bool:
     }
 
 
+def capture_retention_recenter_fallback_active(
+    phase: GraspPhase,
+    phase_steps: int,
+    left_force_n: float,
+    right_force_n: float,
+    proof_entry_force_n: float,
+    *,
+    minimum_static_hold_steps: int = 8,
+) -> bool:
+    """Use the calibrated aperture center only after capture preload stalls.
+
+    The biased pre-capture center remains the primary path. A fallback is
+    enabled only in static hold, after a bounded observation window, when at
+    least one finger is still below the unchanged proof-entry force floor.
+    """
+    steps = int(phase_steps)
+    minimum_steps = int(minimum_static_hold_steps)
+    forces = (float(left_force_n), float(right_force_n))
+    proof_floor = float(proof_entry_force_n)
+    if steps < 0:
+        raise ValueError("phase_steps must be non-negative")
+    if minimum_steps <= 0:
+        raise ValueError("minimum_static_hold_steps must be positive")
+    if not np.all(np.isfinite(forces)) or min(forces) < 0.0:
+        raise ValueError("contact forces must be finite and non-negative")
+    if not np.isfinite(proof_floor) or proof_floor <= 0.0:
+        raise ValueError("proof_entry_force_n must be finite and positive")
+    return (
+        phase is GraspPhase.STATIC_HOLD
+        and steps >= minimum_steps
+        and min(forces) < proof_floor
+    )
+
+
 def contact_force_vectors_opposed(
     left_vector_n,
     right_vector_n,

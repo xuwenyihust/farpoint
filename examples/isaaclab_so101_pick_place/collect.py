@@ -216,6 +216,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     advance_proof_lift_command,
     cartesian_motion_command_base,
     capture_hold_preload_for_force,
+    capture_retention_recenter_fallback_active,
     capture_retention_force_floor,
     capture_preload_force_floor,
     captured_force_imbalance_requires_squeeze_pause,
@@ -2427,10 +2428,18 @@ def run_attempt(
                     if pre_capture_recenter_object_reference is None
                     else pre_capture_recenter_object_reference
                 )
+                active_recenter_reference = pre_capture_recenter_aperture_reference
+                if capture_retention_recenter_fallback_active(
+                    grasp_machine.phase,
+                    grasp_machine.phase_steps,
+                    *recenter_forces,
+                    grasp_machine.minimum_proof_entry_force_n,
+                ):
+                    active_recenter_reference = capture_object_in_gripper
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
                     live_gripper_pose,
-                    pre_capture_recenter_aperture_reference,
+                    active_recenter_reference,
                 )
                 desired_object_minus_grasp = object_world - desired_gripper
                 current_xy_correction = (
