@@ -216,7 +216,6 @@ from farpoint.grasp_oracle import (  # noqa: E402
     advance_proof_lift_command,
     cartesian_motion_command_base,
     capture_hold_preload_for_force,
-    capture_retention_fallback_delay_steps,
     capture_retention_recenter_fallback_active,
     capture_retention_force_floor,
     capture_preload_force_floor,
@@ -2296,9 +2295,6 @@ def run_attempt(
                 grasp_machine.phase_steps,
                 *balanced_forces,
                 grasp_machine.minimum_proof_entry_force_n,
-                minimum_static_hold_steps=capture_retention_fallback_delay_steps(
-                    object_spec["dimensions_m"][0]
-                ),
             )
         )
         if (
@@ -2429,9 +2425,6 @@ def run_attempt(
                 grasp_machine.phase_steps,
                 *recenter_forces,
                 grasp_machine.minimum_proof_entry_force_n,
-                minimum_static_hold_steps=capture_retention_fallback_delay_steps(
-                    object_spec["dimensions_m"][0]
-                ),
             )
         )
         capture_recenter_required = (
