@@ -10,6 +10,7 @@ from farpoint.grasp_oracle import (
     advance_proof_lift_command,
     cartesian_motion_command_base,
     capture_hold_preload_for_force,
+    capture_retention_fallback_delay_steps,
     capture_retention_recenter_fallback_active,
     capture_retention_force_floor,
     contact_constrained_joint_step_limit,
@@ -58,6 +59,31 @@ def test_capture_retention_recenter_fallback_requires_stalled_static_hold():
         1.7,
         4.0,
     )
+
+
+def test_capture_retention_fallback_delay_is_size_aware():
+    assert capture_retention_fallback_delay_steps(None) == 8
+    assert capture_retention_fallback_delay_steps(0.03) == 8
+    assert capture_retention_fallback_delay_steps(0.035) == 4
+    assert capture_retention_fallback_delay_steps(0.04) == 1
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"object_width_m": 0.0},
+        {"object_width_m": float("nan")},
+        {"object_width_m": 0.04, "small_object_delay_steps": 0},
+        {
+            "object_width_m": 0.04,
+            "small_object_delay_steps": 1,
+            "large_object_delay_steps": 2,
+        },
+    ),
+)
+def test_capture_retention_fallback_delay_rejects_invalid_contract(kwargs):
+    with pytest.raises(ValueError, match="finite and positive|delay"):
+        capture_retention_fallback_delay_steps(**kwargs)
 
 
 def test_pre_capture_recenter_reference_latches_first_contact_position():

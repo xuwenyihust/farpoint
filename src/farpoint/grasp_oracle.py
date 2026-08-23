@@ -68,6 +68,38 @@ def capture_retention_recenter_fallback_active(
     )
 
 
+def capture_retention_fallback_delay_steps(
+    object_width_m: float | None,
+    *,
+    small_object_delay_steps: int = 8,
+    large_object_delay_steps: int = 1,
+) -> int:
+    """Return the bounded static-hold recovery delay for the object width.
+
+    The 30 mm path keeps the validated eight-step observation window. A
+    frozen 40 mm c21 trace lost its weaker finger four steps after entering
+    static hold, before that window could enable the existing bounded preload
+    and recenter recovery. Arm the same recovery after one weak-force sample
+    for the 40 mm endpoint; interpolate monotonically for intermediate widths.
+    """
+    if object_width_m is None:
+        return int(small_object_delay_steps)
+    width = float(object_width_m)
+    small_delay = int(small_object_delay_steps)
+    large_delay = int(large_object_delay_steps)
+    if not np.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if small_delay <= 0 or large_delay <= 0:
+        raise ValueError("fallback delay steps must be positive")
+    if large_delay > small_delay:
+        raise ValueError("large-object delay must not exceed small-object delay")
+    interpolation = float(np.clip((width - 0.03) / 0.01, 0.0, 1.0))
+    return max(
+        large_delay,
+        int(round(small_delay + interpolation * (large_delay - small_delay))),
+    )
+
+
 def contact_force_vectors_opposed(
     left_vector_n,
     right_vector_n,
