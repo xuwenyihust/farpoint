@@ -8,6 +8,7 @@ from pathlib import Path
 from farpoint.campaign import validate_campaign_semantics
 from farpoint.so101_collection import create_manifest, create_pilot_manifest
 from farpoint.v020_plan import (
+    build_v020_attempt_budget_extension,
     build_v020_continuation_plan,
     build_v020_plan,
     canonical_sha256,
@@ -102,7 +103,7 @@ def test_v020_formal_plan_freezes_exact_cells_splits_and_continuous_lhs():
 def test_v020_pilots_freeze_cell_successes_with_retry_budgets():
     for mode, expected, maximum in (
         ("pad-pilot", 12, 18),
-        ("combined-pilot", 30, 45),
+        ("combined-pilot", 30, 60),
     ):
         plan = build_v020_plan(
             _config(), project_root=ROOT, plan_id=f"v020-{mode}", mode=mode
@@ -149,6 +150,29 @@ def test_v020_continuation_uses_campaign_attempt_limit():
     assert remaining_v020_attempt_budget({"attempt_policy": {}}, 40) == 410
     with pytest.raises(ValueError, match="exceed"):
         remaining_v020_attempt_budget(campaign, 46)
+
+
+def test_v020_combined_pilot_budget_extension_is_hash_bound_and_non_mutating():
+    plan = build_v020_plan(
+        _config(), project_root=ROOT, plan_id="v020-combined-old", mode="combined-pilot"
+    )
+    campaign = plan["campaign_contract"]
+    campaign["attempt_policy"]["global_attempt_limit"] = 45
+    campaign.pop("campaign_sha256", None)
+    campaign["campaign_sha256"] = canonical_sha256(campaign)
+    extension = build_v020_attempt_budget_extension(
+        campaign, diagnosis_sha256="d" * 64, extended_global_attempt_limit=60
+    )
+    assert remaining_v020_attempt_budget(
+        campaign, 41, attempt_budget_extension=extension
+    ) == 19
+    assert campaign["attempt_policy"]["global_attempt_limit"] == 45
+    changed = dict(extension)
+    changed["diagnosis_sha256"] = "e" * 64
+    with pytest.raises(ValueError, match="content or hash"):
+        remaining_v020_attempt_budget(
+            campaign, 41, attempt_budget_extension=changed
+        )
 
 
 def test_v020_replacement_changes_jitter_but_preserves_quota_and_lhs_strata():

@@ -21,8 +21,9 @@ CONFIG_SCHEMA = "farpoint.so101-v020-config.v1"
 PLAN_SCHEMA = "farpoint.so101-v020-plan.v1"
 PLAN_MODES = {"pad-pilot", "combined-pilot", "formal"}
 AUTHORIZATION_SCHEMA = "farpoint.so101-v020-pilot-authorization.v1"
+ATTEMPT_BUDGET_EXTENSION_SCHEMA = "farpoint.so101-v020-attempt-budget-extension.v1"
 YAW_STRATA = ("yaw00_18", "yaw18_36", "yaw36_54", "yaw54_72", "yaw72_90")
-PILOT_ATTEMPT_BUDGETS = {"pad-pilot": 18, "combined-pilot": 45}
+PILOT_ATTEMPT_BUDGETS = {"pad-pilot": 18, "combined-pilot": 60}
 
 
 def canonical_sha256(value: Any) -> str:
@@ -407,10 +408,57 @@ def initialize_v020_campaign(root: str | Path, plan: dict[str, Any], *, git_comm
     return {"campaign": campaign, "plan": plan, "segment": segment}
 
 
-def remaining_v020_attempt_budget(campaign: dict[str, Any], total_attempts: int) -> int:
+def build_v020_attempt_budget_extension(
+    campaign: dict[str, Any],
+    *,
+    diagnosis_sha256: str,
+    extended_global_attempt_limit: int,
+) -> dict[str, Any]:
+    """Bind an owner-approved pilot budget relaxation without mutating a campaign."""
+    base_limit = int((campaign.get("attempt_policy") or {})["global_attempt_limit"])
+    extended_limit = int(extended_global_attempt_limit)
+    if int((campaign.get("target") or {}).get("successful_episodes", 0)) != 30:
+        raise ValueError("attempt budget extensions are limited to the 30-cell combined pilot")
+    if base_limit != 45 or extended_limit != PILOT_ATTEMPT_BUDGETS["combined-pilot"]:
+        raise ValueError("combined pilot budget extension must be 45 to 60 attempts")
+    if not isinstance(diagnosis_sha256, str) or len(diagnosis_sha256) != 64:
+        raise ValueError("attempt budget extension requires a diagnosis SHA256")
+    extension = {
+        "schema_version": ATTEMPT_BUDGET_EXTENSION_SCHEMA,
+        "campaign_sha256": campaign["campaign_sha256"],
+        "base_global_attempt_limit": base_limit,
+        "extended_global_attempt_limit": extended_limit,
+        "diagnosis_sha256": diagnosis_sha256,
+        "reason": "owner_approved_combined_pilot_gate_relaxation",
+    }
+    extension["extension_sha256"] = canonical_sha256(extension)
+    return extension
+
+
+def validate_v020_attempt_budget_extension(
+    extension: dict[str, Any], campaign: dict[str, Any]
+) -> None:
+    expected = build_v020_attempt_budget_extension(
+        campaign,
+        diagnosis_sha256=extension.get("diagnosis_sha256"),
+        extended_global_attempt_limit=extension.get("extended_global_attempt_limit"),
+    )
+    if extension != expected:
+        raise ValueError("attempt budget extension content or hash mismatch")
+
+
+def remaining_v020_attempt_budget(
+    campaign: dict[str, Any],
+    total_attempts: int,
+    *,
+    attempt_budget_extension: dict[str, Any] | None = None,
+) -> int:
     """Return the frozen campaign budget remaining across continuation segments."""
     configured = (campaign.get("attempt_policy") or {}).get("global_attempt_limit")
     limit = 450 if configured is None else int(configured)
+    if attempt_budget_extension is not None:
+        validate_v020_attempt_budget_extension(attempt_budget_extension, campaign)
+        limit = int(attempt_budget_extension["extended_global_attempt_limit"])
     remaining = limit - int(total_attempts)
     if remaining < 0:
         raise ValueError("prior attempts exceed the campaign global limit")
@@ -426,6 +474,7 @@ def build_v020_continuation_plan(
     segment_id: str,
     parent_manifest_sha256: str,
     remaining_global_attempts: int,
+    attempt_budget_extension: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Materialize only uncovered quotas without changing frozen semantics."""
     validate_v020_config(config, project_root=project_root)
@@ -552,6 +601,13 @@ def build_v020_continuation_plan(
         "campaign_sha256": primary_plan["campaign_sha256"],
         "frozen_config_sha256": primary_plan["config_sha256"],
     }
+    if attempt_budget_extension is not None:
+        validate_v020_attempt_budget_extension(
+            attempt_budget_extension, primary_plan["campaign_contract"]
+        )
+        plan["continuation"]["attempt_budget_extension"] = deepcopy(
+            attempt_budget_extension
+        )
     plan["coverage"] = {
         "uncovered_quotas": len(trials),
         "carryovers": sum(row["request_kind"] == "carryover" for row in requests),

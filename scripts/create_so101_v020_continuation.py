@@ -33,6 +33,7 @@ def main() -> int:
     parser.add_argument("--segment-id", required=True)
     parser.add_argument("--git-commit", required=True)
     parser.add_argument("--output-plan", type=Path, required=True)
+    parser.add_argument("--attempt-budget-extension", type=Path)
     args = parser.parse_args()
     index = _read(args.evidence_index)
     base = args.evidence_index.parent
@@ -52,8 +53,17 @@ def main() -> int:
     if not evidence or parent_manifest_path is None:
         raise ValueError("continuation requires prior segment evidence")
     campaign = _read(args.campaign_root / "campaign.json")
+    budget_extension = (
+        _read(args.attempt_budget_extension)
+        if args.attempt_budget_extension is not None
+        else None
+    )
     requests = build_continuation_requests(campaign, evidence)
-    remaining = remaining_v020_attempt_budget(campaign, total_attempts)
+    remaining = remaining_v020_attempt_budget(
+        campaign,
+        total_attempts,
+        attempt_budget_extension=budget_extension,
+    )
     plan = build_v020_continuation_plan(
         load_v020_config(args.config, project_root=PROJECT_ROOT),
         project_root=PROJECT_ROOT,
@@ -62,6 +72,7 @@ def main() -> int:
         segment_id=args.segment_id,
         parent_manifest_sha256=hashlib.sha256(parent_manifest_path.read_bytes()).hexdigest(),
         remaining_global_attempts=remaining,
+        attempt_budget_extension=budget_extension,
     )
     if args.output_plan.exists():
         raise FileExistsError(f"refusing to overwrite continuation: {args.output_plan}")

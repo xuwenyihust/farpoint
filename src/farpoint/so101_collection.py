@@ -206,7 +206,7 @@ def create_pilot_manifest(
     kind = pilot.get("kind")
     if kind in {"v020_pad_pilot", "v020_combined_pilot"}:
         expected = 12 if kind == "v020_pad_pilot" else 30
-        expected_maximum = 18 if kind == "v020_pad_pilot" else 45
+        expected_maximum = 18 if kind == "v020_pad_pilot" else 60
         frozen_ids = pilot.get("trial_ids") or []
         if (
             len(trials) != expected
