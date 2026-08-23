@@ -32,6 +32,7 @@ from farpoint.control import (
     so101_capture_admission_retention_fraction,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_capture_force_recovery_close_step,
     so101_balanced_capture_close_step,
     so101_cube_contact_handoff,
     so101_imbalanced_capture_close_step,
@@ -130,6 +131,26 @@ def test_so101_balanced_capture_close_step_slows_large_cube_settle():
     assert so101_balanced_capture_close_step(0.04) == pytest.approx(0.000125)
     assert so101_balanced_capture_close_step(0.02) == pytest.approx(0.0005)
     assert so101_balanced_capture_close_step(0.05) == pytest.approx(0.000125)
+
+
+def test_so101_capture_force_recovery_close_step_is_force_gated():
+    assert so101_capture_force_recovery_close_step(0.04, 6.257, 3.438, proof_entry_force_n=4.0) == pytest.approx(0.0005)
+    assert so101_capture_force_recovery_close_step(0.04, 7.825, 4.83, proof_entry_force_n=4.0) == pytest.approx(0.000125)
+    assert so101_capture_force_recovery_close_step(0.03, 3.2, 2.9, proof_entry_force_n=3.0) == pytest.approx(0.0005)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"object_width_m": 0.04, "left_force_n": -0.1, "right_force_n": 4.0, "proof_entry_force_n": 4.0},
+        {"object_width_m": 0.04, "left_force_n": 4.0, "right_force_n": float("nan"), "proof_entry_force_n": 4.0},
+        {"object_width_m": 0.04, "left_force_n": 4.0, "right_force_n": 4.0, "proof_entry_force_n": 0.0},
+        {"object_width_m": 0.04, "left_force_n": 4.0, "right_force_n": 4.0, "proof_entry_force_n": 4.0, "recovery_close_step": -0.1},
+    ),
+)
+def test_so101_capture_force_recovery_close_step_rejects_invalid_contract(kwargs):
+    with pytest.raises(ValueError, match="finite|positive|non-negative"):
+        so101_capture_force_recovery_close_step(**kwargs)
 
 
 @pytest.mark.parametrize(

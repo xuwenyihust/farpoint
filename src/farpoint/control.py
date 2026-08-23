@@ -80,6 +80,36 @@ def so101_balanced_capture_close_step(
     return close_step * (1.0 - 0.75 * interpolation)
 
 
+def so101_capture_force_recovery_close_step(
+    object_width_m,
+    left_force_n,
+    right_force_n,
+    *,
+    proof_entry_force_n,
+    recovery_close_step=0.0005,
+):
+    """Restore weak capture force before returning to the size-aware hold.
+
+    Large-cube captures need the slow balanced settle step while both fingers
+    remain proof-ready. Frozen c21 evidence showed a weaker finger falling
+    from 4.83 N to zero within one 30 Hz observation window; the 0.125 mrad
+    large-cube step could not react in time. Use the ordinary bounded 0.5 mrad
+    step only while either finger is below the unchanged proof-entry floor.
+    """
+    forces = (float(left_force_n), float(right_force_n))
+    proof_floor = float(proof_entry_force_n)
+    recovery_step = float(recovery_close_step)
+    if any(not math.isfinite(force) or force < 0.0 for force in forces):
+        raise ValueError("contact forces must be finite and non-negative")
+    if not math.isfinite(proof_floor) or proof_floor <= 0.0:
+        raise ValueError("proof_entry_force_n must be finite and positive")
+    if not math.isfinite(recovery_step) or recovery_step < 0.0:
+        raise ValueError("recovery_close_step must be finite and non-negative")
+    if min(forces) < proof_floor:
+        return recovery_step
+    return so101_balanced_capture_close_step(object_width_m)
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 
