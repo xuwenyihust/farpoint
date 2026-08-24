@@ -2432,7 +2432,7 @@ def run_attempt(
             )
         )
         proof_force_imbalance_recenter = bool(
-            settling_capture
+            capture_retention_fallback
             and balanced_forces is not None
             and captured_force_imbalance_requires_recenter(
                 *balanced_forces,
@@ -2511,6 +2511,13 @@ def run_attempt(
                         maximum_correction_m=proof_recenter_limit_m,
                     ),
                     max_correction=proof_recenter_limit_m,
+                    # Do not disturb a newly admitted bilateral capture. The
+                    # immutable q014 r17 trace entered settle at 20.75/6.03 N,
+                    # then immediate imbalance recentering reduced the weak
+                    # side to 3.09 N in three ticks and exhausted the correction
+                    # corridor. Only use this direction after the existing
+                    # retention fallback has proved capture is stalled; proof
+                    # force and timeout gates remain unchanged.
                     # r14 proved that the transport-style "away from strong"
                     # convention reduced q014's weak side from 5.64 N to
                     # 2.00 N.  Sensor-side labels and this rotated aperture's
