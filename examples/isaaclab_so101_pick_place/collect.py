@@ -2484,10 +2484,15 @@ def run_attempt(
                     np.asarray(grasp_hold_pose[:2], dtype=np.float64)
                     - np.asarray(grasp_hold_nominal_pose[:2], dtype=np.float64)
                 )
+                # Do not collapse the expanded pre-capture corridor on the
+                # first weak bilateral sample while geometry is still invalid.
+                # The q074 trace showed an 8 mm target jump wedging the cube.
                 correction_limit = so101_adaptive_pre_capture_recenter_limit(
                     object_spec["dimensions_m"][0],
                     current_xy_correction,
-                    unilateral_contact=capture_recenter_required,
+                    unilateral_contact=(
+                        capture_recenter_required or not contact_geometry_valid
+                    ),
                 )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
