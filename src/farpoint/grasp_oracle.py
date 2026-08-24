@@ -631,6 +631,44 @@ def captured_force_imbalance_requires_squeeze_pause(
     )
 
 
+def captured_force_imbalance_requires_recenter(
+    left_force_n: float,
+    right_force_n: float,
+    *,
+    minimum_force_n: float,
+    proof_entry_force_n: float,
+    minimum_balance_ratio: float = 0.75,
+) -> bool:
+    """Return whether a proven strong side should be unloaded toward the weak side.
+
+    This is the post-capture complement to the squeeze-pause gate above. Once
+    one finger has reached proof-entry force while the other remains below it,
+    neither more squeeze nor a stationary hold can improve aperture centering.
+    The caller may use the stronger finger as a bounded recenter direction;
+    this helper does not change any contact, proof, or maximum-force threshold.
+    """
+    forces = (float(left_force_n), float(right_force_n))
+    force_floor = float(minimum_force_n)
+    proof_force = float(proof_entry_force_n)
+    balance_ratio = float(minimum_balance_ratio)
+    if any(not np.isfinite(force) or force < 0.0 for force in forces):
+        raise ValueError("contact forces must be finite and non-negative")
+    if not np.isfinite(force_floor) or force_floor <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+    if not np.isfinite(proof_force) or proof_force < force_floor:
+        raise ValueError(
+            "proof_entry_force_n must be finite and at least minimum_force_n"
+        )
+    if not np.isfinite(balance_ratio) or not 0.0 < balance_ratio <= 1.0:
+        raise ValueError("minimum_balance_ratio must be finite and in (0, 1]")
+    weaker, stronger = min(forces), max(forces)
+    return (
+        weaker >= force_floor
+        and weaker < proof_force <= stronger
+        and weaker / stronger < balance_ratio
+    )
+
+
 def so101_recenter_contact_memory(
     left_force_n,
     right_force_n,

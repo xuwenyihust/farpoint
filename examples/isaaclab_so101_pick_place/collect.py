@@ -223,6 +223,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     capture_retention_reopen_active,
     capture_retention_force_floor,
     capture_preload_force_floor,
+    captured_force_imbalance_requires_recenter,
     captured_force_imbalance_requires_squeeze_pause,
     contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
@@ -2430,6 +2431,15 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         )
+        proof_force_imbalance_recenter = bool(
+            settling_capture
+            and balanced_forces is not None
+            and captured_force_imbalance_requires_recenter(
+                *balanced_forces,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+                proof_entry_force_n=grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
         # A bilateral force imbalance pauses jaw squeeze.  Pre-capture
         # calibration remains useful while CLOSE is still finding the
         # enclosure, but is not a valid post-capture recenter reference.  Once
@@ -2456,7 +2466,9 @@ def run_attempt(
         )
         capture_retention_reopen = False
         capture_recenter_required = (
-            unilateral_recenter or capture_retention_fallback
+            unilateral_recenter
+            or capture_retention_fallback
+            or proof_force_imbalance_recenter
         )
         if (
             grasp_hold_pose is not None
@@ -2472,7 +2484,33 @@ def run_attempt(
                 and not contact_geometry_valid
             )
         ):
-            if closing_alignment:
+            if proof_force_imbalance_recenter:
+                jaw_center = _numpy(
+                    robot.data.body_link_pose_w.torch[
+                        0, robot.body_names.index("jaw"), :3
+                    ]
+                )
+                gripper_center = _numpy(
+                    robot.data.body_link_pose_w.torch[0, body_index, :3]
+                )
+                left_force, right_force = balanced_forces
+                directional_forces = (
+                    (left_force, 0.0)
+                    if left_force >= right_force
+                    else (0.0, right_force)
+                )
+                recenter = unilateral_contact_recenter_target(
+                    grasp_hold_pose,
+                    grasp_hold_nominal_pose,
+                    {"center": jaw_center.tolist()},
+                    {"center": gripper_center.tolist()},
+                    *directional_forces,
+                    min_force=grasp_machine.minimum_contact_force_n,
+                    step=so101_post_capture_recenter_step(),
+                    max_correction=0.002,
+                    move_toward_contact=False,
+                )
+            elif closing_alignment:
                 # A finger-side label alone does not determine which world
                 # direction centers this rotated, long-finger aperture.  Use
                 # simulator truth and the measured gripper orientation to
