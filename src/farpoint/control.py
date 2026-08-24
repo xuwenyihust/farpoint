@@ -104,7 +104,7 @@ def so101_pre_capture_recenter_step_m(object_width_m, *, geometry_valid):
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
     if bool(geometry_valid):
         interpolation = 0.0
-    return 0.000125 + interpolation * 0.000375
+    return 0.000125 + interpolation * 0.000125
 
 
 def so101_slow_close_bilateral_brake_force_n(object_width_m):

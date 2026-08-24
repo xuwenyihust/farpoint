@@ -147,8 +147,8 @@ def test_so101_capture_jaw_backoff_force_is_size_aware():
 def test_so101_pre_capture_recenter_step_accelerates_only_invalid_large_geometry():
     assert so101_pre_capture_recenter_step_m(0.03, geometry_valid=False) == pytest.approx(0.000125)
     assert so101_pre_capture_recenter_step_m(0.04, geometry_valid=True) == pytest.approx(0.000125)
-    assert so101_pre_capture_recenter_step_m(0.035, geometry_valid=False) == pytest.approx(0.0003125)
-    assert so101_pre_capture_recenter_step_m(0.04, geometry_valid=False) == pytest.approx(0.0005)
+    assert so101_pre_capture_recenter_step_m(0.035, geometry_valid=False) == pytest.approx(0.0001875)
+    assert so101_pre_capture_recenter_step_m(0.04, geometry_valid=False) == pytest.approx(0.00025)
 
 
 def test_so101_slow_close_bilateral_brake_is_size_aware():
