@@ -2508,7 +2508,13 @@ def run_attempt(
                     min_force=grasp_machine.minimum_contact_force_n,
                     step=so101_post_capture_recenter_step(),
                     max_correction=0.002,
-                    move_toward_contact=False,
+                    # r14 proved that the transport-style "away from strong"
+                    # convention reduced q014's weak side from 5.64 N to
+                    # 2.00 N.  Sensor-side labels and this rotated aperture's
+                    # Cartesian finger axis have opposite handedness here;
+                    # use the measured strong side with the capture convention
+                    # that preserves the weak-side enclosure.
+                    move_toward_contact=True,
                 )
             elif closing_alignment:
                 # A finger-side label alone does not determine which world
