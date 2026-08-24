@@ -157,6 +157,18 @@ def test_so101_slow_close_backoff_step_avoids_large_cube_release_impulse():
     assert so101_slow_close_backoff_step_rad(0.05) == pytest.approx(0.0)
 
 
+def test_so101_slow_close_backoff_step_supports_capture_settle_scale():
+    assert so101_slow_close_backoff_step_rad(
+        0.03, small_cube_step=0.001
+    ) == pytest.approx(0.001)
+    assert so101_slow_close_backoff_step_rad(
+        0.035, small_cube_step=0.001
+    ) == pytest.approx(0.0005)
+    assert so101_slow_close_backoff_step_rad(
+        0.04, small_cube_step=0.001
+    ) == pytest.approx(0.0)
+
+
 @pytest.mark.parametrize(
     ("object_width_m", "balanced_close_step"),
     (

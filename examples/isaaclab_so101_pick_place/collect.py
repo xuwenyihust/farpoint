@@ -2351,7 +2351,19 @@ def run_attempt(
                     if settling_capture
                     else (0.001 if phase is OraclePhase.VERIFY_CONTACT else 0.002)
                 ),
-                backoff_step=0.001,
+                # Capture transition already applies a bounded preload
+                # relief.  Repeating another 1 mrad opening impulse during
+                # large-cube settle shed the weak-side contact in four ticks
+                # (r11 q014). Preserve the validated 30 mm path and taper
+                # only the settle backoff to zero at 40 mm.
+                backoff_step=(
+                    so101_slow_close_backoff_step_rad(
+                        object_spec["dimensions_m"][0],
+                        small_cube_step=0.001,
+                    )
+                    if settling_capture
+                    else 0.001
+                ),
                 # The immutable c26 r24 trace showed that the state-driven
                 # retention fallback improved both finger forces while the
                 # jaw command remained pinned at the normal 12 mrad preload
