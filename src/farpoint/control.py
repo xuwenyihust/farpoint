@@ -80,6 +80,22 @@ def so101_balanced_capture_close_step(
     return close_step * (1.0 - 0.75 * interpolation)
 
 
+def so101_capture_jaw_backoff_force_n(object_width_m):
+    """Return the size-aware force at which capture jaw closing backs off.
+
+    Preserve the validated 20 N controller threshold for the 30 mm cube. The
+    40 mm cube has a larger contact lever arm and immutable v0.2 traces show
+    that a 20 N observation can rise by about 11 N before the next control
+    sample, crossing the independent 30 N safety limit. Start backing off at
+    17 N for that geometry while leaving the safety limit itself unchanged.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 20.0 - 3.0 * interpolation
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 

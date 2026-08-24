@@ -32,6 +32,7 @@ from farpoint.control import (
     so101_capture_admission_retention_fraction,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_capture_jaw_backoff_force_n,
     so101_balanced_capture_close_step,
     so101_cube_contact_handoff,
     so101_imbalanced_capture_close_step,
@@ -132,6 +133,14 @@ def test_so101_balanced_capture_close_step_slows_large_cube_settle():
     assert so101_balanced_capture_close_step(0.05) == pytest.approx(0.000125)
 
 
+def test_so101_capture_jaw_backoff_force_is_size_aware():
+    assert so101_capture_jaw_backoff_force_n(0.03) == pytest.approx(20.0)
+    assert so101_capture_jaw_backoff_force_n(0.035) == pytest.approx(18.5)
+    assert so101_capture_jaw_backoff_force_n(0.04) == pytest.approx(17.0)
+    assert so101_capture_jaw_backoff_force_n(0.02) == pytest.approx(20.0)
+    assert so101_capture_jaw_backoff_force_n(0.05) == pytest.approx(17.0)
+
+
 @pytest.mark.parametrize(
     ("object_width_m", "balanced_close_step"),
     (
@@ -170,6 +179,12 @@ def test_so101_balanced_capture_close_step_rejects_invalid_contract(
             object_width_m,
             balanced_close_step=balanced_close_step,
         )
+
+
+@pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))
+def test_so101_capture_jaw_backoff_force_rejects_invalid_width(width):
+    with pytest.raises(ValueError, match="finite and positive"):
+        so101_capture_jaw_backoff_force_n(width)
 
 
 @pytest.mark.parametrize("width", (0.0, float("nan"), float("inf")))

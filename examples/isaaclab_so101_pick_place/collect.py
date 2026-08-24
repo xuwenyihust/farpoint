@@ -196,6 +196,7 @@ from farpoint.control import (  # noqa: E402
     so101_capture_admission_ready,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_capture_jaw_backoff_force_n,
     so101_balanced_capture_close_step,
     so101_imbalanced_capture_close_step,
     so101_proof_entry_force_floor,
@@ -2330,8 +2331,12 @@ def run_attempt(
                     ),
                 ),
                 # Back off before the independent 30 N safety validator can
-                # trip on a one-control-tick unilateral force spike.
-                max_force=20.0,
+                # trip on a one-control-tick unilateral force spike. Keep
+                # the validated 30 mm path at 20 N while the larger contact
+                # geometry starts backing off earlier.
+                max_force=so101_capture_jaw_backoff_force_n(
+                    object_spec["dimensions_m"][0],
+                ),
                 close_step=(
                     so101_imbalanced_capture_close_step(
                         object_spec["dimensions_m"][0],
