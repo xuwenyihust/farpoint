@@ -332,6 +332,23 @@ def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation
     ) == pytest.approx(0.01225)
 
 
+def test_so101_adaptive_pre_capture_recenter_supports_stalled_large_cube_corridor():
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.04,
+        (0.016, 0.016),
+        unilateral_contact=True,
+        maximum_correction_m=0.018,
+        large_width_fraction=0.45,
+    ) == pytest.approx(0.018)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.03,
+        (0.009, 0.009),
+        unilateral_contact=True,
+        maximum_correction_m=0.018,
+        large_width_fraction=0.45,
+    ) == pytest.approx(0.009)
+
+
 def test_so101_capture_contact_loss_grace_is_size_aware():
     assert so101_capture_contact_loss_grace_s(0.03) == pytest.approx(0.30)
     assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.25)

@@ -2501,6 +2501,22 @@ def run_attempt(
                     current_xy_correction,
                     unilateral_contact=capture_recenter_required,
                 )
+                if capture_retention_fallback:
+                    # Frozen r4 q021 evidence left the fixed-anchor servo
+                    # saturated at (+16, +16) mm while the cube still had a
+                    # 17.35 mm aperture-local Y error.  The earlier 18 mm
+                    # diagnostic failed because it also chased the sliding
+                    # live cube; with the first-contact world anchor now
+                    # immutable, expand only this 10-second stalled fallback.
+                    # The 30 mm endpoint remains 9 mm and ordinary unilateral
+                    # capture remains capped by the validated 16 mm path.
+                    correction_limit = so101_adaptive_pre_capture_recenter_limit(
+                        object_spec["dimensions_m"][0],
+                        current_xy_correction,
+                        unilateral_contact=True,
+                        maximum_correction_m=0.018,
+                        large_width_fraction=0.45,
+                    )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
                     desired_object_minus_grasp,
