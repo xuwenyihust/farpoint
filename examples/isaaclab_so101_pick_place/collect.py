@@ -205,7 +205,6 @@ from farpoint.control import (  # noqa: E402
     so101_cube_contact_handoff,
     so101_minimum_safe_descent_fraction,
     so101_adaptive_pre_capture_recenter_limit,
-    so101_stalled_capture_recenter_limit,
     so101_post_capture_recenter_step,
     so101_reset_support_is_stable,
     unilateral_contact_recenter_target,
@@ -2471,13 +2470,18 @@ def run_attempt(
                 live_object_world = _numpy(
                     scene[active_name].data.root_pos_w[0, :3]
                 )
+                # The stalled fallback changes the aperture reference, not
+                # the world anchor.  Targeted q021 evidence showed that using
+                # the live, already sliding cube made the servo chase it from
+                # (+16, +16) mm to (-18, +18) mm, worsening local alignment
+                # from 17 mm to 41 mm despite eventually touching both
+                # fingers. Keep the first-contact object anchor immutable so
+                # the fallback recenters the gripper instead of following a
+                # cube displaced by unilateral force.
                 object_world = (
-                    live_object_world
-                    if (
-                        capture_retention_fallback
-                        or pre_capture_recenter_object_reference is None
-                    )
-                    else pre_capture_recenter_object_reference
+                    pre_capture_recenter_object_reference
+                    if pre_capture_recenter_object_reference is not None
+                    else live_object_world
                 )
                 active_recenter_reference = pre_capture_recenter_aperture_reference
                 if capture_retention_fallback:
@@ -2492,18 +2496,10 @@ def run_attempt(
                     np.asarray(grasp_hold_pose[:2], dtype=np.float64)
                     - np.asarray(grasp_hold_nominal_pose[:2], dtype=np.float64)
                 )
-                correction_limit = (
-                    so101_stalled_capture_recenter_limit(
-                        object_spec["dimensions_m"][0],
-                        current_xy_correction,
-                        unilateral_contact=capture_recenter_required,
-                    )
-                    if capture_retention_fallback
-                    else so101_adaptive_pre_capture_recenter_limit(
-                        object_spec["dimensions_m"][0],
-                        current_xy_correction,
-                        unilateral_contact=capture_recenter_required,
-                    )
+                correction_limit = so101_adaptive_pre_capture_recenter_limit(
+                    object_spec["dimensions_m"][0],
+                    current_xy_correction,
+                    unilateral_contact=capture_recenter_required,
                 )
                 aligned = relative_object_grasp_servo_target(
                     object_world,

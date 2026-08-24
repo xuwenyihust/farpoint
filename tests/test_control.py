@@ -28,7 +28,6 @@ from farpoint.control import (
     simulation_stop_reason,
     so101_approach_jaw_target,
     so101_adaptive_pre_capture_recenter_limit,
-    so101_stalled_capture_recenter_limit,
     so101_capture_admission_ready,
     so101_capture_admission_retention_fraction,
     so101_bilateral_capture_ready,
@@ -331,18 +330,6 @@ def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation
     assert so101_adaptive_pre_capture_recenter_limit(
         0.035, (0.008, 0.008), unilateral_contact=True
     ) == pytest.approx(0.01225)
-
-
-def test_so101_stalled_capture_recenter_expands_only_large_cube_endpoint():
-    assert so101_stalled_capture_recenter_limit(
-        0.04, (0.016, 0.016), unilateral_contact=True
-    ) == pytest.approx(0.018)
-    assert so101_stalled_capture_recenter_limit(
-        0.03, (0.009, 0.009), unilateral_contact=True
-    ) == pytest.approx(0.009)
-    assert so101_stalled_capture_recenter_limit(
-        0.04, (0.016, 0.016), unilateral_contact=False
-    ) == pytest.approx(0.008)
 
 
 def test_so101_capture_contact_loss_grace_is_size_aware():

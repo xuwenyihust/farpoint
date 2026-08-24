@@ -297,30 +297,6 @@ def so101_adaptive_pre_capture_recenter_limit(
     return max(base, min(maximum, effective_fraction * width))
 
 
-def so101_stalled_capture_recenter_limit(
-    object_width_m,
-    current_xy_correction_m,
-    *,
-    unilateral_contact=False,
-):
-    """Return the bounded corridor for a confirmed stalled capture.
-
-    The normal adaptive search remains capped at 16 mm for a 40 mm object.
-    Frozen v0.2.0 targeted evidence isolated one slow-close failure with the
-    weak-side aperture error at 17.37 mm while both world XY corrections were
-    pinned at that cap.  Once the separate stalled-capture gate has fired,
-    permit the calibrated center to traverse 45% of object width, capped at
-    18 mm.  The validated 30 mm endpoint remains 9 mm.
-    """
-    return so101_adaptive_pre_capture_recenter_limit(
-        object_width_m,
-        current_xy_correction_m,
-        unilateral_contact=unilateral_contact,
-        maximum_correction_m=0.018,
-        large_width_fraction=0.45,
-    )
-
-
 def so101_capture_contact_loss_grace_s(object_width_m):
     """Return a size-aware grace period for bounded capture recovery.
 
