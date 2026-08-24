@@ -2503,6 +2503,7 @@ def run_attempt(
                     max_step=so101_pre_capture_recenter_step_m(
                         object_spec["dimensions_m"][0],
                         geometry_valid=contact_geometry_valid,
+                        maximum_contact_force_n=max(balanced_forces),
                     ),
                     max_correction=(
                         correction_limit,

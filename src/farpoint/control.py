@@ -96,15 +96,21 @@ def so101_capture_jaw_backoff_force_n(object_width_m):
     return 20.0 - 3.0 * interpolation
 
 
-def so101_pre_capture_recenter_step_m(object_width_m, *, geometry_valid):
-    """Return the bounded recenter step for unresolved capture geometry."""
+def so101_pre_capture_recenter_step_m(
+    object_width_m, *, geometry_valid, maximum_contact_force_n=0.0
+):
+    """Return a force-responsive recenter step for unresolved capture geometry."""
     width = float(object_width_m)
+    maximum_force = float(maximum_contact_force_n)
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(maximum_force) or maximum_force < 0.0:
+        raise ValueError("maximum_contact_force_n must be finite and non-negative")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
     if bool(geometry_valid):
         interpolation = 0.0
-    return 0.000125 + interpolation * 0.000125
+    force_interpolation = _clamp((maximum_force - 10.0) / 2.0, 0.0, 1.0)
+    return 0.000125 + interpolation * force_interpolation * 0.000375
 
 
 def so101_slow_close_bilateral_brake_force_n(object_width_m):
