@@ -2432,7 +2432,7 @@ def run_attempt(
             )
         )
         proof_force_imbalance_recenter = bool(
-            capture_retention_fallback
+            retention_preload_fallback
             and balanced_forces is not None
             and captured_force_imbalance_requires_recenter(
                 *balanced_forces,
