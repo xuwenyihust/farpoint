@@ -24,6 +24,8 @@ AUTHORIZATION_SCHEMA = "farpoint.so101-v020-pilot-authorization.v1"
 ATTEMPT_BUDGET_EXTENSION_SCHEMA = "farpoint.so101-v020-attempt-budget-extension.v1"
 YAW_STRATA = ("yaw00_18", "yaw18_36", "yaw36_54", "yaw54_72", "yaw72_90")
 PILOT_ATTEMPT_BUDGETS = {"pad-pilot": 18, "combined-pilot": 60}
+FORMAL_ATTEMPT_BUDGET_INCREMENT = 60
+FORMAL_ATTEMPT_BUDGET_EXTENSION_CAP = 300
 
 
 def canonical_sha256(value: Any) -> str:
@@ -462,13 +464,36 @@ def build_v020_attempt_budget_extension(
     extended_global_attempt_limit: int,
     out_of_lineage_attempt_count: int = 0,
 ) -> dict[str, Any]:
-    """Bind an owner-approved pilot budget relaxation without mutating a campaign."""
+    """Bind an owner-authorized budget relaxation without mutating a campaign."""
     base_limit = int((campaign.get("attempt_policy") or {})["global_attempt_limit"])
     extended_limit = int(extended_global_attempt_limit)
-    if int((campaign.get("target") or {}).get("successful_episodes", 0)) != 30:
-        raise ValueError("attempt budget extensions are limited to the 30-cell combined pilot")
-    if base_limit != 45 or extended_limit != PILOT_ATTEMPT_BUDGETS["combined-pilot"]:
-        raise ValueError("combined pilot budget extension must be 45 to 60 attempts")
+    target_successes = int(
+        (campaign.get("target") or {}).get("successful_episodes", 0)
+    )
+    if target_successes == 30:
+        if (
+            base_limit != 45
+            or extended_limit != PILOT_ATTEMPT_BUDGETS["combined-pilot"]
+        ):
+            raise ValueError("combined pilot budget extension must be 45 to 60 attempts")
+        reason = "owner_approved_combined_pilot_gate_relaxation"
+    elif target_successes == 300:
+        added_attempts = extended_limit - base_limit
+        if (
+            base_limit != 450
+            or added_attempts <= 0
+            or added_attempts % FORMAL_ATTEMPT_BUDGET_INCREMENT != 0
+            or added_attempts > FORMAL_ATTEMPT_BUDGET_EXTENSION_CAP
+        ):
+            raise ValueError(
+                "formal budget extension must add 60-attempt tranches to the "
+                "450-attempt base, up to 300 additional attempts"
+            )
+        reason = "owner_authorized_formal_self_heal_budget_extension"
+    else:
+        raise ValueError(
+            "attempt budget extensions require a combined pilot or formal campaign"
+        )
     if not isinstance(diagnosis_sha256, str) or len(diagnosis_sha256) != 64:
         raise ValueError("attempt budget extension requires a diagnosis SHA256")
     excluded_attempts = int(out_of_lineage_attempt_count)
@@ -481,7 +506,7 @@ def build_v020_attempt_budget_extension(
         "extended_global_attempt_limit": extended_limit,
         "diagnosis_sha256": diagnosis_sha256,
         "out_of_lineage_attempt_count": excluded_attempts,
-        "reason": "owner_approved_combined_pilot_gate_relaxation",
+        "reason": reason,
     }
     extension["extension_sha256"] = canonical_sha256(extension)
     return extension

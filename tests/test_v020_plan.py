@@ -181,6 +181,37 @@ def test_v020_combined_pilot_budget_extension_is_hash_bound_and_non_mutating():
         )
 
 
+def test_v020_formal_budget_extension_is_diagnosis_bound_and_tranched():
+    config = _config()
+    plan = build_v020_plan(
+        config,
+        project_root=ROOT,
+        plan_id="v020-formal-budget-extension",
+        mode="formal",
+        pilot_authorization=_authorization(config),
+    )
+    campaign = plan["campaign_contract"]
+    extension = build_v020_attempt_budget_extension(
+        campaign,
+        diagnosis_sha256="f" * 64,
+        extended_global_attempt_limit=510,
+    )
+    assert remaining_v020_attempt_budget(
+        campaign, 398, attempt_budget_extension=extension
+    ) == 112
+    assert extension["base_global_attempt_limit"] == 450
+    assert extension["reason"] == "owner_authorized_formal_self_heal_budget_extension"
+    assert campaign["attempt_policy"]["global_attempt_limit"] == 450
+
+    for invalid_limit in (451, 509, 751):
+        with pytest.raises(ValueError, match="formal budget extension"):
+            build_v020_attempt_budget_extension(
+                campaign,
+                diagnosis_sha256="f" * 64,
+                extended_global_attempt_limit=invalid_limit,
+            )
+
+
 def test_v020_replacement_changes_jitter_but_preserves_quota_and_lhs_strata():
     config = _config()
     plan = build_v020_plan(
