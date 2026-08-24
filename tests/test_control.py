@@ -1118,7 +1118,7 @@ def test_so101_slow_close_keeps_unilateral_search_above_bilateral_brake():
         max_force=12.0,
         unilateral_backoff_force=17.0,
         backoff_step=0.0,
-        capture_admissible=False,
+        capture_admissible=True,
     )
 
     assert update == {"position": pytest.approx(0.420947), "action": "close"}
