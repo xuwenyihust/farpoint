@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from farpoint.grasp_oracle import (
+    capture_retention_reopen_active,
     capture_admission_retention_fraction,
     ContactAwareGraspStateMachine,
     ControlRecordingSchedule,
@@ -27,6 +28,24 @@ from farpoint.grasp_oracle import (
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
+
+
+def test_capture_retention_reopen_requires_material_aperture_error():
+    assert capture_retention_reopen_active(
+        True,
+        [0.0189, -0.0260, -0.0857],
+        [0.0224, -0.0086, -0.0479],
+    )
+    assert not capture_retention_reopen_active(
+        True,
+        [0.0227, -0.0118, -0.0688],
+        [0.0224, -0.0086, -0.0479],
+    )
+    assert not capture_retention_reopen_active(
+        False,
+        [0.0189, -0.0260, -0.0857],
+        [0.0224, -0.0086, -0.0479],
+    )
 
 
 def test_capture_retention_recenter_fallback_requires_stalled_static_hold():

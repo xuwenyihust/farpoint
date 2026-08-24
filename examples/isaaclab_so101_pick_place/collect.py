@@ -220,6 +220,7 @@ from farpoint.grasp_oracle import (  # noqa: E402
     cartesian_motion_command_base,
     capture_hold_preload_for_force,
     capture_retention_recenter_fallback_active,
+    capture_retention_reopen_active,
     capture_retention_force_floor,
     capture_preload_force_floor,
     captured_force_imbalance_requires_squeeze_pause,
@@ -2441,6 +2442,7 @@ def run_attempt(
                 minimum_slow_close_steps=schedule.steps_for_seconds(10.0),
             )
         )
+        capture_retention_reopen = False
         capture_recenter_required = (
             unilateral_recenter or capture_retention_fallback
         )
@@ -2470,6 +2472,11 @@ def run_attempt(
                 live_object_world = _numpy(
                     scene[active_name].data.root_pos_w[0, :3]
                 )
+                capture_retention_reopen = capture_retention_reopen_active(
+                    capture_retention_fallback,
+                    point_in_local_frame(live_gripper_pose, live_object_world),
+                    capture_object_in_gripper,
+                )
                 # The stalled fallback changes the aperture reference, not
                 # the world anchor.  Targeted q021 evidence showed that using
                 # the live, already sliding cube made the servo chase it from
@@ -2484,7 +2491,7 @@ def run_attempt(
                     else live_object_world
                 )
                 active_recenter_reference = pre_capture_recenter_aperture_reference
-                if capture_retention_fallback:
+                if capture_retention_reopen:
                     active_recenter_reference = capture_object_in_gripper
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
@@ -2501,7 +2508,12 @@ def run_attempt(
                     current_xy_correction,
                     unilateral_contact=capture_recenter_required,
                 )
-                if capture_retention_fallback:
+                if capture_retention_reopen:
+                    # Frozen r4/q021 and r6/q014 evidence separate a genuinely
+                    # off-aperture stall (17.35 mm) from a small residual
+                    # alignment error (about 3 mm). Expand only while the jaw
+                    # is re-opening around the former; otherwise preserve the
+                    # validated 16 mm path.
                     # Frozen r4 q021 evidence left the fixed-anchor servo
                     # saturated at (+16, +16) mm while the cube still had a
                     # 17.35 mm aperture-local Y error.  The earlier 18 mm
@@ -2770,25 +2782,37 @@ def run_attempt(
                 # Continuing to chase the displaced cube recreates the old
                 # unilateral wedge failure.
                 target = grasp_hold_pose
-                jaw_update = advance_so101_slow_close_target(
-                    float(commanded_joints[5]),
-                    float(current[5].item()),
-                    *finger_forces,
-                    open_position=open_jaw,
-                    closed_position=closed_jaw,
-                    max_force=so101_slow_close_bilateral_brake_force_n(
-                        object_spec["dimensions_m"][0],
-                    ),
-                    unilateral_backoff_force=so101_capture_jaw_backoff_force_n(
-                        object_spec["dimensions_m"][0],
-                    ),
-                    backoff_step=so101_slow_close_backoff_step_rad(
-                        object_spec["dimensions_m"][0],
-                    ),
-                    capture_admissible=capture_admissible,
-                )
-                jaw = float(jaw_update["position"])
-                gripper_control = f"calibrated_slow_{jaw_update['action']}"
+                if capture_retention_reopen:
+                    # Once a stalled cube is materially off aperture, further
+                    # rotary closure only sweeps it away. Re-open at the same
+                    # zero-impact rate used by the small-cube force backoff
+                    # while the Cartesian servo recenters, then resume the
+                    # unchanged slow-close controller after alignment.
+                    jaw = min(
+                        approach_jaw,
+                        float(current[5].item()) + 0.002,
+                    )
+                    gripper_control = "stalled_aperture_reopen"
+                else:
+                    jaw_update = advance_so101_slow_close_target(
+                        float(commanded_joints[5]),
+                        float(current[5].item()),
+                        *finger_forces,
+                        open_position=open_jaw,
+                        closed_position=closed_jaw,
+                        max_force=so101_slow_close_bilateral_brake_force_n(
+                            object_spec["dimensions_m"][0],
+                        ),
+                        unilateral_backoff_force=so101_capture_jaw_backoff_force_n(
+                            object_spec["dimensions_m"][0],
+                        ),
+                        backoff_step=so101_slow_close_backoff_step_rad(
+                            object_spec["dimensions_m"][0],
+                        ),
+                        capture_admissible=capture_admissible,
+                    )
+                    jaw = float(jaw_update["position"])
+                    gripper_control = f"calibrated_slow_{jaw_update['action']}"
         elif phase is OraclePhase.VERIFY_CONTACT:
             # Prove the grasp with a gentle test lift. A direct 8 cm target
             # change produces enough acceleration to shed a small cube before

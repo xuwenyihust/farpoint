@@ -85,6 +85,35 @@ def capture_retention_recenter_fallback_active(
     return phase_stalled and min(forces) < proof_floor
 
 
+def capture_retention_reopen_active(
+    fallback_active: bool,
+    object_in_gripper_m,
+    aperture_reference_local_m,
+    *,
+    maximum_lateral_error_m: float = 0.006,
+) -> bool:
+    """Re-open a stalled jaw only while the object is visibly off aperture.
+
+    A wider Cartesian corridor alone cannot recover a cube that is already
+    being swept by the rotary jaw. Re-opening is therefore gated by the
+    measured XY aperture error, not by a variation identity or cube pose.
+    Small residual errors retain the validated slow-close path.
+    """
+    object_local = np.asarray(object_in_gripper_m, dtype=np.float64)
+    reference = np.asarray(aperture_reference_local_m, dtype=np.float64)
+    threshold = float(maximum_lateral_error_m)
+    if object_local.shape != (3,) or reference.shape != (3,):
+        raise ValueError("aperture vectors must have shape (3,)")
+    if not np.all(np.isfinite(object_local)) or not np.all(np.isfinite(reference)):
+        raise ValueError("aperture vectors must be finite")
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("maximum_lateral_error_m must be finite and positive")
+    return bool(
+        fallback_active
+        and np.linalg.norm(object_local[:2] - reference[:2]) > threshold
+    )
+
+
 def contact_force_vectors_opposed(
     left_vector_n,
     right_vector_n,
