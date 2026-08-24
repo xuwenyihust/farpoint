@@ -377,6 +377,14 @@ def test_so101_post_capture_recenter_reaches_bound_before_shortest_grace_expires
     assert 16 < 0.20 * 120
 
 
+def test_so101_post_capture_recenter_supports_proof_imbalance_corridor():
+    step = so101_post_capture_recenter_step(maximum_correction_m=0.004)
+
+    assert step == pytest.approx(0.00025)
+    assert step * 16 == pytest.approx(0.004)
+    assert 16 < 0.20 * 120
+
+
 @pytest.mark.parametrize(
     "kwargs",
     (

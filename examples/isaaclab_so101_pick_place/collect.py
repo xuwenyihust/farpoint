@@ -2499,6 +2499,7 @@ def run_attempt(
                     if left_force >= right_force
                     else (0.0, right_force)
                 )
+                proof_recenter_limit_m = 0.004
                 recenter = unilateral_contact_recenter_target(
                     grasp_hold_pose,
                     grasp_hold_nominal_pose,
@@ -2506,14 +2507,21 @@ def run_attempt(
                     {"center": gripper_center.tolist()},
                     *directional_forces,
                     min_force=grasp_machine.minimum_contact_force_n,
-                    step=so101_post_capture_recenter_step(),
-                    max_correction=0.002,
+                    step=so101_post_capture_recenter_step(
+                        maximum_correction_m=proof_recenter_limit_m,
+                    ),
+                    max_correction=proof_recenter_limit_m,
                     # r14 proved that the transport-style "away from strong"
                     # convention reduced q014's weak side from 5.64 N to
                     # 2.00 N.  Sensor-side labels and this rotated aperture's
                     # Cartesian finger axis have opposite handedness here;
                     # use the measured strong side with the capture convention
-                    # that preserves the weak-side enclosure.
+                    # that preserves the weak-side enclosure.  r15 exhausted
+                    # the earlier 2 mm corridor while improving the weak side
+                    # from 2.00 N to 2.35 N; this proof-only path therefore
+                    # receives one additional bounded 2 mm of travel.  The
+                    # ordinary unilateral and pre-capture corridors remain
+                    # unchanged.
                     move_toward_contact=True,
                 )
             elif closing_alignment:
