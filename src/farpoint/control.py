@@ -1151,7 +1151,18 @@ def advance_so101_slow_close_target(
         }
     if not bool(capture_admissible):
         peak_force = max(forces)
-        if peak_force > float(max_force):
+        # max_force is the bilateral brake used to avoid over-compressing an
+        # enclosure that already touches both fingers. Applying that lower
+        # threshold to a still-unilateral search creates a deterministic
+        # limit cycle before the second finger can engage. Keep the existing
+        # size-aware unilateral threshold for that case; geometrically invalid
+        # bilateral contact still receives the conservative brake.
+        force_limit = (
+            unilateral_force_threshold
+            if min(forces) < float(min_force)
+            else float(max_force)
+        )
+        if peak_force > force_limit:
             return {
                 "position": _clamp(
                     max(previous_target, float(measured_position))

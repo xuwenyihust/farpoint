@@ -1124,6 +1124,39 @@ def test_so101_slow_close_keeps_unilateral_search_above_bilateral_brake():
     assert update == {"position": pytest.approx(0.420947), "action": "close"}
 
 
+def test_so101_slow_close_uses_unilateral_limit_until_second_finger_engages():
+    unilateral = advance_so101_slow_close_target(
+        0.821,
+        0.823,
+        12.54,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unilateral_backoff_force=17.0,
+        backoff_step=0.0,
+        capture_admissible=False,
+    )
+    invalid_bilateral = advance_so101_slow_close_target(
+        0.821,
+        0.823,
+        12.54,
+        2.1,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unilateral_backoff_force=17.0,
+        backoff_step=0.0,
+        capture_admissible=False,
+    )
+
+    assert unilateral == {"position": pytest.approx(0.820), "action": "close"}
+    assert invalid_bilateral == {
+        "position": pytest.approx(0.823),
+        "action": "backoff",
+    }
+
+
 def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_off():
     crossing = advance_so101_slow_close_target(
         0.40,
