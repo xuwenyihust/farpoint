@@ -33,6 +33,7 @@ from farpoint.control import (
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_capture_jaw_backoff_force_n,
+    so101_slow_close_bilateral_brake_force_n,
     so101_slow_close_backoff_step_rad,
     so101_balanced_capture_close_step,
     so101_cube_contact_handoff,
@@ -140,6 +141,13 @@ def test_so101_capture_jaw_backoff_force_is_size_aware():
     assert so101_capture_jaw_backoff_force_n(0.04) == pytest.approx(17.0)
     assert so101_capture_jaw_backoff_force_n(0.02) == pytest.approx(20.0)
     assert so101_capture_jaw_backoff_force_n(0.05) == pytest.approx(17.0)
+
+
+def test_so101_slow_close_bilateral_brake_is_size_aware():
+    assert so101_slow_close_bilateral_brake_force_n(0.03) == pytest.approx(20.0)
+    assert so101_slow_close_bilateral_brake_force_n(0.035) == pytest.approx(16.0)
+    assert so101_slow_close_bilateral_brake_force_n(0.04) == pytest.approx(12.0)
+    assert so101_slow_close_bilateral_brake_force_n(0.05) == pytest.approx(12.0)
 
 
 def test_so101_slow_close_backoff_step_avoids_large_cube_release_impulse():
@@ -1080,6 +1088,23 @@ def test_so101_slow_close_overforce_discards_stale_close_backlog():
     )
 
     assert update == {"position": pytest.approx(0.468314), "action": "backoff"}
+
+
+def test_so101_slow_close_keeps_unilateral_search_above_bilateral_brake():
+    update = advance_so101_slow_close_target(
+        0.421947,
+        0.476176,
+        10.557,
+        0.932,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unilateral_backoff_force=17.0,
+        backoff_step=0.0,
+        capture_admissible=False,
+    )
+
+    assert update == {"position": pytest.approx(0.420947), "action": "close"}
 
 
 def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_off():
