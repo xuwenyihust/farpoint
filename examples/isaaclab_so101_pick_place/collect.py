@@ -2300,6 +2300,9 @@ def run_attempt(
                 grasp_machine.phase_steps,
                 *balanced_forces,
                 grasp_machine.minimum_proof_entry_force_n,
+                minimum_static_hold_steps=schedule.steps_for_seconds(
+                    grasp_machine.static_hold_s
+                ),
             )
         )
         if (
@@ -2461,6 +2464,9 @@ def run_attempt(
                 # biased pre-capture center for the first 10 seconds, then
                 # reuse the existing calibrated aperture fallback instead of
                 # spending the remaining phase budget pinned one-sided.
+                minimum_static_hold_steps=schedule.steps_for_seconds(
+                    grasp_machine.static_hold_s
+                ),
                 minimum_slow_close_steps=schedule.steps_for_seconds(10.0),
             )
         )
@@ -2516,8 +2522,9 @@ def run_attempt(
                     # then immediate imbalance recentering reduced the weak
                     # side to 3.09 N in three ticks and exhausted the correction
                     # corridor. Only use this direction after the existing
-                    # retention fallback has proved capture is stalled; proof
-                    # force and timeout gates remain unchanged.
+                    # retention fallback has waited through one complete
+                    # unchanged static-hold proof window and proved capture is
+                    # stalled; proof force and timeout gates remain unchanged.
                     # r14 proved that the transport-style "away from strong"
                     # convention reduced q014's weak side from 5.64 N to
                     # 2.00 N.  Sensor-side labels and this rotated aperture's
