@@ -1058,6 +1058,22 @@ def test_so101_slow_close_force_actions_preserve_limits():
     assert -0.1746 <= high_force["position"] <= 1.7453
 
 
+def test_so101_slow_close_overforce_discards_stale_close_backlog():
+    update = advance_so101_slow_close_target(
+        0.411947,
+        0.466314,
+        17.803,
+        4.579,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=17.0,
+        backoff_step=0.002,
+        capture_admissible=False,
+    )
+
+    assert update == {"position": pytest.approx(0.468314), "action": "backoff"}
+
+
 def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_off():
     crossing = advance_so101_slow_close_target(
         0.40,

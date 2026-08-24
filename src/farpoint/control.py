@@ -1127,7 +1127,10 @@ def advance_so101_slow_close_target(
         if peak_force > float(max_force):
             return {
                 "position": _clamp(
-                    previous_target + float(backoff_step), closed_value, open_value
+                    max(previous_target, float(measured_position))
+                    + float(backoff_step),
+                    closed_value,
+                    open_value,
                 ),
                 "action": "backoff",
             }

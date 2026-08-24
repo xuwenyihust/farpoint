@@ -2746,6 +2746,9 @@ def run_attempt(
                     *finger_forces,
                     open_position=open_jaw,
                     closed_position=closed_jaw,
+                    max_force=so101_capture_jaw_backoff_force_n(
+                        object_spec["dimensions_m"][0],
+                    ),
                     capture_admissible=capture_admissible,
                 )
                 jaw = float(jaw_update["position"])
