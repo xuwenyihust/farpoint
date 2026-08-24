@@ -197,6 +197,7 @@ from farpoint.control import (  # noqa: E402
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_capture_jaw_backoff_force_n,
+    so101_pre_capture_recenter_step_m,
     so101_slow_close_bilateral_brake_force_n,
     so101_slow_close_backoff_step_rad,
     so101_balanced_capture_close_step,
@@ -2499,7 +2500,10 @@ def run_attempt(
                     desired_object_minus_grasp,
                     ee_position,
                     grasp_hold_nominal_pose,
-                    max_step=0.000125,
+                    max_step=so101_pre_capture_recenter_step_m(
+                        object_spec["dimensions_m"][0],
+                        geometry_valid=contact_geometry_valid,
+                    ),
                     max_correction=(
                         correction_limit,
                         correction_limit,
