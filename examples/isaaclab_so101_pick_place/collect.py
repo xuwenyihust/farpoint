@@ -197,7 +197,6 @@ from farpoint.control import (  # noqa: E402
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_capture_jaw_backoff_force_n,
-    so101_pre_capture_recenter_step_m,
     so101_slow_close_bilateral_brake_force_n,
     so101_slow_close_backoff_step_rad,
     so101_balanced_capture_close_step,
@@ -2485,26 +2484,17 @@ def run_attempt(
                     np.asarray(grasp_hold_pose[:2], dtype=np.float64)
                     - np.asarray(grasp_hold_nominal_pose[:2], dtype=np.float64)
                 )
-                # Do not collapse the expanded pre-capture corridor on the
-                # first weak bilateral sample while geometry is still invalid.
-                # The q074 trace showed an 8 mm target jump wedging the cube.
                 correction_limit = so101_adaptive_pre_capture_recenter_limit(
                     object_spec["dimensions_m"][0],
                     current_xy_correction,
-                    unilateral_contact=(
-                        capture_recenter_required or not contact_geometry_valid
-                    ),
+                    unilateral_contact=capture_recenter_required,
                 )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
                     desired_object_minus_grasp,
                     ee_position,
                     grasp_hold_nominal_pose,
-                    max_step=so101_pre_capture_recenter_step_m(
-                        object_spec["dimensions_m"][0],
-                        geometry_valid=contact_geometry_valid,
-                        maximum_contact_force_n=max(balanced_forces),
-                    ),
+                    max_step=0.000125,
                     max_correction=(
                         correction_limit,
                         correction_limit,

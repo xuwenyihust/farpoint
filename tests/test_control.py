@@ -33,7 +33,6 @@ from farpoint.control import (
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_capture_jaw_backoff_force_n,
-    so101_pre_capture_recenter_step_m,
     so101_slow_close_bilateral_brake_force_n,
     so101_slow_close_backoff_step_rad,
     so101_balanced_capture_close_step,
@@ -142,26 +141,6 @@ def test_so101_capture_jaw_backoff_force_is_size_aware():
     assert so101_capture_jaw_backoff_force_n(0.04) == pytest.approx(17.0)
     assert so101_capture_jaw_backoff_force_n(0.02) == pytest.approx(20.0)
     assert so101_capture_jaw_backoff_force_n(0.05) == pytest.approx(17.0)
-
-
-def test_so101_pre_capture_recenter_step_accelerates_only_invalid_large_geometry():
-    assert so101_pre_capture_recenter_step_m(0.03, geometry_valid=False) == pytest.approx(0.000125)
-    assert so101_pre_capture_recenter_step_m(0.04, geometry_valid=True) == pytest.approx(0.000125)
-    assert so101_pre_capture_recenter_step_m(
-        0.04, geometry_valid=False, maximum_contact_force_n=10.0
-    ) == pytest.approx(0.000125)
-    assert so101_pre_capture_recenter_step_m(
-        0.04, geometry_valid=False, maximum_contact_force_n=11.0
-    ) == pytest.approx(0.0003125)
-    assert so101_pre_capture_recenter_step_m(
-        0.04, geometry_valid=False, maximum_contact_force_n=12.0
-    ) == pytest.approx(0.0005)
-    assert so101_pre_capture_recenter_step_m(
-        0.03, geometry_valid=False, maximum_contact_force_n=30.0
-    ) == pytest.approx(0.000125)
-    assert so101_pre_capture_recenter_step_m(
-        0.04, geometry_valid=True, maximum_contact_force_n=30.0
-    ) == pytest.approx(0.000125)
 
 
 def test_so101_slow_close_bilateral_brake_is_size_aware():
