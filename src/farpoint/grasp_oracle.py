@@ -42,12 +42,15 @@ def capture_retention_recenter_fallback_active(
     proof_entry_force_n: float,
     *,
     minimum_static_hold_steps: int = 8,
+    minimum_slow_close_steps: int | None = None,
 ) -> bool:
     """Use the calibrated aperture center only after capture preload stalls.
 
     The biased pre-capture center remains the primary path. A fallback is
-    enabled only in static hold, after a bounded observation window, when at
-    least one finger is still below the unchanged proof-entry force floor.
+    enabled in static hold after a bounded observation window. Callers may
+    additionally opt into a later slow-close fallback by supplying
+    ``minimum_slow_close_steps``. In either case at least one finger must
+    remain below the unchanged proof-entry force floor.
     """
     steps = int(phase_steps)
     minimum_steps = int(minimum_static_hold_steps)
@@ -57,15 +60,29 @@ def capture_retention_recenter_fallback_active(
         raise ValueError("phase_steps must be non-negative")
     if minimum_steps <= 0:
         raise ValueError("minimum_static_hold_steps must be positive")
+    slow_close_steps = (
+        None
+        if minimum_slow_close_steps is None
+        else int(minimum_slow_close_steps)
+    )
+    if slow_close_steps is not None and (
+        isinstance(minimum_slow_close_steps, bool)
+        or slow_close_steps <= 0
+        or slow_close_steps != minimum_slow_close_steps
+    ):
+        raise ValueError("minimum_slow_close_steps must be a positive integer")
     if not np.all(np.isfinite(forces)) or min(forces) < 0.0:
         raise ValueError("contact forces must be finite and non-negative")
     if not np.isfinite(proof_floor) or proof_floor <= 0.0:
         raise ValueError("proof_entry_force_n must be finite and positive")
-    return (
-        phase is GraspPhase.STATIC_HOLD
-        and steps >= minimum_steps
-        and min(forces) < proof_floor
+    phase_stalled = (
+        phase is GraspPhase.STATIC_HOLD and steps >= minimum_steps
+    ) or (
+        phase is GraspPhase.SLOW_CLOSE
+        and slow_close_steps is not None
+        and steps >= slow_close_steps
     )
+    return phase_stalled and min(forces) < proof_floor
 
 
 def contact_force_vectors_opposed(

@@ -60,6 +60,55 @@ def test_capture_retention_recenter_fallback_requires_stalled_static_hold():
     )
 
 
+def test_capture_retention_recenter_fallback_requires_opted_in_stalled_slow_close():
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        300,
+        0.5,
+        3.0,
+        2.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        299,
+        0.5,
+        3.0,
+        2.0,
+        minimum_slow_close_steps=300,
+    )
+    assert capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        300,
+        0.5,
+        3.0,
+        2.0,
+        minimum_slow_close_steps=300,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        300,
+        2.5,
+        3.0,
+        2.0,
+        minimum_slow_close_steps=300,
+    )
+
+
+@pytest.mark.parametrize("minimum_slow_close_steps", [0, -1, 1.5, True])
+def test_capture_retention_recenter_fallback_rejects_invalid_slow_close_window(
+    minimum_slow_close_steps,
+):
+    with pytest.raises(ValueError, match="minimum_slow_close_steps"):
+        capture_retention_recenter_fallback_active(
+            GraspPhase.SLOW_CLOSE,
+            300,
+            0.5,
+            3.0,
+            2.0,
+            minimum_slow_close_steps=minimum_slow_close_steps,
+        )
+
+
 def test_pre_capture_recenter_reference_latches_first_contact_position():
     first = latch_pre_capture_recenter_object_reference([0.20, -0.08, 0.052])
     retained = latch_pre_capture_recenter_object_reference(

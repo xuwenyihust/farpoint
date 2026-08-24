@@ -2432,6 +2432,13 @@ def run_attempt(
                 grasp_machine.phase_steps,
                 *recenter_forces,
                 grasp_machine.minimum_proof_entry_force_n,
+                # Frozen segment-005 traces separated successful captures
+                # (at most 234 unilateral slow-close frames) from the
+                # structural timeout cluster (370--581 frames). Preserve the
+                # biased pre-capture center for the first 10 seconds, then
+                # reuse the existing calibrated aperture fallback instead of
+                # spending the remaining phase budget pinned one-sided.
+                minimum_slow_close_steps=schedule.steps_for_seconds(10.0),
             )
         )
         capture_recenter_required = (
