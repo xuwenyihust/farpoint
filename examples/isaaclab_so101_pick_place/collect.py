@@ -197,6 +197,7 @@ from farpoint.control import (  # noqa: E402
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_capture_jaw_backoff_force_n,
+    so101_slow_close_backoff_step_rad,
     so101_balanced_capture_close_step,
     so101_imbalanced_capture_close_step,
     so101_proof_entry_force_floor,
@@ -2747,6 +2748,9 @@ def run_attempt(
                     open_position=open_jaw,
                     closed_position=closed_jaw,
                     max_force=so101_capture_jaw_backoff_force_n(
+                        object_spec["dimensions_m"][0],
+                    ),
+                    backoff_step=so101_slow_close_backoff_step_rad(
                         object_spec["dimensions_m"][0],
                     ),
                     capture_admissible=capture_admissible,

@@ -96,6 +96,18 @@ def so101_capture_jaw_backoff_force_n(object_width_m):
     return 20.0 - 3.0 * interpolation
 
 
+def so101_slow_close_backoff_step_rad(object_width_m, *, small_cube_step=0.002):
+    """Return a size-aware, zero-impact slow-close force backoff step."""
+    width = float(object_width_m)
+    step = float(small_cube_step)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(step) or step < 0.0:
+        raise ValueError("small_cube_step must be finite and non-negative")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return step * (1.0 - interpolation)
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 

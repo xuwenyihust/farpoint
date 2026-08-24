@@ -33,6 +33,7 @@ from farpoint.control import (
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
     so101_capture_jaw_backoff_force_n,
+    so101_slow_close_backoff_step_rad,
     so101_balanced_capture_close_step,
     so101_cube_contact_handoff,
     so101_imbalanced_capture_close_step,
@@ -139,6 +140,13 @@ def test_so101_capture_jaw_backoff_force_is_size_aware():
     assert so101_capture_jaw_backoff_force_n(0.04) == pytest.approx(17.0)
     assert so101_capture_jaw_backoff_force_n(0.02) == pytest.approx(20.0)
     assert so101_capture_jaw_backoff_force_n(0.05) == pytest.approx(17.0)
+
+
+def test_so101_slow_close_backoff_step_avoids_large_cube_release_impulse():
+    assert so101_slow_close_backoff_step_rad(0.03) == pytest.approx(0.002)
+    assert so101_slow_close_backoff_step_rad(0.035) == pytest.approx(0.001)
+    assert so101_slow_close_backoff_step_rad(0.04) == pytest.approx(0.0)
+    assert so101_slow_close_backoff_step_rad(0.05) == pytest.approx(0.0)
 
 
 @pytest.mark.parametrize(
