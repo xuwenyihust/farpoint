@@ -196,6 +196,9 @@ from farpoint.control import (  # noqa: E402
     so101_capture_admission_ready,
     so101_bilateral_capture_ready,
     so101_capture_contact_loss_grace_s,
+    so101_capture_jaw_backoff_force_n,
+    so101_slow_close_bilateral_brake_force_n,
+    so101_slow_close_backoff_step_rad,
     so101_balanced_capture_close_step,
     so101_imbalanced_capture_close_step,
     so101_proof_entry_force_floor,
@@ -2330,8 +2333,12 @@ def run_attempt(
                     ),
                 ),
                 # Back off before the independent 30 N safety validator can
-                # trip on a one-control-tick unilateral force spike.
-                max_force=20.0,
+                # trip on a one-control-tick unilateral force spike. Keep
+                # the validated 30 mm path at 20 N while the larger contact
+                # geometry starts backing off earlier.
+                max_force=so101_capture_jaw_backoff_force_n(
+                    object_spec["dimensions_m"][0],
+                ),
                 close_step=(
                     so101_imbalanced_capture_close_step(
                         object_spec["dimensions_m"][0],
@@ -2741,6 +2748,15 @@ def run_attempt(
                     *finger_forces,
                     open_position=open_jaw,
                     closed_position=closed_jaw,
+                    max_force=so101_slow_close_bilateral_brake_force_n(
+                        object_spec["dimensions_m"][0],
+                    ),
+                    unilateral_backoff_force=so101_capture_jaw_backoff_force_n(
+                        object_spec["dimensions_m"][0],
+                    ),
+                    backoff_step=so101_slow_close_backoff_step_rad(
+                        object_spec["dimensions_m"][0],
+                    ),
                     capture_admissible=capture_admissible,
                 )
                 jaw = float(jaw_update["position"])

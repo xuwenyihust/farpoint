@@ -80,6 +80,43 @@ def so101_balanced_capture_close_step(
     return close_step * (1.0 - 0.75 * interpolation)
 
 
+def so101_capture_jaw_backoff_force_n(object_width_m):
+    """Return the size-aware force at which capture jaw closing backs off.
+
+    Preserve the validated 20 N controller threshold for the 30 mm cube. The
+    40 mm cube has a larger contact lever arm and immutable v0.2 traces show
+    that a 20 N observation can rise by about 11 N before the next control
+    sample, crossing the independent 30 N safety limit. Start backing off at
+    17 N for that geometry while leaving the safety limit itself unchanged.
+    """
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 20.0 - 3.0 * interpolation
+
+
+def so101_slow_close_bilateral_brake_force_n(object_width_m):
+    """Return the force that preemptively brakes a bilateral slow close."""
+    width = float(object_width_m)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return 20.0 - 8.0 * interpolation
+
+
+def so101_slow_close_backoff_step_rad(object_width_m, *, small_cube_step=0.002):
+    """Return a size-aware, zero-impact slow-close force backoff step."""
+    width = float(object_width_m)
+    step = float(small_cube_step)
+    if not math.isfinite(width) or width <= 0.0:
+        raise ValueError("object_width_m must be finite and positive")
+    if not math.isfinite(step) or step < 0.0:
+        raise ValueError("small_cube_step must be finite and non-negative")
+    interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
+    return step * (1.0 - interpolation)
+
+
 def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     """Admit capture only after the rotary jaw reaches enclosure range.
 
@@ -1069,6 +1106,7 @@ def advance_so101_slow_close_target(
     min_force=2.0,
     max_force=20.0,
     unilateral_backoff_fraction=0.85,
+    unilateral_backoff_force=None,
     close_step=0.001,
     backoff_step=0.002,
     capture_admissible=True,
@@ -1095,8 +1133,13 @@ def advance_so101_slow_close_target(
     # peak before bilateral capture, so permit that observed geometry at 85%
     # of the unchanged force ceiling. The independent 20 N controller ceiling
     # and 30 N validation gate remain unchanged.
-    unilateral_backoff_force = backoff_fraction * float(max_force)
-    if min(forces) < float(min_force) and max(forces) >= unilateral_backoff_force:
+    if unilateral_backoff_force is None:
+        unilateral_force_threshold = backoff_fraction * float(max_force)
+    else:
+        unilateral_force_threshold = float(unilateral_backoff_force)
+        if not math.isfinite(unilateral_force_threshold) or unilateral_force_threshold < 0.0:
+            raise ValueError("unilateral_backoff_force must be finite and non-negative")
+    if min(forces) < float(min_force) and max(forces) >= unilateral_force_threshold:
         return {
             "position": _clamp(
                 max(previous_target, float(measured_position))
@@ -1111,7 +1154,10 @@ def advance_so101_slow_close_target(
         if peak_force > float(max_force):
             return {
                 "position": _clamp(
-                    previous_target + float(backoff_step), closed_value, open_value
+                    max(previous_target, float(measured_position))
+                    + float(backoff_step),
+                    closed_value,
+                    open_value,
                 ),
                 "action": "backoff",
             }
