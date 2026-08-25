@@ -123,10 +123,11 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     Six-tick confirmation and the independent capture-speed gate reject the
     transient corner contacts that motivated the original 0.9-rad ceiling.
     Keep that ceiling for the 30 mm cube, while allowing the 40 mm exact mesh
-    to arm at the measured 1.05-rad stable-enclosure boundary.  The v0.2.0
-    combined-pilot traces for c15 and c21 stopped deterministically at 1.0444
-    and 1.0200 rad with sustained bilateral force, so the former 1.02-rad
-    boundary rejected physically enclosed cubes on numerical geometry alone.
+    to arm at the measured 1.15-rad stable-enclosure boundary. Immutable
+    segment-018 q003 evidence held opposing bilateral 14--17 N contact at
+    1.148 rad with 0.15 mm/s relative speed and 2.15 mm translation error;
+    the former 1.05-rad axis-aligned boundary rejected that stable diagonal
+    enclosure before the independent proof-lift gate could evaluate it.
     """
     jaw = float(measured_jaw_position_rad)
     width = float(object_width_m)
@@ -135,8 +136,8 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
     if not math.isfinite(width) or width <= 0.0:
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
-    maximum_capture_jaw = 0.90 + 0.15 * interpolation
-    return jaw <= maximum_capture_jaw + 1e-6
+    maximum_capture_jaw = 0.90 + 0.25 * interpolation
+    return jaw <= maximum_capture_jaw + 5e-3
 
 
 def so101_bilateral_capture_ready(
@@ -1107,6 +1108,7 @@ def advance_so101_slow_close_target(
     max_force=20.0,
     unilateral_backoff_fraction=0.85,
     unilateral_backoff_force=None,
+    unadmitted_max_force=None,
     close_step=0.001,
     backoff_step=0.002,
     capture_admissible=True,
@@ -1139,6 +1141,16 @@ def advance_so101_slow_close_target(
         unilateral_force_threshold = float(unilateral_backoff_force)
         if not math.isfinite(unilateral_force_threshold) or unilateral_force_threshold < 0.0:
             raise ValueError("unilateral_backoff_force must be finite and non-negative")
+    unadmitted_force_ceiling = (
+        float(max_force)
+        if unadmitted_max_force is None
+        else float(unadmitted_max_force)
+    )
+    if (
+        not math.isfinite(unadmitted_force_ceiling)
+        or unadmitted_force_ceiling <= 0.0
+    ):
+        raise ValueError("unadmitted_max_force must be finite and positive")
     unilateral_search = min(forces) < float(min_force)
     if unilateral_search and max(forces) >= unilateral_force_threshold:
         return {
@@ -1162,7 +1174,7 @@ def advance_so101_slow_close_target(
         }
     if not bool(capture_admissible):
         peak_force = max(forces)
-        if peak_force > float(max_force):
+        if peak_force > unadmitted_force_ceiling:
             return {
                 "position": _clamp(
                     max(previous_target, float(measured_position))

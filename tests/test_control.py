@@ -58,8 +58,9 @@ from farpoint.control import (
 
 def test_so101_capture_admission_requires_calibrated_enclosure():
     assert not so101_capture_admission_ready(1.40, 0.04)
-    assert so101_capture_admission_ready(1.05, 0.04)
-    assert not so101_capture_admission_ready(1.051, 0.04)
+    assert so101_capture_admission_ready(1.15, 0.04)
+    assert so101_capture_admission_ready(1.1549, 0.04)
+    assert not so101_capture_admission_ready(1.1551, 0.04)
     assert not so101_capture_admission_ready(0.91, 0.03)
     assert so101_capture_admission_ready(0.90, 0.04)
     assert so101_capture_admission_ready(0.55, 0.03)
@@ -1175,6 +1176,70 @@ def test_so101_slow_close_uses_unilateral_limit_until_second_finger_engages():
         "position": pytest.approx(0.823),
         "action": "backoff",
     }
+
+
+def test_so101_slow_close_keeps_searching_inside_unadmitted_force_ceiling():
+    update = advance_so101_slow_close_target(
+        1.14,
+        1.15,
+        13.0,
+        12.5,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unadmitted_max_force=17.0,
+        capture_admissible=False,
+    )
+
+    assert update == {"position": pytest.approx(1.139), "action": "close"}
+
+
+def test_so101_slow_close_brakes_above_unadmitted_force_ceiling():
+    update = advance_so101_slow_close_target(
+        1.14,
+        1.15,
+        18.0,
+        12.5,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unadmitted_max_force=17.0,
+        backoff_step=0.0,
+        capture_admissible=False,
+    )
+
+    assert update == {"position": pytest.approx(1.15), "action": "backoff"}
+
+
+def test_so101_slow_close_keeps_admitted_brake_force():
+    update = advance_so101_slow_close_target(
+        1.14,
+        1.15,
+        13.0,
+        12.5,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unadmitted_max_force=17.0,
+        backoff_step=0.0,
+        capture_admissible=True,
+    )
+
+    assert update == {"position": pytest.approx(1.15), "action": "backoff"}
+
+
+@pytest.mark.parametrize("ceiling", (0.0, float("nan"), float("inf")))
+def test_so101_slow_close_rejects_invalid_unadmitted_force_ceiling(ceiling):
+    with pytest.raises(ValueError, match="unadmitted_max_force"):
+        advance_so101_slow_close_target(
+            1.14,
+            1.15,
+            0.0,
+            0.0,
+            open_position=1.7453,
+            closed_position=-0.1746,
+            unadmitted_max_force=ceiling,
+        )
 
 
 def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_off():
