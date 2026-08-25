@@ -3715,6 +3715,16 @@ def run_attempt(
                     phase is OraclePhase.PLACE_DESCEND
                     and cube_in_target
                     and cube_z <= float(release_position[2]) + 0.005
+                    # Keep the jaw closed until the carried object is
+                    # quasi-static.  A 40 mm cube can enter the geometric
+                    # release band with enough downward velocity to tip and
+                    # slide outside the footprint while the jaw opens.
+                    and float(
+                        torch.linalg.vector_norm(
+                            scene[active_name].data.root_lin_vel_w[0]
+                        ).item()
+                    )
+                    < 0.03
                 )
             ),
             has_contact=stable_grasp_contact,
