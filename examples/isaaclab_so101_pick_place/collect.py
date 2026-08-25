@@ -2881,13 +2881,25 @@ def run_attempt(
                         max_force=so101_slow_close_bilateral_brake_force_n(
                             object_spec["dimensions_m"][0],
                         ),
+                        # Until both the aperture and opposing-force geometry
+                        # are admissible, keep searching up to the existing
+                        # size-aware 17 N large-cube backoff threshold.  The
+                        # former 12 N bilateral brake treated an unadmitted
+                        # corner enclosure as a completed grasp and left the
+                        # state machine pinned in SLOW_CLOSE.  The independent
+                        # 30 N safety gate remains unchanged.
+                        unadmitted_max_force=so101_capture_jaw_backoff_force_n(
+                            object_spec["dimensions_m"][0],
+                        ),
                         unilateral_backoff_force=so101_capture_jaw_backoff_force_n(
                             object_spec["dimensions_m"][0],
                         ),
                         backoff_step=so101_slow_close_backoff_step_rad(
                             object_spec["dimensions_m"][0],
                         ),
-                        capture_admissible=capture_admissible,
+                        capture_admissible=(
+                            capture_admissible and contact_geometry_valid
+                        ),
                     )
                     jaw = float(jaw_update["position"])
                     gripper_control = f"calibrated_slow_{jaw_update['action']}"

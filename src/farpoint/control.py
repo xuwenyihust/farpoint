@@ -1107,6 +1107,7 @@ def advance_so101_slow_close_target(
     max_force=20.0,
     unilateral_backoff_fraction=0.85,
     unilateral_backoff_force=None,
+    unadmitted_max_force=None,
     close_step=0.001,
     backoff_step=0.002,
     capture_admissible=True,
@@ -1139,6 +1140,16 @@ def advance_so101_slow_close_target(
         unilateral_force_threshold = float(unilateral_backoff_force)
         if not math.isfinite(unilateral_force_threshold) or unilateral_force_threshold < 0.0:
             raise ValueError("unilateral_backoff_force must be finite and non-negative")
+    unadmitted_force_ceiling = (
+        float(max_force)
+        if unadmitted_max_force is None
+        else float(unadmitted_max_force)
+    )
+    if (
+        not math.isfinite(unadmitted_force_ceiling)
+        or unadmitted_force_ceiling <= 0.0
+    ):
+        raise ValueError("unadmitted_max_force must be finite and positive")
     unilateral_search = min(forces) < float(min_force)
     if unilateral_search and max(forces) >= unilateral_force_threshold:
         return {
@@ -1162,7 +1173,7 @@ def advance_so101_slow_close_target(
         }
     if not bool(capture_admissible):
         peak_force = max(forces)
-        if peak_force > float(max_force):
+        if peak_force > unadmitted_force_ceiling:
             return {
                 "position": _clamp(
                     max(previous_target, float(measured_position))
