@@ -59,6 +59,7 @@ from farpoint.control import (
 def test_so101_capture_admission_requires_calibrated_enclosure():
     assert not so101_capture_admission_ready(1.40, 0.04)
     assert so101_capture_admission_ready(1.15, 0.04)
+    assert so101_capture_admission_ready(1.1504, 0.04)
     assert not so101_capture_admission_ready(1.151, 0.04)
     assert not so101_capture_admission_ready(0.91, 0.03)
     assert so101_capture_admission_ready(0.90, 0.04)
