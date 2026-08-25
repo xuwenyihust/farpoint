@@ -399,6 +399,40 @@ def settle_release_separation_target(
     ]
 
 
+def object_release_height_on_target(
+    object_dimensions_m,
+    target_position_m,
+    target_dimensions_m,
+    *,
+    clearance_m=0.002,
+):
+    """Return a geometry-derived object-center height for a gentle release.
+
+    The release waypoint is expressed at the manipulated object's center.  A
+    fixed world height makes the drop distance depend on both object and target
+    geometry, which can tip an otherwise valid placement off a compact target.
+    """
+    if len(object_dimensions_m) != 3:
+        raise ValueError("object_dimensions_m must have three coordinates")
+    if len(target_position_m) != 3:
+        raise ValueError("target_position_m must have three coordinates")
+    if len(target_dimensions_m) != 3:
+        raise ValueError("target_dimensions_m must have three coordinates")
+    object_dimensions = [float(value) for value in object_dimensions_m]
+    target_position = [float(value) for value in target_position_m]
+    target_dimensions = [float(value) for value in target_dimensions_m]
+    clearance = float(clearance_m)
+    values = (*object_dimensions, *target_position, *target_dimensions, clearance)
+    if any(not math.isfinite(value) for value in values):
+        raise ValueError("release geometry values must be finite")
+    if any(value <= 0.0 for value in (*object_dimensions, *target_dimensions)):
+        raise ValueError("release geometry dimensions must be positive")
+    if clearance < 0.0:
+        raise ValueError("clearance_m must be non-negative")
+    target_top = target_position[2] + 0.5 * target_dimensions[2]
+    return target_top + 0.5 * object_dimensions[2] + clearance
+
+
 def so101_release_object_target(transport_object_target, release_height_m):
     """Keep descent centered on the validated transport target.
 

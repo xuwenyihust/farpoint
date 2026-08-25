@@ -189,6 +189,7 @@ from farpoint.control import (  # noqa: E402
     bounded_position_target,
     collision_safe_pregrasp_waypoints,
     force_controlled_rotary_jaw_target,
+    object_release_height_on_target,
     relative_object_grasp_servo_target,
     settle_release_separation_target,
     so101_release_object_target,
@@ -2112,7 +2113,11 @@ def run_attempt(
     # down to the cube's resting height. At the lower target the cube contacts
     # the pad first and can slip while the jaw tries to open.
     release_position = target_position.copy()
-    release_position[2] = float(target_position[2]) + 0.043
+    release_position[2] = object_release_height_on_target(
+        object_spec["dimensions_m"],
+        target_position,
+        target_dimensions,
+    )
     # Separate capture admission from contact persistence. A 0.1 N bilateral
     # sample is enough to preserve an already captured cube, but it is too
     # weak to freeze the rotary jaw: light cubes can briefly touch both long

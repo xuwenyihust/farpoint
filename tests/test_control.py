@@ -19,6 +19,7 @@ from farpoint.control import (
     gripper_aperture_alignment,
     integral_visual_servo_grasp_target,
     merge_contact_group_samples,
+    object_release_height_on_target,
     placement_converged,
     rate_limit_revolute_joint_targets,
     relative_object_grasp_servo_target,
@@ -482,6 +483,45 @@ def test_settle_release_separation_ramps_and_caps_vertical_clearance():
     assert settle_release_separation_target(
         start, 500, control_hz=120
     ) == pytest.approx([0.20, 0.10, 0.10])
+
+
+@pytest.mark.parametrize(
+    ("object_dimensions", "expected_height"),
+    [
+        ([0.03, 0.03, 0.03], 0.059),
+        ([0.04, 0.04, 0.04], 0.064),
+    ],
+)
+def test_object_release_height_is_geometry_derived(
+    object_dimensions, expected_height
+):
+    assert object_release_height_on_target(
+        object_dimensions,
+        [0.16, 0.08, 0.037],
+        [0.09, 0.09, 0.01],
+    ) == pytest.approx(expected_height)
+
+
+@pytest.mark.parametrize(
+    ("object_dimensions", "target_position", "target_dimensions", "clearance"),
+    [
+        ([0.04, 0.04], [0.16, 0.08, 0.037], [0.09, 0.09, 0.01], 0.002),
+        ([0.04, 0.04, 0.04], [0.16, 0.08], [0.09, 0.09, 0.01], 0.002),
+        ([0.04, 0.04, 0.04], [0.16, 0.08, 0.037], [0.09, 0.09], 0.002),
+        ([0.04, 0.04, -0.04], [0.16, 0.08, 0.037], [0.09, 0.09, 0.01], 0.002),
+        ([0.04, 0.04, 0.04], [0.16, 0.08, 0.037], [0.09, 0.09, 0.01], -0.001),
+    ],
+)
+def test_object_release_height_rejects_invalid_geometry(
+    object_dimensions, target_position, target_dimensions, clearance
+):
+    with pytest.raises(ValueError):
+        object_release_height_on_target(
+            object_dimensions,
+            target_position,
+            target_dimensions,
+            clearance_m=clearance,
+        )
 
 
 def test_release_descent_preserves_validated_transport_xy():
