@@ -137,7 +137,7 @@ def so101_capture_admission_ready(measured_jaw_position_rad, object_width_m):
         raise ValueError("object_width_m must be finite and positive")
     interpolation = _clamp((width - 0.03) / 0.01, 0.0, 1.0)
     maximum_capture_jaw = 0.90 + 0.25 * interpolation
-    return jaw <= maximum_capture_jaw + 5e-4
+    return jaw <= maximum_capture_jaw + 1e-3
 
 
 def so101_bilateral_capture_ready(
