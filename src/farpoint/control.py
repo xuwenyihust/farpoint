@@ -1139,7 +1139,8 @@ def advance_so101_slow_close_target(
         unilateral_force_threshold = float(unilateral_backoff_force)
         if not math.isfinite(unilateral_force_threshold) or unilateral_force_threshold < 0.0:
             raise ValueError("unilateral_backoff_force must be finite and non-negative")
-    if min(forces) < float(min_force) and max(forces) >= unilateral_force_threshold:
+    unilateral_search = min(forces) < float(min_force)
+    if unilateral_search and max(forces) >= unilateral_force_threshold:
         return {
             "position": _clamp(
                 max(previous_target, float(measured_position))
@@ -1148,6 +1149,16 @@ def advance_so101_slow_close_target(
                 open_value,
             ),
             "action": "backoff",
+        }
+    if unilateral_search:
+        # Aperture alignment can be admissible before the second fingertip
+        # makes contact.  Keep searching at the frozen unilateral threshold
+        # instead of falling through to the lower bilateral preload brake.
+        return {
+            "position": _clamp(
+                previous_target - float(close_step), closed_value, open_value
+            ),
+            "action": "close",
         }
     if not bool(capture_admissible):
         peak_force = max(forces)

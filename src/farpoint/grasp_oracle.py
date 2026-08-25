@@ -42,12 +42,15 @@ def capture_retention_recenter_fallback_active(
     proof_entry_force_n: float,
     *,
     minimum_static_hold_steps: int = 8,
+    minimum_slow_close_steps: int | None = None,
 ) -> bool:
     """Use the calibrated aperture center only after capture preload stalls.
 
     The biased pre-capture center remains the primary path. A fallback is
-    enabled only in static hold, after a bounded observation window, when at
-    least one finger is still below the unchanged proof-entry force floor.
+    enabled in static hold after a bounded observation window. Callers may
+    additionally opt into a later slow-close fallback by supplying
+    ``minimum_slow_close_steps``. In either case at least one finger must
+    remain below the unchanged proof-entry force floor.
     """
     steps = int(phase_steps)
     minimum_steps = int(minimum_static_hold_steps)
@@ -57,14 +60,57 @@ def capture_retention_recenter_fallback_active(
         raise ValueError("phase_steps must be non-negative")
     if minimum_steps <= 0:
         raise ValueError("minimum_static_hold_steps must be positive")
+    slow_close_steps = (
+        None
+        if minimum_slow_close_steps is None
+        else int(minimum_slow_close_steps)
+    )
+    if slow_close_steps is not None and (
+        isinstance(minimum_slow_close_steps, bool)
+        or slow_close_steps <= 0
+        or slow_close_steps != minimum_slow_close_steps
+    ):
+        raise ValueError("minimum_slow_close_steps must be a positive integer")
     if not np.all(np.isfinite(forces)) or min(forces) < 0.0:
         raise ValueError("contact forces must be finite and non-negative")
     if not np.isfinite(proof_floor) or proof_floor <= 0.0:
         raise ValueError("proof_entry_force_n must be finite and positive")
-    return (
-        phase is GraspPhase.STATIC_HOLD
-        and steps >= minimum_steps
-        and min(forces) < proof_floor
+    phase_stalled = (
+        phase is GraspPhase.STATIC_HOLD and steps >= minimum_steps
+    ) or (
+        phase is GraspPhase.SLOW_CLOSE
+        and slow_close_steps is not None
+        and steps >= slow_close_steps
+    )
+    return phase_stalled and min(forces) < proof_floor
+
+
+def capture_retention_reopen_active(
+    fallback_active: bool,
+    object_in_gripper_m,
+    aperture_reference_local_m,
+    *,
+    maximum_lateral_error_m: float = 0.006,
+) -> bool:
+    """Re-open a stalled jaw only while the object is visibly off aperture.
+
+    A wider Cartesian corridor alone cannot recover a cube that is already
+    being swept by the rotary jaw. Re-opening is therefore gated by the
+    measured XY aperture error, not by a variation identity or cube pose.
+    Small residual errors retain the validated slow-close path.
+    """
+    object_local = np.asarray(object_in_gripper_m, dtype=np.float64)
+    reference = np.asarray(aperture_reference_local_m, dtype=np.float64)
+    threshold = float(maximum_lateral_error_m)
+    if object_local.shape != (3,) or reference.shape != (3,):
+        raise ValueError("aperture vectors must have shape (3,)")
+    if not np.all(np.isfinite(object_local)) or not np.all(np.isfinite(reference)):
+        raise ValueError("aperture vectors must be finite")
+    if not np.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("maximum_lateral_error_m must be finite and positive")
+    return bool(
+        fallback_active
+        and np.linalg.norm(object_local[:2] - reference[:2]) > threshold
     )
 
 
@@ -581,6 +627,44 @@ def captured_force_imbalance_requires_squeeze_pause(
     return (
         weaker >= force_floor
         and stronger < proof_force
+        and weaker / stronger < balance_ratio
+    )
+
+
+def captured_force_imbalance_requires_recenter(
+    left_force_n: float,
+    right_force_n: float,
+    *,
+    minimum_force_n: float,
+    proof_entry_force_n: float,
+    minimum_balance_ratio: float = 0.75,
+) -> bool:
+    """Return whether a proven strong side should be unloaded toward the weak side.
+
+    This is the post-capture complement to the squeeze-pause gate above. Once
+    one finger has reached proof-entry force while the other remains below it,
+    neither more squeeze nor a stationary hold can improve aperture centering.
+    The caller may use the stronger finger as a bounded recenter direction;
+    this helper does not change any contact, proof, or maximum-force threshold.
+    """
+    forces = (float(left_force_n), float(right_force_n))
+    force_floor = float(minimum_force_n)
+    proof_force = float(proof_entry_force_n)
+    balance_ratio = float(minimum_balance_ratio)
+    if any(not np.isfinite(force) or force < 0.0 for force in forces):
+        raise ValueError("contact forces must be finite and non-negative")
+    if not np.isfinite(force_floor) or force_floor <= 0.0:
+        raise ValueError("minimum_force_n must be finite and positive")
+    if not np.isfinite(proof_force) or proof_force < force_floor:
+        raise ValueError(
+            "proof_entry_force_n must be finite and at least minimum_force_n"
+        )
+    if not np.isfinite(balance_ratio) or not 0.0 < balance_ratio <= 1.0:
+        raise ValueError("minimum_balance_ratio must be finite and in (0, 1]")
+    weaker, stronger = min(forces), max(forces)
+    return (
+        weaker >= force_floor
+        and weaker < proof_force <= stronger
         and weaker / stronger < balance_ratio
     )
 

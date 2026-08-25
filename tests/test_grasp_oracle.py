@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from farpoint.grasp_oracle import (
+    capture_retention_reopen_active,
     capture_admission_retention_fraction,
     ContactAwareGraspStateMachine,
     ControlRecordingSchedule,
@@ -15,6 +16,7 @@ from farpoint.grasp_oracle import (
     contact_constrained_joint_step_limit,
     contact_force_vectors_opposed,
     capture_preload_force_floor,
+    captured_force_imbalance_requires_recenter,
     captured_force_imbalance_requires_squeeze_pause,
     capture_aperture_laterally_aligned,
     grasp_phase_allows_unilateral_recenter,
@@ -27,6 +29,24 @@ from farpoint.grasp_oracle import (
     so101_recenter_contact_memory,
     unilateral_contact_requires_recenter,
 )
+
+
+def test_capture_retention_reopen_requires_material_aperture_error():
+    assert capture_retention_reopen_active(
+        True,
+        [0.0189, -0.0260, -0.0857],
+        [0.0224, -0.0086, -0.0479],
+    )
+    assert not capture_retention_reopen_active(
+        True,
+        [0.0227, -0.0118, -0.0688],
+        [0.0224, -0.0086, -0.0479],
+    )
+    assert not capture_retention_reopen_active(
+        False,
+        [0.0189, -0.0260, -0.0857],
+        [0.0224, -0.0086, -0.0479],
+    )
 
 
 def test_capture_retention_recenter_fallback_requires_stalled_static_hold():
@@ -58,6 +78,55 @@ def test_capture_retention_recenter_fallback_requires_stalled_static_hold():
         1.7,
         4.0,
     )
+
+
+def test_capture_retention_recenter_fallback_requires_opted_in_stalled_slow_close():
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        300,
+        0.5,
+        3.0,
+        2.0,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        299,
+        0.5,
+        3.0,
+        2.0,
+        minimum_slow_close_steps=300,
+    )
+    assert capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        300,
+        0.5,
+        3.0,
+        2.0,
+        minimum_slow_close_steps=300,
+    )
+    assert not capture_retention_recenter_fallback_active(
+        GraspPhase.SLOW_CLOSE,
+        300,
+        2.5,
+        3.0,
+        2.0,
+        minimum_slow_close_steps=300,
+    )
+
+
+@pytest.mark.parametrize("minimum_slow_close_steps", [0, -1, 1.5, True])
+def test_capture_retention_recenter_fallback_rejects_invalid_slow_close_window(
+    minimum_slow_close_steps,
+):
+    with pytest.raises(ValueError, match="minimum_slow_close_steps"):
+        capture_retention_recenter_fallback_active(
+            GraspPhase.SLOW_CLOSE,
+            300,
+            0.5,
+            3.0,
+            2.0,
+            minimum_slow_close_steps=minimum_slow_close_steps,
+        )
 
 
 def test_pre_capture_recenter_reference_latches_first_contact_position():
@@ -124,6 +193,21 @@ def test_captured_force_imbalance_pauses_squeeze_only_for_bilateral_load():
     )
 
 
+def test_captured_force_imbalance_recenters_only_after_strong_side_proof():
+    assert captured_force_imbalance_requires_recenter(
+        20.8, 1.86, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+    assert not captured_force_imbalance_requires_recenter(
+        3.20, 2.18, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+    assert not captured_force_imbalance_requires_recenter(
+        5.0, 4.0, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+    assert not captured_force_imbalance_requires_recenter(
+        5.0, 0.0, minimum_force_n=0.10, proof_entry_force_n=4.0
+    )
+
+
 @pytest.mark.parametrize(
     "kwargs",
     (
@@ -145,6 +229,8 @@ def test_captured_force_imbalance_rejects_invalid_contract(kwargs):
     arguments.update(kwargs)
     with pytest.raises(ValueError):
         captured_force_imbalance_requires_squeeze_pause(**arguments)
+    with pytest.raises(ValueError):
+        captured_force_imbalance_requires_recenter(**arguments)
 
 
 def test_control_schedule_rejects_aliased_recording_rate():

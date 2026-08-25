@@ -220,8 +220,10 @@ from farpoint.grasp_oracle import (  # noqa: E402
     cartesian_motion_command_base,
     capture_hold_preload_for_force,
     capture_retention_recenter_fallback_active,
+    capture_retention_reopen_active,
     capture_retention_force_floor,
     capture_preload_force_floor,
+    captured_force_imbalance_requires_recenter,
     captured_force_imbalance_requires_squeeze_pause,
     contact_constrained_joint_step_limit,
     capture_aperture_laterally_aligned,
@@ -2298,6 +2300,9 @@ def run_attempt(
                 grasp_machine.phase_steps,
                 *balanced_forces,
                 grasp_machine.minimum_proof_entry_force_n,
+                minimum_static_hold_steps=schedule.steps_for_seconds(
+                    grasp_machine.static_hold_s
+                ),
             )
         )
         if (
@@ -2350,7 +2355,19 @@ def run_attempt(
                     if settling_capture
                     else (0.001 if phase is OraclePhase.VERIFY_CONTACT else 0.002)
                 ),
-                backoff_step=0.001,
+                # Capture transition already applies a bounded preload
+                # relief.  Repeating another 1 mrad opening impulse during
+                # large-cube settle shed the weak-side contact in four ticks
+                # (r11 q014). Preserve the validated 30 mm path and taper
+                # only the settle backoff to zero at 40 mm.
+                backoff_step=(
+                    so101_slow_close_backoff_step_rad(
+                        object_spec["dimensions_m"][0],
+                        small_cube_step=0.001,
+                    )
+                    if settling_capture
+                    else 0.001
+                ),
                 # The immutable c26 r24 trace showed that the state-driven
                 # retention fallback improved both finger forces while the
                 # jaw command remained pinned at the normal 12 mrad preload
@@ -2417,6 +2434,15 @@ def run_attempt(
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
         )
+        proof_force_imbalance_recenter = bool(
+            retention_preload_fallback
+            and balanced_forces is not None
+            and captured_force_imbalance_requires_recenter(
+                *balanced_forces,
+                minimum_force_n=grasp_machine.minimum_contact_force_n,
+                proof_entry_force_n=grasp_machine.minimum_proof_entry_force_n,
+            )
+        )
         # A bilateral force imbalance pauses jaw squeeze.  Pre-capture
         # calibration remains useful while CLOSE is still finding the
         # enclosure, but is not a valid post-capture recenter reference.  Once
@@ -2432,10 +2458,23 @@ def run_attempt(
                 grasp_machine.phase_steps,
                 *recenter_forces,
                 grasp_machine.minimum_proof_entry_force_n,
+                # Frozen segment-005 traces separated successful captures
+                # (at most 234 unilateral slow-close frames) from the
+                # structural timeout cluster (370--581 frames). Preserve the
+                # biased pre-capture center for the first 10 seconds, then
+                # reuse the existing calibrated aperture fallback instead of
+                # spending the remaining phase budget pinned one-sided.
+                minimum_static_hold_steps=schedule.steps_for_seconds(
+                    grasp_machine.static_hold_s
+                ),
+                minimum_slow_close_steps=schedule.steps_for_seconds(10.0),
             )
         )
+        capture_retention_reopen = False
         capture_recenter_required = (
-            unilateral_recenter or capture_retention_fallback
+            unilateral_recenter
+            or capture_retention_fallback
+            or proof_force_imbalance_recenter
         )
         if (
             grasp_hold_pose is not None
@@ -2451,7 +2490,55 @@ def run_attempt(
                 and not contact_geometry_valid
             )
         ):
-            if closing_alignment:
+            if proof_force_imbalance_recenter:
+                jaw_center = _numpy(
+                    robot.data.body_link_pose_w.torch[
+                        0, robot.body_names.index("jaw"), :3
+                    ]
+                )
+                gripper_center = _numpy(
+                    robot.data.body_link_pose_w.torch[0, body_index, :3]
+                )
+                left_force, right_force = balanced_forces
+                directional_forces = (
+                    (left_force, 0.0)
+                    if left_force >= right_force
+                    else (0.0, right_force)
+                )
+                proof_recenter_limit_m = 0.004
+                recenter = unilateral_contact_recenter_target(
+                    grasp_hold_pose,
+                    grasp_hold_nominal_pose,
+                    {"center": jaw_center.tolist()},
+                    {"center": gripper_center.tolist()},
+                    *directional_forces,
+                    min_force=grasp_machine.minimum_contact_force_n,
+                    step=so101_post_capture_recenter_step(
+                        maximum_correction_m=proof_recenter_limit_m,
+                    ),
+                    max_correction=proof_recenter_limit_m,
+                    # Do not disturb a newly admitted bilateral capture. The
+                    # immutable q014 r17 trace entered settle at 20.75/6.03 N,
+                    # then immediate imbalance recentering reduced the weak
+                    # side to 3.09 N in three ticks and exhausted the correction
+                    # corridor. Only use this direction after the existing
+                    # retention fallback has waited through one complete
+                    # unchanged static-hold proof window and proved capture is
+                    # stalled; proof force and timeout gates remain unchanged.
+                    # r14 proved that the transport-style "away from strong"
+                    # convention reduced q014's weak side from 5.64 N to
+                    # 2.00 N.  Sensor-side labels and this rotated aperture's
+                    # Cartesian finger axis have opposite handedness here;
+                    # use the measured strong side with the capture convention
+                    # that preserves the weak-side enclosure.  r15 exhausted
+                    # the earlier 2 mm corridor while improving the weak side
+                    # from 2.00 N to 2.35 N; this proof-only path therefore
+                    # receives one additional bounded 2 mm of travel.  The
+                    # ordinary unilateral and pre-capture corridors remain
+                    # unchanged.
+                    move_toward_contact=True,
+                )
+            elif closing_alignment:
                 # A finger-side label alone does not determine which world
                 # direction centers this rotated, long-finger aperture.  Use
                 # simulator truth and the measured gripper orientation to
@@ -2463,16 +2550,26 @@ def run_attempt(
                 live_object_world = _numpy(
                     scene[active_name].data.root_pos_w[0, :3]
                 )
+                capture_retention_reopen = capture_retention_reopen_active(
+                    capture_retention_fallback,
+                    point_in_local_frame(live_gripper_pose, live_object_world),
+                    capture_object_in_gripper,
+                )
+                # The stalled fallback changes the aperture reference, not
+                # the world anchor.  Targeted q021 evidence showed that using
+                # the live, already sliding cube made the servo chase it from
+                # (+16, +16) mm to (-18, +18) mm, worsening local alignment
+                # from 17 mm to 41 mm despite eventually touching both
+                # fingers. Keep the first-contact object anchor immutable so
+                # the fallback recenters the gripper instead of following a
+                # cube displaced by unilateral force.
                 object_world = (
-                    live_object_world
-                    if (
-                        capture_retention_fallback
-                        or pre_capture_recenter_object_reference is None
-                    )
-                    else pre_capture_recenter_object_reference
+                    pre_capture_recenter_object_reference
+                    if pre_capture_recenter_object_reference is not None
+                    else live_object_world
                 )
                 active_recenter_reference = pre_capture_recenter_aperture_reference
-                if capture_retention_fallback:
+                if capture_retention_reopen:
                     active_recenter_reference = capture_object_in_gripper
                 desired_gripper = gripper_xy_target_for_object_local_offset(
                     object_world,
@@ -2489,6 +2586,27 @@ def run_attempt(
                     current_xy_correction,
                     unilateral_contact=capture_recenter_required,
                 )
+                if capture_retention_reopen:
+                    # Frozen r4/q021 and r6/q014 evidence separate a genuinely
+                    # off-aperture stall (17.35 mm) from a small residual
+                    # alignment error (about 3 mm). Expand only while the jaw
+                    # is re-opening around the former; otherwise preserve the
+                    # validated 16 mm path.
+                    # Frozen r4 q021 evidence left the fixed-anchor servo
+                    # saturated at (+16, +16) mm while the cube still had a
+                    # 17.35 mm aperture-local Y error.  The earlier 18 mm
+                    # diagnostic failed because it also chased the sliding
+                    # live cube; with the first-contact world anchor now
+                    # immutable, expand only this 10-second stalled fallback.
+                    # The 30 mm endpoint remains 9 mm and ordinary unilateral
+                    # capture remains capped by the validated 16 mm path.
+                    correction_limit = so101_adaptive_pre_capture_recenter_limit(
+                        object_spec["dimensions_m"][0],
+                        current_xy_correction,
+                        unilateral_contact=True,
+                        maximum_correction_m=0.018,
+                        large_width_fraction=0.45,
+                    )
                 aligned = relative_object_grasp_servo_target(
                     object_world,
                     desired_object_minus_grasp,
@@ -2742,25 +2860,37 @@ def run_attempt(
                 # Continuing to chase the displaced cube recreates the old
                 # unilateral wedge failure.
                 target = grasp_hold_pose
-                jaw_update = advance_so101_slow_close_target(
-                    float(commanded_joints[5]),
-                    float(current[5].item()),
-                    *finger_forces,
-                    open_position=open_jaw,
-                    closed_position=closed_jaw,
-                    max_force=so101_slow_close_bilateral_brake_force_n(
-                        object_spec["dimensions_m"][0],
-                    ),
-                    unilateral_backoff_force=so101_capture_jaw_backoff_force_n(
-                        object_spec["dimensions_m"][0],
-                    ),
-                    backoff_step=so101_slow_close_backoff_step_rad(
-                        object_spec["dimensions_m"][0],
-                    ),
-                    capture_admissible=capture_admissible,
-                )
-                jaw = float(jaw_update["position"])
-                gripper_control = f"calibrated_slow_{jaw_update['action']}"
+                if capture_retention_reopen:
+                    # Once a stalled cube is materially off aperture, further
+                    # rotary closure only sweeps it away. Re-open at the same
+                    # zero-impact rate used by the small-cube force backoff
+                    # while the Cartesian servo recenters, then resume the
+                    # unchanged slow-close controller after alignment.
+                    jaw = min(
+                        approach_jaw,
+                        float(current[5].item()) + 0.002,
+                    )
+                    gripper_control = "stalled_aperture_reopen"
+                else:
+                    jaw_update = advance_so101_slow_close_target(
+                        float(commanded_joints[5]),
+                        float(current[5].item()),
+                        *finger_forces,
+                        open_position=open_jaw,
+                        closed_position=closed_jaw,
+                        max_force=so101_slow_close_bilateral_brake_force_n(
+                            object_spec["dimensions_m"][0],
+                        ),
+                        unilateral_backoff_force=so101_capture_jaw_backoff_force_n(
+                            object_spec["dimensions_m"][0],
+                        ),
+                        backoff_step=so101_slow_close_backoff_step_rad(
+                            object_spec["dimensions_m"][0],
+                        ),
+                        capture_admissible=capture_admissible,
+                    )
+                    jaw = float(jaw_update["position"])
+                    gripper_control = f"calibrated_slow_{jaw_update['action']}"
         elif phase is OraclePhase.VERIFY_CONTACT:
             # Prove the grasp with a gentle test lift. A direct 8 cm target
             # change produces enough acceleration to shed a small cube before

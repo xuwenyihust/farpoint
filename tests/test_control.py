@@ -157,6 +157,18 @@ def test_so101_slow_close_backoff_step_avoids_large_cube_release_impulse():
     assert so101_slow_close_backoff_step_rad(0.05) == pytest.approx(0.0)
 
 
+def test_so101_slow_close_backoff_step_supports_capture_settle_scale():
+    assert so101_slow_close_backoff_step_rad(
+        0.03, small_cube_step=0.001
+    ) == pytest.approx(0.001)
+    assert so101_slow_close_backoff_step_rad(
+        0.035, small_cube_step=0.001
+    ) == pytest.approx(0.0005)
+    assert so101_slow_close_backoff_step_rad(
+        0.04, small_cube_step=0.001
+    ) == pytest.approx(0.0)
+
+
 @pytest.mark.parametrize(
     ("object_width_m", "balanced_close_step"),
     (
@@ -332,6 +344,23 @@ def test_so101_adaptive_pre_capture_recenter_requires_unilateral_axis_saturation
     ) == pytest.approx(0.01225)
 
 
+def test_so101_adaptive_pre_capture_recenter_supports_stalled_large_cube_corridor():
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.04,
+        (0.016, 0.016),
+        unilateral_contact=True,
+        maximum_correction_m=0.018,
+        large_width_fraction=0.45,
+    ) == pytest.approx(0.018)
+    assert so101_adaptive_pre_capture_recenter_limit(
+        0.03,
+        (0.009, 0.009),
+        unilateral_contact=True,
+        maximum_correction_m=0.018,
+        large_width_fraction=0.45,
+    ) == pytest.approx(0.009)
+
+
 def test_so101_capture_contact_loss_grace_is_size_aware():
     assert so101_capture_contact_loss_grace_s(0.03) == pytest.approx(0.30)
     assert so101_capture_contact_loss_grace_s(0.035) == pytest.approx(0.25)
@@ -345,6 +374,14 @@ def test_so101_post_capture_recenter_reaches_bound_before_shortest_grace_expires
 
     assert step == pytest.approx(0.000125)
     assert step * 16 == pytest.approx(0.002)
+    assert 16 < 0.20 * 120
+
+
+def test_so101_post_capture_recenter_supports_proof_imbalance_corridor():
+    step = so101_post_capture_recenter_step(maximum_correction_m=0.004)
+
+    assert step == pytest.approx(0.00025)
+    assert step * 16 == pytest.approx(0.004)
     assert 16 < 0.20 * 120
 
 
@@ -1101,10 +1138,43 @@ def test_so101_slow_close_keeps_unilateral_search_above_bilateral_brake():
         max_force=12.0,
         unilateral_backoff_force=17.0,
         backoff_step=0.0,
-        capture_admissible=False,
+        capture_admissible=True,
     )
 
     assert update == {"position": pytest.approx(0.420947), "action": "close"}
+
+
+def test_so101_slow_close_uses_unilateral_limit_until_second_finger_engages():
+    unilateral = advance_so101_slow_close_target(
+        0.821,
+        0.823,
+        12.54,
+        0.0,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unilateral_backoff_force=17.0,
+        backoff_step=0.0,
+        capture_admissible=False,
+    )
+    invalid_bilateral = advance_so101_slow_close_target(
+        0.821,
+        0.823,
+        12.54,
+        2.1,
+        open_position=1.7453,
+        closed_position=-0.1746,
+        max_force=12.0,
+        unilateral_backoff_force=17.0,
+        backoff_step=0.0,
+        capture_admissible=False,
+    )
+
+    assert unilateral == {"position": pytest.approx(0.820), "action": "close"}
+    assert invalid_bilateral == {
+        "position": pytest.approx(0.823),
+        "action": "backoff",
+    }
 
 
 def test_so101_slow_close_crosses_observed_unilateral_limit_cycles_then_backs_off():
