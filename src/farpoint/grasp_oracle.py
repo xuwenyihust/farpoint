@@ -729,8 +729,9 @@ def bounded_so101_recenter_contact_memory(
 ):
     """Bridge only a bounded zero-force sensor gap during recentering.
 
-    Contact memory exists to cover adjacent 120 Hz samples, not to synthesize
-    unilateral contact throughout an entire slow-close phase. Live contact
+    Three 120 Hz samples span 25 ms. Contact memory exists to cover adjacent
+    samples, not to synthesize unilateral contact throughout an entire
+    slow-close phase. Live contact
     resets the gap counter. Once the configured gap is exhausted, clear the
     remembered side and return the measured zero-force sample unchanged.
     """
