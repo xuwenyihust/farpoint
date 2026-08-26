@@ -350,6 +350,80 @@ def test_aggregate_continuation_keeps_missing_quota_from_older_segment():
     assert remaining[0]["variation_seed"] == parent_plan["trials"][1]["seed"]
 
 
+def _two_segment_gap_evidence(*, parent_hash_matches=True):
+    campaign = _campaign()
+    parent_plan = _plan(campaign)
+    parent_manifest = create_manifest(
+        parent_plan, collection_id="segment-000", git_commit="abcdef1"
+    )
+    for _ in range(5):
+        _fail_next(parent_manifest, parent_plan)
+    parent_manifest["execution_status"] = "ABORTED"
+    parent_manifest["quality_status"] = "NOT_EVALUATED"
+    parent_segment = _segment(campaign, parent_plan)
+    request = next(
+        row
+        for row in build_continuation_requests(
+            campaign,
+            [{"segment": parent_segment, "plan": parent_plan, "manifest": parent_manifest}],
+        )
+        if row["request_kind"] == "replacement"
+    )
+    continuation_plan = _plan(campaign, count=1, replacement_index=1)
+    continuation_plan["trials"][0]["seed"] = request["variation_seed"]
+    continuation_plan["plan_sha256"] = canonical_sha256(
+        continuation_plan, omit=("plan_sha256",)
+    )
+    continuation_segment = create_segment(
+        {
+            "campaign_id": campaign["campaign_id"],
+            "campaign_sha256": campaign["campaign_sha256"],
+            "segment_id": "segment-002",
+            "segment_index": 2,
+            "git_commit": "abcdef2",
+            "plan_sha256": continuation_plan["plan_sha256"],
+            "parent_manifest_sha256": (
+                canonical_sha256(parent_manifest)
+                if parent_hash_matches
+                else "f" * 64
+            ),
+            "oracle_profile_allowlist": ["profile-v2"],
+            "execution_status": "RUNNING",
+            "quality_status": "NOT_EVALUATED",
+            "attempts": [],
+        }
+    )
+    continuation_manifest = create_manifest(
+        continuation_plan, collection_id="segment-002", git_commit="abcdef2"
+    )
+    evidence = [
+        {"segment": parent_segment, "plan": parent_plan, "manifest": parent_manifest},
+        {
+            "segment": continuation_segment,
+            "plan": continuation_plan,
+            "manifest": continuation_manifest,
+        },
+    ]
+    return campaign, evidence
+
+
+def test_continuation_allows_index_gaps_with_intact_parent_hash_chain():
+    campaign, evidence = _two_segment_gap_evidence()
+
+    assert len(build_continuation_requests(campaign, evidence)) == 2
+
+
+def test_continuation_gap_still_requires_exact_parent_hash_chain():
+    campaign, evidence = _two_segment_gap_evidence(parent_hash_matches=False)
+
+    try:
+        build_continuation_requests(campaign, evidence)
+    except ValueError as error:
+        assert "parent manifest hash mismatch" in str(error)
+    else:
+        raise AssertionError("continuation accepted a broken parent hash chain")
+
+
 def test_distinct_structural_variations_pause_and_select_three_diagnostics():
     campaign = _campaign(12)
     plan = _plan(campaign, 12)

@@ -435,6 +435,7 @@ def build_continuation_requests(
     successful_quotas: set[tuple[Any, ...]] = set()
     latest: dict[tuple[Any, ...], dict[str, Any]] = {}
     previous_manifest = None
+    previous_segment_index = None
     for index, row in enumerate(evidence):
         segment = row.get("segment") or {}
         plan = row.get("plan") or {}
@@ -444,14 +445,21 @@ def build_continuation_requests(
             raise ValueError(
                 f"invalid segment {index}: " + "; ".join(segment_errors)
             )
-        if int(segment.get("segment_index", -1)) != index:
-            raise ValueError("campaign segment indexes must be contiguous")
+        segment_index = int(segment.get("segment_index", -1))
+        if previous_segment_index is None and segment_index != 0:
+            raise ValueError("campaign lineage must start at segment index zero")
+        if (
+            previous_segment_index is not None
+            and segment_index <= previous_segment_index
+        ):
+            raise ValueError("campaign segment indexes must be strictly increasing")
         if segment.get("campaign_sha256") != campaign.get("campaign_sha256"):
             raise ValueError("continuation segment campaign hash mismatch")
         if index > 0 and segment.get("parent_manifest_sha256") != canonical_sha256(
             previous_manifest
         ):
             raise ValueError("continuation parent manifest hash mismatch")
+        previous_segment_index = segment_index
         validate_manifest(manifest, plan)
         trials = _trial_index(plan)
         resolved_quotas = _resolved_trial_quota_identities(campaign, plan)
