@@ -97,8 +97,11 @@ def build_v020_candidate_validation(
     plans = plan if isinstance(plan, list) else [plan]
     errors = validate_v020_selection(plans, selection)
     primary = plans[0]
-    if lerobot_validation is not None and lerobot_validation.get("status") != "PASS":
-        errors.append("lerobot_validation_not_pass")
+    if lerobot_validation is not None:
+        native_valid = lerobot_validation.get("valid") is True
+        bound_pass = lerobot_validation.get("status") == "PASS"
+        if not native_valid and not bound_pass:
+            errors.append("lerobot_validation_not_pass")
     replay_rows = loader_replays or []
     replay_groups = {
         (row.get("object_variant_id"), row.get("target_profile_id"), row.get("camera_profile_id"))
