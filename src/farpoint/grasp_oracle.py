@@ -718,6 +718,49 @@ def so101_recenter_contact_memory(
     }
 
 
+def bounded_so101_recenter_contact_memory(
+    left_force_n,
+    right_force_n,
+    previous_side=None,
+    previous_gap_steps=0,
+    *,
+    minimum_force_n=0.10,
+    maximum_gap_steps=3,
+):
+    """Bridge only a bounded zero-force sensor gap during recentering.
+
+    Contact memory exists to cover adjacent 120 Hz samples, not to synthesize
+    unilateral contact throughout an entire slow-close phase. Live contact
+    resets the gap counter. Once the configured gap is exhausted, clear the
+    remembered side and return the measured zero-force sample unchanged.
+    """
+    gap_steps = int(previous_gap_steps)
+    maximum_gap = int(maximum_gap_steps)
+    if gap_steps != previous_gap_steps or gap_steps < 0:
+        raise ValueError("previous_gap_steps must be a non-negative integer")
+    if maximum_gap != maximum_gap_steps or maximum_gap < 0:
+        raise ValueError("maximum_gap_steps must be a non-negative integer")
+
+    result = so101_recenter_contact_memory(
+        left_force_n,
+        right_force_n,
+        previous_side,
+        minimum_force_n=minimum_force_n,
+    )
+    if not result["used_memory"]:
+        return {**result, "gap_steps": 0}
+
+    next_gap_steps = gap_steps + 1
+    if next_gap_steps <= maximum_gap:
+        return {**result, "gap_steps": next_gap_steps}
+    return {
+        "forces": (float(left_force_n), float(right_force_n)),
+        "side": None,
+        "used_memory": False,
+        "gap_steps": 0,
+    }
+
+
 @dataclass(frozen=True)
 class GraspEvidence:
     left_force_n: float

@@ -225,6 +225,7 @@ from farpoint.control import (  # noqa: E402
     unsafe_so101_approach_contact,
 )
 from farpoint.grasp_oracle import (  # noqa: E402
+    bounded_so101_recenter_contact_memory,
     ContactAwareGraspStateMachine,
     ControlRecordingSchedule,
     GraspDecision,
@@ -2217,6 +2218,7 @@ def run_attempt(
     grasp_relative_reference = None
     previous_object_in_gripper = None
     capture_recenter_side = None
+    capture_recenter_memory_gap_steps = 0
     pre_capture_recenter_object_reference = None
     capture_object_minus_grasp = None
     descent_lateral_correction = 0.0
@@ -2431,20 +2433,23 @@ def run_attempt(
             (closing_alignment or settling_capture or verification_alignment)
             and balanced_forces is not None
         ):
-            recenter_memory = so101_recenter_contact_memory(
+            recenter_memory = bounded_so101_recenter_contact_memory(
                 *balanced_forces,
                 capture_recenter_side,
+                capture_recenter_memory_gap_steps,
                 minimum_force_n=grasp_machine.minimum_contact_force_n,
             )
             recenter_forces = recenter_memory["forces"]
             capture_recenter_side = recenter_memory["side"]
             recenter_used_memory = bool(recenter_memory["used_memory"])
+            capture_recenter_memory_gap_steps = recenter_memory["gap_steps"]
         elif phase not in {
             OraclePhase.DESCEND,
             OraclePhase.CLOSE,
             OraclePhase.VERIFY_CONTACT,
         }:
             capture_recenter_side = None
+            capture_recenter_memory_gap_steps = 0
         unilateral_recenter = bool(
             recenter_forces is not None
             and unilateral_contact_requires_recenter(
