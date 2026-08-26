@@ -672,6 +672,7 @@ def evaluate_self_healing_campaign(
     eligible_current_contact_count = 0
     eligible_ever_lifted_count = 0
     previous_manifest = None
+    previous_segment_index = None
     latest_plan = None
     latest_manifest = None
     try:
@@ -689,8 +690,13 @@ def evaluate_self_healing_campaign(
             continue
         if segment.get("campaign_sha256") != campaign.get("campaign_sha256"):
             errors.append(f"segment[{index}]:campaign_hash_mismatch")
-        if int(segment.get("segment_index", -1)) != index:
-            errors.append(f"segment[{index}]:non_contiguous_index")
+        segment_index = int(segment.get("segment_index", -1))
+        if (
+            previous_segment_index is not None
+            and segment_index <= previous_segment_index
+        ):
+            errors.append(f"segment[{index}]:non_increasing_index")
+        previous_segment_index = segment_index
         if index > 0 and segment.get("parent_manifest_sha256") != canonical_sha256(
             previous_manifest
         ):

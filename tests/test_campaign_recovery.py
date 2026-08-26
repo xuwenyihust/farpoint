@@ -424,6 +424,22 @@ def test_continuation_gap_still_requires_exact_parent_hash_chain():
         raise AssertionError("continuation accepted a broken parent hash chain")
 
 
+def test_campaign_evaluation_allows_index_gaps_with_intact_parent_hash_chain():
+    campaign, evidence = _two_segment_gap_evidence()
+
+    report = evaluate_self_healing_campaign(
+        campaign,
+        evidence,
+        _policy(),
+        live_status={"heartbeat_unix": 1000.0, "started_unix": 900.0},
+        free_disk_bytes=600 * 1024**3,
+        now_unix=1001.0,
+    )
+
+    assert report["decision"] != "INVALID"
+    assert report["errors"] == []
+
+
 def test_distinct_structural_variations_pause_and_select_three_diagnostics():
     campaign = _campaign(12)
     plan = _plan(campaign, 12)
