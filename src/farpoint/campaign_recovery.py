@@ -972,6 +972,7 @@ def build_campaign_export_selection(
         campaign, evidence, quality_exclusions
     )
     previous_manifest = None
+    previous_segment_index = None
     for index, row in enumerate(evidence):
         segment = row.get("segment") or {}
         plan = row.get("plan") or {}
@@ -979,8 +980,13 @@ def build_campaign_export_selection(
         segment_errors = validate_segment_semantics(segment)
         if segment_errors:
             raise ValueError(f"invalid segment {index}: {'; '.join(segment_errors)}")
-        if int(segment["segment_index"]) != index:
-            raise ValueError("campaign segment indexes must be contiguous")
+        segment_index = int(segment["segment_index"])
+        if (
+            previous_segment_index is not None
+            and segment_index <= previous_segment_index
+        ):
+            raise ValueError("campaign segment indexes must be strictly increasing")
+        previous_segment_index = segment_index
         if index > 0 and segment.get("parent_manifest_sha256") != canonical_sha256(
             previous_manifest
         ):
