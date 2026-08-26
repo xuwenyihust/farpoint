@@ -308,9 +308,9 @@ def test_so101_approach_jaw_uses_wide_calibrated_geometry_for_large_cube():
 
 def test_so101_descent_contact_window_opens_for_large_cube():
     assert so101_minimum_safe_descent_fraction(0.03) == pytest.approx(0.75)
-    assert so101_minimum_safe_descent_fraction(0.035) == pytest.approx(0.675)
-    assert so101_minimum_safe_descent_fraction(0.04) == pytest.approx(0.60)
-    assert so101_minimum_safe_descent_fraction(0.10) == pytest.approx(0.60)
+    assert so101_minimum_safe_descent_fraction(0.035) == pytest.approx(0.45)
+    assert so101_minimum_safe_descent_fraction(0.04) == pytest.approx(0.15)
+    assert so101_minimum_safe_descent_fraction(0.10) == pytest.approx(0.15)
     with pytest.raises(ValueError, match="finite and positive"):
         so101_minimum_safe_descent_fraction(float("nan"))
 
@@ -469,10 +469,10 @@ def test_large_cube_first_corner_contact_is_not_a_collision():
     threshold = so101_minimum_safe_descent_fraction(0.04)
 
     assert unsafe_so101_approach_contact(
-        "descend", True, 0.59, minimum_safe_descent_fraction=threshold
+        "descend", True, 0.14, minimum_safe_descent_fraction=threshold
     )
     assert not unsafe_so101_approach_contact(
-        "descend", True, 0.68, minimum_safe_descent_fraction=threshold
+        "descend", True, 0.16, minimum_safe_descent_fraction=threshold
     )
 
 

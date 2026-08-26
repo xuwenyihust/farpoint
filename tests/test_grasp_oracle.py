@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from farpoint.grasp_oracle import (
+    bounded_so101_recenter_contact_memory,
     capture_retention_reopen_active,
     capture_admission_retention_fraction,
     ContactAwareGraspStateMachine,
@@ -479,6 +480,50 @@ def test_first_contact_memory_bridges_handoff_force_dropout():
     assert unilateral_contact_requires_recenter(
         *dropout["forces"], minimum_force_n=0.10
     )
+
+
+def test_bounded_contact_memory_expires_after_three_control_ticks():
+    memory = bounded_so101_recenter_contact_memory(0.0, 0.675)
+    assert memory["side"] == "right"
+    assert memory["gap_steps"] == 0
+
+    for expected_gap in (1, 2, 3):
+        memory = bounded_so101_recenter_contact_memory(
+            0.0,
+            0.0,
+            memory["side"],
+            memory["gap_steps"],
+        )
+        assert memory["used_memory"]
+        assert memory["gap_steps"] == expected_gap
+
+    expired = bounded_so101_recenter_contact_memory(
+        0.0,
+        0.0,
+        memory["side"],
+        memory["gap_steps"],
+    )
+    assert expired == {
+        "forces": (0.0, 0.0),
+        "side": None,
+        "used_memory": False,
+        "gap_steps": 0,
+    }
+
+
+def test_bounded_contact_memory_live_contact_resets_gap():
+    result = bounded_so101_recenter_contact_memory(
+        0.2,
+        0.0,
+        "right",
+        3,
+    )
+    assert result == {
+        "forces": (0.2, 0.0),
+        "side": "left",
+        "used_memory": False,
+        "gap_steps": 0,
+    }
 
 
 def test_xy_aperture_target_corrects_recorded_r01_c00_direction():
