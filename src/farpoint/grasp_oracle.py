@@ -734,6 +734,7 @@ def bounded_so101_recenter_contact_memory(
     slow-close phase. Live contact
     resets the gap counter. Once the configured gap is exhausted, clear the
     remembered side and return the measured zero-force sample unchanged.
+    Measuring the bound in control ticks keeps replay deterministic.
     """
     gap_steps = int(previous_gap_steps)
     maximum_gap = int(maximum_gap_steps)
