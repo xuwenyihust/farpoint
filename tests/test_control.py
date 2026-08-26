@@ -21,6 +21,7 @@ from farpoint.control import (
     merge_contact_group_samples,
     object_release_height_on_target,
     placement_converged,
+    release_compensated_transport_target,
     rate_limit_revolute_joint_targets,
     relative_object_grasp_servo_target,
     rmpflow_world_target,
@@ -528,6 +529,24 @@ def test_release_descent_preserves_validated_transport_xy():
     assert so101_release_object_target(
         [0.153, 0.073, 0.091], 0.080
     ) == pytest.approx([0.153, 0.073, 0.080])
+
+
+def test_release_compensation_offsets_nearest_valid_transport_target():
+    assert release_compensated_transport_target(
+        [0.151, 0.070, 0.103],
+        [0.154, 0.074],
+        [0.166, 0.086],
+        [0.008, 0.0],
+    ) == pytest.approx([0.162, 0.074, 0.103])
+
+
+def test_release_compensation_remains_inside_valid_transport_region():
+    assert release_compensated_transport_target(
+        [0.165, 0.085, 0.103],
+        [0.154, 0.074],
+        [0.166, 0.086],
+        [0.008, 0.008],
+    ) == pytest.approx([0.166, 0.086, 0.103])
 
 
 def test_release_descent_rejects_nonfinite_targets():
