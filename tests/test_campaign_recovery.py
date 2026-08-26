@@ -440,6 +440,39 @@ def test_campaign_evaluation_allows_index_gaps_with_intact_parent_hash_chain():
     assert report["errors"] == []
 
 
+def test_campaign_export_allows_index_gaps_with_intact_parent_hash_chain(tmp_path):
+    campaign, evidence = _two_segment_gap_evidence()
+    parent = evidence[0]
+    continuation = evidence[1]
+    parent["manifest"]["execution_status"] = "RUNNING"
+    _success_next(
+        parent["manifest"], parent["plan"], episode_id="episode-parent-success"
+    )
+    continuation_segment = {
+        key: value
+        for key, value in continuation["segment"].items()
+        if key not in {"schema_version", "segment_sha256"}
+    }
+    continuation_segment["parent_manifest_sha256"] = canonical_sha256(parent["manifest"])
+    continuation["segment"] = create_segment(continuation_segment)
+    _success_next(
+        continuation["manifest"],
+        continuation["plan"],
+        episode_id="episode-continuation-success",
+    )
+    parent["episodes_root"] = str(tmp_path / "parent-episodes")
+    continuation["episodes_root"] = str(tmp_path / "continuation-episodes")
+
+    selection = build_campaign_export_selection(
+        campaign, evidence, dataset_id="farpoint-so101"
+    )
+
+    assert len(selection["episodes"]) == 2
+    assert {row["segment_id"] for row in selection["episodes"]} == {
+        "segment-000", "segment-002"
+    }
+
+
 def test_distinct_structural_variations_pause_and_select_three_diagnostics():
     campaign = _campaign(12)
     plan = _plan(campaign, 12)
