@@ -125,6 +125,18 @@ def parse_args():
     )
     parser.add_argument("--campaign-id")
     parser.add_argument("--segment-id")
+    parser.add_argument(
+        "--release-compensation-xy-m",
+        nargs=2,
+        type=float,
+        default=(0.0, 0.0),
+        metavar=("X", "Y"),
+        help=(
+            "Explicit lateral transport bias, in metres, used to compensate "
+            "a measured release displacement; the result remains clipped to "
+            "the validated target-footprint region."
+        ),
+    )
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
     if args.require_dual_camera:
@@ -191,6 +203,7 @@ from farpoint.control import (  # noqa: E402
     force_controlled_rotary_jaw_target,
     object_release_height_on_target,
     relative_object_grasp_servo_target,
+    release_compensated_transport_target,
     settle_release_separation_target,
     so101_release_object_target,
     so101_approach_jaw_target,
@@ -3046,10 +3059,11 @@ def run_attempt(
                 lower = target_position[:2] - valid_half_extent + interior_margin
                 upper = target_position[:2] + valid_half_extent - interior_margin
                 transport_object_target = np.asarray(
-                    (
-                        np.clip(object_world_position[0], lower[0], upper[0]),
-                        np.clip(object_world_position[1], lower[1], upper[1]),
-                        object_world_position[2],
+                    release_compensated_transport_target(
+                        object_world_position,
+                        lower,
+                        upper,
+                        args_cli.release_compensation_xy_m,
                     ),
                     dtype=np.float32,
                 )

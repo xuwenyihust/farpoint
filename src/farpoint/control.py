@@ -449,6 +449,54 @@ def so101_release_object_target(transport_object_target, release_height_m):
     return [target[0], target[1], release_height]
 
 
+def release_compensated_transport_target(
+    current_object_position_m,
+    lower_xy_m,
+    upper_xy_m,
+    compensation_xy_m,
+):
+    """Return the nearest valid transport target plus a bounded release bias.
+
+    Rotary-jaw opening can impart a repeatable lateral displacement. Keep that
+    hardware/control-specific correction explicit while clipping the requested
+    waypoint to the already validated target-footprint region.
+    """
+    if len(current_object_position_m) != 3:
+        raise ValueError("current_object_position_m must have three coordinates")
+    if any(
+        len(values) != 2
+        for values in (lower_xy_m, upper_xy_m, compensation_xy_m)
+    ):
+        raise ValueError(
+            "transport XY bounds and compensation must have two coordinates"
+        )
+    current = [float(value) for value in current_object_position_m]
+    lower = [float(value) for value in lower_xy_m]
+    upper = [float(value) for value in upper_xy_m]
+    compensation = [float(value) for value in compensation_xy_m]
+    if any(
+        not math.isfinite(value)
+        for value in (*current, *lower, *upper, *compensation)
+    ):
+        raise ValueError("transport target values must be finite")
+    if any(low > high for low, high in zip(lower, upper, strict=True)):
+        raise ValueError(
+            "transport target lower bounds must not exceed upper bounds"
+        )
+    nearest = [
+        min(max(current[index], lower[index]), upper[index])
+        for index in range(2)
+    ]
+    compensated = [
+        min(
+            max(nearest[index] + compensation[index], lower[index]),
+            upper[index],
+        )
+        for index in range(2)
+    ]
+    return [compensated[0], compensated[1], current[2]]
+
+
 def unsafe_so101_approach_contact(
     phase,
     has_contact,
