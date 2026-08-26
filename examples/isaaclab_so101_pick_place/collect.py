@@ -295,6 +295,7 @@ from farpoint.so101_grasp_geometry import (  # noqa: E402
     so101_capture_channel_direction_world,
     so101_level_capture_orientation_xyzw,
     so101_pre_capture_recenter_aperture_reference,
+    so101_precontact_capture_aperture_reference,
 )
 from farpoint.so101_collection import (  # noqa: E402
     CollectionSignalAbort,
@@ -2116,6 +2117,12 @@ def run_attempt(
     )
     approach_jaw = so101_approach_jaw_target(object_spec["dimensions_m"][0])
     capture_object_in_gripper = so101_capture_aperture_reference(approach_jaw)
+    precontact_capture_object_in_gripper = (
+        so101_precontact_capture_aperture_reference(
+            approach_jaw,
+            object_spec["dimensions_m"][0],
+        )
+    )
     pre_capture_recenter_aperture_reference = (
         so101_pre_capture_recenter_aperture_reference(
             approach_jaw,
@@ -2745,7 +2752,7 @@ def run_attempt(
             capture_target = gripper_target_for_object_local_offset(
                 object_world,
                 live_gripper_pose[3:7],
-                capture_object_in_gripper,
+                precontact_capture_object_in_gripper,
             )
             local_z_world = quaternion_rotation_matrix_xyzw(
                 live_gripper_pose[3:7]

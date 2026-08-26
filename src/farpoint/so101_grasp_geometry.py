@@ -164,6 +164,28 @@ def so101_pre_capture_recenter_aperture_reference(
     return reference
 
 
+def so101_precontact_capture_aperture_reference(
+    jaw_position_rad: float,
+    object_width_m: float,
+    *,
+    large_cube_local_x_m: float = 0.020,
+) -> np.ndarray:
+    """Return the size-aware aperture center used before first contact.
+
+    The 40 mm formal outer-workspace traces can reach the exact-mesh aperture
+    target without either finger touching the cube. The q002 boundary sweep
+    found cube-filtered first contact at 20.0 mm and no contact at 20.04375 mm,
+    so use the measured contact endpoint during DESCEND. The 30 mm path remains
+    equivalent to
+    :func:`so101_capture_aperture_reference`.
+    """
+    return so101_pre_capture_recenter_aperture_reference(
+        jaw_position_rad,
+        object_width_m,
+        large_cube_local_x_m=large_cube_local_x_m,
+    )
+
+
 def _vector(value, *, length: int, name: str) -> np.ndarray:
     result = np.asarray(value, dtype=np.float64)
     if result.shape != (length,) or not np.isfinite(result).all():
