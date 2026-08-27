@@ -99,10 +99,25 @@ def _write_json(path: Path, payload: dict) -> None:
     temporary.replace(path)
 
 
-def _aim_front_camera(scene, device) -> None:
-    eye = torch.tensor([[0.42, -0.38, 0.34]], dtype=torch.float32, device=device)
-    target = torch.tensor([[0.20, 0.02, 0.06]], dtype=torch.float32, device=device)
+def _aim_front_camera(scene, device, camera_view=None) -> None:
+    """Apply an explicit per-scene front-camera view, with v0.1.x defaults."""
+    camera_view = camera_view or {}
+    eye = torch.tensor(
+        [camera_view.get("eye_m", [0.42, -0.38, 0.34])],
+        dtype=torch.float32,
+        device=device,
+    )
+    target = torch.tensor(
+        [camera_view.get("look_at_m", [0.20, 0.02, 0.06])],
+        dtype=torch.float32,
+        device=device,
+    )
     scene["front_camera"].set_world_poses_from_view(eye, target)
+
+
+def _move_static_frame(frame, position, device):
+    positions = torch.tensor([position], dtype=torch.float32, device=device)
+    frame.set_world_poses(positions=positions)
 
 
 def _move_object(obj, position, device, orientation_xyzw=(0.0, 0.0, 0.0, 1.0)):
@@ -247,7 +262,13 @@ def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
     initial_joints = torch.tensor([SO101_HOME_JOINTS], dtype=torch.float32, device=device)
     spawn_position = np.asarray(obj["position_m"], dtype=np.float32).copy()
     spawn_position[2] += 0.002
-    _aim_front_camera(scene, device)
+    target_spec = scene_spec.get("target") or {
+        "position_m": TARGET_POSITION.tolist(),
+        "dimensions_m": TARGET_DIMENSIONS.tolist(),
+        "footprint_margin_m": TARGET_MARGIN_M,
+    }
+    _aim_front_camera(scene, device, scene_spec.get("front_camera_view"))
+    _move_static_frame(scene["target_pad"], target_spec["position_m"], device)
     _move_object(active, spawn_position, device, obj["orientation_xyzw"])
     for _ in range(8):
         env.step(initial_joints)
@@ -367,6 +388,10 @@ def _reset_scene(env, scene_spec: dict) -> tuple[str, dict]:
         "maximum_object_linear_velocity_error_mps": object_linear_velocity_error,
         "maximum_object_angular_velocity_error_rad_s": object_angular_velocity_error,
         "maximum_home_error_rad": home_error,
+        "target_profile_id": scene_spec.get("target_profile_id"),
+        "target": target_spec,
+        "camera_profile_id": scene_spec.get("camera_profile_id"),
+        "front_camera_view": scene_spec.get("front_camera_view"),
     }
 
 
@@ -424,6 +449,14 @@ def _run_episode(env, scene_spec, spec, root):
     action_safety_profile = resolve_action_safety_profile(control)
     physics_steps_per_policy = control["physics_hz"] // control["policy_hz"]
     initial_z = float(obj["position_m"][2])
+    target_spec = scene_spec.get("target") or {
+        "position_m": TARGET_POSITION.tolist(),
+        "dimensions_m": TARGET_DIMENSIONS.tolist(),
+        "footprint_margin_m": TARGET_MARGIN_M,
+    }
+    target_position = np.asarray(target_spec["position_m"], dtype=np.float32)
+    target_dimensions = np.asarray(target_spec["dimensions_m"], dtype=np.float32)
+    target_margin = float(target_spec["footprint_margin_m"])
     ever_contact = False
     ever_bilateral = False
     ever_lifted = False
@@ -512,9 +545,9 @@ def _run_episode(env, scene_spec, spec, root):
                 cube_pose[:3],
                 obj["dimensions_m"],
                 cube_pose[3:7],
-                TARGET_POSITION,
-                TARGET_DIMENSIONS,
-                margin_m=TARGET_MARGIN_M,
+                target_position,
+                target_dimensions,
+                margin_m=target_margin,
             )
             released = float(robot.data.joint_pos[0, 5].item()) >= SO101_HOME_JOINTS[5] - 0.10
             stable = bool(float(np.linalg.norm(cube_velocity)) < 0.03)
@@ -613,10 +646,13 @@ def _run_episode(env, scene_spec, spec, root):
             key: scene_spec[key]
             for key in (
                 "object_variant_id",
+                "target_profile_id",
+                "camera_profile_id",
                 "region_band",
                 "yaw_stratum_id",
                 "yaw_degrees",
             )
+            if key in scene_spec
         },
         "execution_status": "FINISHED",
         "task_success": task_success,
@@ -694,6 +730,18 @@ def main() -> int:
     from farpoint_so101_env.env_cfg import SO101CubePickPlaceEnvCfg
 
     env_cfg = SO101CubePickPlaceEnvCfg()
+    target_dimensions = {
+        tuple(
+            float(value)
+            for value in (scene.get("target") or {"dimensions_m": TARGET_DIMENSIONS})[
+                "dimensions_m"
+            ]
+        )
+        for scene in spec["scenes"]
+    }
+    if len(target_dimensions) != 1:
+        raise RuntimeError("one rollout suite must use one target-pad geometry")
+    env_cfg.scene.target_pad.spawn.size = next(iter(target_dimensions))
     env_cfg.seed = 0
     if "observation.images.wrist" not in spec["environment"]["camera_features"]:
         env_cfg.scene.wrist_camera = None

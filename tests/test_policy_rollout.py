@@ -22,6 +22,7 @@ from farpoint.policy_rollout import (
     summarize_action_errors,
 )
 from farpoint.so101 import lerobot_to_radians
+from farpoint.v020_plan import build_v020_plan, canonical_sha256, load_v020_config
 
 
 def test_rollout_stage_tracker_records_ordered_diagnostic_evidence():
@@ -245,6 +246,21 @@ def test_baseline_20k_rollout_reuses_frozen_smoke_scenes():
     assert baseline["checkpoint"]["step"] == 20_000
     assert baseline["checkpoint"]["training_run_id"] == ("act-v0.0.3-baseline-20k-4c062b8")
     assert baseline["checkpoint"]["dataset"] == pilot["checkpoint"]["dataset"]
+
+
+def test_rollout_contract_accepts_exact_local_snapshot_provenance(tmp_path):
+    spec = json.loads(CONFIG.read_text())
+    dataset = spec["checkpoint"]["dataset"]
+    dataset.pop("resolved_commit")
+    dataset["source_tree_sha256"] = "a" * 64
+    path = tmp_path / "local-snapshot.json"
+    path.write_text(json.dumps(spec))
+    assert load_rollout_spec(path)["checkpoint"]["dataset"]["source_tree_sha256"] == "a" * 64
+
+    dataset["resolved_commit"] = "b" * 40
+    path.write_text(json.dumps(spec))
+    with pytest.raises(ValueError, match="invalid policy rollout contract"):
+        load_rollout_spec(path)
 
 
 def test_rollout_contract_rejects_duplicate_scene_identity(tmp_path):
@@ -620,3 +636,58 @@ def test_v010_holdout_builder_rejects_collection_overlap(tmp_path):
     template["holdout_source"]["plan_sha256"] = plan["plan_sha256"]
     with pytest.raises(ValueError, match="overlaps collection"):
         build_rollout_spec(template, campaign_root)
+
+
+def test_v020_holdout_builder_materializes_30_profile_balanced_scenes(tmp_path):
+    config_path = ROOT / "configs/variations/so101_v020_nominal300.json"
+    config = load_v020_config(config_path, project_root=ROOT)
+    plan = build_v020_plan(
+        config,
+        project_root=ROOT,
+        plan_id="v020-holdout-source",
+        mode="combined-pilot",
+    )
+    campaign_root = tmp_path / "campaign"
+    segment_root = campaign_root / "segments" / "segment-000"
+    segment_root.mkdir(parents=True)
+    (segment_root / "plan.json").write_text(json.dumps(plan))
+    (segment_root / "manifest.json").write_text(json.dumps({"attempts": []}))
+    campaign = {
+        "campaign_id": "v020-holdout-source",
+        "segments": ["segment-000"],
+    }
+    campaign["campaign_sha256"] = _identity(campaign, "campaign_sha256")
+    (campaign_root / "campaign.json").write_text(json.dumps(campaign))
+
+    template = json.loads(V010_TEMPLATE.read_text())
+    template["suite_id"] = "so101_act_v0_2_0_holdout30_r0"
+    template["holdout_source"] = {
+        "campaign_id": campaign["campaign_id"],
+        "campaign_sha256": campaign["campaign_sha256"],
+        "plan_sha256": plan["plan_sha256"],
+        "scene_count": 30,
+        "disjoint": True,
+        "design": "v020_cell_balanced",
+        "replica_index": 0,
+        "replica_count": 2,
+        "variation_config": "configs/variations/so101_v020_nominal300.json",
+        "variation_config_sha256": canonical_sha256(config),
+    }
+    spec = build_rollout_spec(template, campaign_root)
+    assert validate_contract(spec) == []
+    assert len(spec["scenes"]) == 30
+    assert len(
+        {
+            (
+                row["object_variant_id"],
+                row["target_profile_id"],
+                row["camera_profile_id"],
+            )
+            for row in spec["scenes"]
+        }
+    ) == 30
+    assert all(row["target"]["dimensions_m"] == [0.09, 0.09, 0.01] for row in spec["scenes"])
+    assert all(row["front_camera_view"]["eye_m"] for row in spec["scenes"])
+    assert {row["seed"] for row in spec["scenes"]}.isdisjoint(
+        trial["seed"] for trial in plan["trials"]
+    )

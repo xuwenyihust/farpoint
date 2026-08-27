@@ -1,0 +1,82 @@
+{
+  "schema_version": "farpoint.policy-rollout-template.v1",
+  "suite_id": "so101_act_v0_2_0_holdout30_r0",
+  "task": {
+    "task_id": "so101_cube_pick_place",
+    "instruction": "Pick up the cube and place it on the green target pad.",
+    "evaluation_class": "independent_holdout"
+  },
+  "checkpoint": {
+    "policy_type": "act",
+    "training_run_id": "REPLACE_WITH_EXACT_RUN_ID",
+    "training_git_commit": "0000000000000000000000000000000000000000",
+    "training_image_id": "sha256:d99274c14bc7e1064f3ad534deb1feecdcbeb271c9d04b3e46377d464c720293",
+    "step": 200000,
+    "model_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "dataset": {
+      "repo_id": "wenyixu101/so101-sim-oracle-pick-and-place",
+      "revision": "v0.2.0",
+      "source_tree_sha256": "1201462db640a8cdff9c938c95cf67044e5550d41ca6dc43a800dd680493749d",
+      "train_episodes": "0:270",
+      "validation_episodes": "270:300",
+      "excluded_test_episodes": "300:300"
+    }
+  },
+  "environment": {
+    "gym_id": "Farpoint-SO101-PickPlace-Cube-v0",
+    "isaac_lab_ref": "release/3.0.0-beta2",
+    "isaac_sim_version": "6.0.0",
+    "isaac_base_image_id": "sha256:ddcd4daa68cef3ece67f4fbad4eb8f5257d8236a55aba04d0697b55e7679fd04",
+    "lerobot_version": "0.4.4",
+    "camera_features": [
+      "observation.images.front",
+      "observation.images.wrist"
+    ]
+  },
+  "control": {
+    "physics_hz": 120,
+    "policy_hz": 30,
+    "max_policy_steps": 1200,
+    "replan_interval_steps": 10,
+    "action_safety_profile": {
+      "schema_version": "farpoint.action-safety-profile.v1",
+      "profile_id": "so101-viam-50deg-s-v1",
+      "joint_order": [
+        "shoulder_pan.pos",
+        "shoulder_lift.pos",
+        "elbow_flex.pos",
+        "wrist_flex.pos",
+        "wrist_roll.pos",
+        "gripper.pos"
+      ],
+      "arm_max_command_speed_deg_s": 50.0,
+      "gripper_max_command_slew_calibrated_per_step": 5.5,
+      "source": {
+        "kind": "open_source_hardware_default",
+        "reference": "https://github.com/viam-devrel/so-101",
+        "resolved_revision": "f497923360e1ded44194ffcbed7b169866574c81",
+        "statistic": "default per-joint hardware speed cap of 50 degrees per second"
+      }
+    },
+    "stable_steps": 15
+  },
+  "acceptance": {
+    "required_completed_episodes": 30,
+    "minimum_task_successes": 0,
+    "maximum_nonfinite_actions": 0,
+    "maximum_hard_range_violations": 1000000,
+    "maximum_hard_range_excess_calibrated": 6.0
+  },
+  "holdout_source": {
+    "campaign_id": "so101_v020_nominal300_formal_20260823_041c860",
+    "campaign_sha256": "4e9234aa3e56a112603bd10091e8aed41ccaee551a5a293e3019d00f059fa0f3",
+    "plan_sha256": "dc88afd33f46bca942e38a7f71dc397a118f675e60a8534de1b5dce9e2379f7a",
+    "scene_count": 30,
+    "disjoint": true,
+    "design": "v020_cell_balanced",
+    "replica_index": 0,
+    "replica_count": 2,
+    "variation_config": "configs/variations/so101_v020_nominal300.json",
+    "variation_config_sha256": "c17685ddd45593b8eb83e8c0cc90222c2a88da99e2b1e2b21af18b168aa6d9f5"
+  }
+}

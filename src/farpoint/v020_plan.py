@@ -310,6 +310,109 @@ def build_v020_plan(
     return plan
 
 
+def build_v020_holdout_scenes(
+    config: dict[str, Any],
+    *,
+    project_root: str | Path,
+    source_plan_sha256: str,
+    replica_index: int,
+    replica_count: int = 2,
+    pad_dimensions_m: list[float] | None = None,
+) -> list[dict[str, Any]]:
+    """Build one independent, cell-balanced v0.2.0 rollout replica.
+
+    The holdout uses a seed namespace distinct from collection and one
+    deterministic Latin-hypercube slot per object/target/camera cell. Two
+    replicas provide a primary screen and a separately frozen confirmation
+    suite without consuming collection or validation scenes.
+    """
+    validate_v020_config(config, project_root=project_root)
+    if not isinstance(replica_count, int) or replica_count <= 0:
+        raise ValueError("holdout replica_count must be positive")
+    if not isinstance(replica_index, int) or not 0 <= replica_index < replica_count:
+        raise ValueError("holdout replica_index is outside replica_count")
+    if not isinstance(source_plan_sha256, str) or len(source_plan_sha256) != 64:
+        raise ValueError("holdout source plan SHA256 must be frozen")
+    dimensions = deepcopy(pad_dimensions_m or config["target_pad_candidates_m"][0])
+    if dimensions not in config["target_pad_candidates_m"]:
+        raise ValueError("holdout pad dimensions are outside the frozen candidates")
+
+    variants = _variants(config)
+    archetype = _archetype(config)
+    target_rows = {row["target_profile_id"]: row for row in config["target_profiles"]}
+    camera_rows = {row["camera_profile_id"]: row for row in config["camera_profiles"]}
+    base_camera = load_camera_profile(Path(project_root) / config["camera_base_profile"])
+    cells = [
+        (object_id, target_id, camera_id)
+        for object_id in sorted(variants)
+        for target_id in sorted(target_rows)
+        for camera_id in sorted(camera_rows)
+    ]
+    scenes: list[dict[str, Any]] = []
+    for cell_index, (object_id, target_id, camera_id) in enumerate(cells):
+        cell_material = (
+            f"farpoint-v020-holdout-cell:{source_plan_sha256}:{object_id}:{target_id}:{camera_id}"
+        ).encode()
+        cell_seed = int.from_bytes(hashlib.sha256(cell_material).digest()[:8], "big")
+        sampler = DeterministicLatinHypercubeSampler(
+            bounds=(
+                ("x_m", *config["sampler"]["x_bounds_m"]),
+                ("y_m", *config["sampler"]["y_bounds_m"]),
+                ("yaw_degrees", *config["sampler"]["yaw_bounds_degrees"]),
+            ),
+            population=replica_count,
+            seed=cell_seed,
+        )
+        sample = sampler.sample(replica_index)
+        values = sample["values"]
+        yaw = float(values["yaw_degrees"])
+        half = math.radians(yaw) / 2.0
+        variant = variants[object_id]
+        target = _target(config, target_rows[target_id], dimensions)
+        _, camera_view = _effective_camera_profile(config, base_camera, camera_rows[camera_id])
+        seed_material = (
+            f"farpoint-v020-holdout-scene:{source_plan_sha256}:"
+            f"{replica_index}:{object_id}:{target_id}:{camera_id}"
+        ).encode()
+        seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], "big") | (1 << 63)
+        band = _region_band(values["x_m"], values["y_m"], config)
+        yaw_id = YAW_STRATA[min(4, int(yaw // 18.0))]
+        scenes.append(
+            {
+                "scene_id": f"v020_holdout_r{replica_index:02d}_c{cell_index:02d}",
+                "seed": seed,
+                "object_variant_id": object_id,
+                "target_profile_id": target_id,
+                "camera_profile_id": camera_id,
+                "region_band": band,
+                "yaw_stratum_id": yaw_id,
+                "object_yaw_degrees": yaw,
+                "resolved": {
+                    "shape": archetype.semantic_type,
+                    "dimensions_m": list(variant.dimensions_m),
+                    "position_m": [
+                        values["x_m"],
+                        values["y_m"],
+                        0.032 + variant.dimensions_m[2] / 2,
+                    ],
+                    "orientation_xyzw": [
+                        0.0,
+                        0.0,
+                        math.sin(half),
+                        math.cos(half),
+                    ],
+                    "rgba": list(variant.rgba),
+                    "mass_kg": variant.mass_kg,
+                },
+                "target_profile": {"resolved": target},
+                "front_camera_view": camera_view,
+                "sampler": sample,
+                "projection_cell_id": (f"cube={object_id}|target={target_id}|camera={camera_id}"),
+            }
+        )
+    return scenes
+
+
 def validate_v020_pilot_authorization(
     authorization: dict[str, Any],
     *,
