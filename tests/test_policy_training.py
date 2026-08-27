@@ -63,6 +63,9 @@ V014_BALANCED_MIX_300K_CONTINUATION_CONFIG = (
     / "training"
     / "so101_act_v0_1_4_balanced_mix_300k_continuation.json"
 )
+V020_CELL_BALANCED_200K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_act_v0_2_0_cell_balanced_200k.json"
+)
 
 
 def test_local_snapshot_tree_hash_binds_paths_sizes_and_contents(tmp_path):
@@ -401,6 +404,101 @@ def test_v014_balanced_mix_200k_adds_transport_without_changing_recovery_share(t
     arguments = training_arguments(
         candidate, tmp_path / "view", tmp_path / "out", "training"
     )
+    assert "--steps=200000" in arguments
+    assert "--save_freq=20000" in arguments
+    assert "--resume=false" in arguments
+
+
+def test_v020_cell_balanced_200k_binds_candidate_and_all_thirty_cells(tmp_path):
+    baseline = load_training_spec(V014_BALANCED_MIX_200K_CONFIG)
+    candidate = load_training_spec(V020_CELL_BALANCED_200K_CONFIG)
+
+    for field in ("environment", "policy", "training", "validation", "smoke"):
+        assert candidate[field] == baseline[field]
+    assert candidate["experiment_id"] == "so101_act_v0_2_0_cell_balanced_200k"
+    assert candidate["dataset"] == {
+        "repo_id": "wenyixu101/so101-sim-oracle-pick-and-place",
+        "revision": "v0.2.0",
+        "source": {
+            "kind": "local_snapshot",
+            "tree_sha256": (
+                "1201462db640a8cdff9c938c95cf67044e5550d41ca6dc43a800dd680493749d"
+            ),
+        },
+        "codebase_version": "v3.0",
+        "splits": {"train": "0:270", "validation": "270:300"},
+        "metadata_splits": {
+            "train": "0:270",
+            "validation": "270:300",
+            "test": "300:300",
+        },
+        "expected": {
+            "total_episodes": 300,
+            "total_frames": 255043,
+            "fps": 30,
+            "selected_frames": {"train": 230101, "validation": 24942},
+        },
+        "video_backend": "pyav",
+        "required_features": baseline["dataset"]["required_features"],
+    }
+
+    sampling = candidate["sampling"]
+    groups = {
+        group["group_id"]: parse_episode_slices(group["episode_slices"])
+        for group in sampling["groups"]
+    }
+    assert len(groups) == 30
+    assert {len(episodes) for episodes in groups.values()} == {9}
+    assert sorted(episode for episodes in groups.values() for episode in episodes) == list(
+        range(270)
+    )
+    for template in sampling["batch_cycle"]:
+        assert sum(template.values()) == 8
+        assert sum(group.startswith("blue__") for group in template) == 4
+        assert sum(group.startswith("red__") for group in template) == 4
+
+    plan = {
+        "kind": sampling["kind"],
+        "steps": candidate["training"]["steps"],
+        "groups": sampling["groups"],
+        "batch_cycle": sampling["batch_cycle"],
+    }
+    draws = expected_group_sample_counts(plan)
+    assert sum(draws.values()) == 1_600_000
+    assert min(draws.values()) == 53333
+    assert max(draws.values()) == 53334
+    assert sum(value == 53334 for value in draws.values()) == 10
+
+    by_axis = {"object": {}, "target": {}, "camera": {}}
+    for group_id, count in draws.items():
+        object_id, target_id, camera_id = group_id.split("__")
+        for axis, value in (
+            ("object", object_id),
+            ("target", target_id),
+            ("camera", camera_id),
+        ):
+            by_axis[axis][value] = by_axis[axis].get(value, 0) + count
+    assert by_axis["object"] == {"blue": 800000, "red": 800000}
+    assert by_axis["target"] == {
+        "target-a": 533335,
+        "target-b": 533333,
+        "target-c": 533332,
+    }
+    assert by_axis["camera"] == {
+        "front-nominal": 320000,
+        "front-x-negative": 320000,
+        "front-x-positive": 320000,
+        "front-yz-negative": 320000,
+        "front-yz-positive": 320000,
+    }
+
+    arguments = training_arguments(
+        candidate, tmp_path / "view", tmp_path / "out", "training"
+    )
+    assert arguments[:2] == [
+        "python",
+        "/workspace/project/scripts/train_so101_act_grouped.py",
+    ]
     assert "--steps=200000" in arguments
     assert "--save_freq=20000" in arguments
     assert "--resume=false" in arguments
