@@ -309,7 +309,7 @@ current exporter.
 
 ## Licensing and Provenance
 
-The separately published `farpoint-ur10e-robotiq-2f85` dataset is intended to be released
+The separately published `ur10e-robotiq-2f85` dataset is intended to be released
 under CC BY 4.0 for original Farpoint content. Each release must document
 the provenance and redistribution terms of simulator assets, robot models,
 textures, and other third-party content. NVIDIA Isaac Sim, Omniverse, and

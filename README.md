@@ -64,7 +64,7 @@ physics-based UR10e + Robotiq manipulation episodes. The public contract is
 documented in [docs/dataset-v1/data-contract.md](docs/dataset-v1/data-contract.md).
 
 The current release is available on
-[Hugging Face](https://huggingface.co/datasets/wenyixu101/farpoint-ur10e-robotiq-2f85).
+[Hugging Face](https://huggingface.co/datasets/wenyixu101/ur10e-robotiq-2f85).
 The Dataset Card is the authoritative release-level license and provenance
 notice.
 
@@ -99,7 +99,7 @@ under the ignored `.codex/` directory.
 The Farpoint source code is licensed under the [Apache License 2.0](LICENSE).
 The repository's `NOTICE` file describes important third-party boundaries.
 
-The separately published `farpoint-ur10e-robotiq-2f85` dataset is intended to use the
+The separately published `ur10e-robotiq-2f85` dataset is intended to use the
 [Creative Commons Attribution 4.0 International license](https://creativecommons.org/licenses/by/4.0/),
 subject to the provenance and redistribution terms of all included assets.
 The dataset's Hugging Face Dataset Card is the authoritative release-level

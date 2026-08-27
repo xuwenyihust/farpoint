@@ -18,7 +18,7 @@ release histories:
   and dataset versions.
 
 A dataset release such as
-`wenyixu101/farpoint-ur10e-robotiq-2f85@v1.3.0` records the exact generating Git
+`wenyixu101/ur10e-robotiq-2f85@v1.3.0` records the exact generating Git
 commit, but it does not change the Farpoint package to `1.3.0` and does not
 require a Git tag named `v1.3.0`. Future datasets use separate release specs and
 may advance at different rates while sharing this repository.
