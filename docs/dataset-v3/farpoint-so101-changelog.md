@@ -1,8 +1,26 @@
 # Farpoint SO-101 dataset changelog
 
 This changelog tracks published versions of
-`wenyixu101/farpoint-so101`. Dataset versions are independent of Farpoint
+`wenyixu101/so101-sim-oracle-pick-and-place`. Dataset versions are independent of Farpoint
 Python package and schema versions.
+
+## v0.2.0
+
+Starts a fresh nominal-only baseline with broader environment variation; no
+v0.1.x nominal or recovery episode is inherited:
+
+- 300 successful SO-101 cube pick-and-place demonstrations
+- 255,043 policy frames at 30 Hz
+- 270 train and 30 validation episodes
+- 30 balanced cells crossing two cube variants, three target anchors, and five
+  front-camera extrinsic profiles, with ten demonstrations per cell
+- deterministic continuous Latin-hypercube sampling of cube X, Y, and yaw
+  within every cell
+- a compact 90 x 90 x 10 mm target pad selected by the frozen pad pilot
+- two synchronized 640 x 480 RGB streams: front and wrist
+- unchanged six-dimensional joint state and joint-position action schema
+- candidate tree SHA256
+  `1201462db640a8cdff9c938c95cf67044e5550d41ca6dc43a800dd680493749d`
 
 ## v0.1.4
 
