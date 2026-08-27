@@ -26,5 +26,5 @@ Generated episodes, reports, benchmark artifacts, and caches are stored under
 `outputs/` and are intentionally excluded from the public source repository.
 
 Source code is licensed under Apache-2.0. The separately published
-`farpoint-ur10e-robotiq-2f85` dataset is intended to use CC BY 4.0, subject to third-party
+`ur10e-robotiq-2f85` dataset is intended to use CC BY 4.0, subject to third-party
 asset provenance and redistribution terms.
