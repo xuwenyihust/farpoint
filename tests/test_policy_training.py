@@ -422,7 +422,7 @@ def test_v020_cell_balanced_200k_binds_candidate_and_all_thirty_cells(tmp_path):
         "source": {
             "kind": "local_snapshot",
             "tree_sha256": (
-                "1201462db640a8cdff9c938c95cf67044e5550d41ca6dc43a800dd680493749d"
+                "893bf831cc4b44d8a5606c7e7a5118bc2dca1e0e5889e4d9931093bf99540e96"
             ),
         },
         "codebase_version": "v3.0",

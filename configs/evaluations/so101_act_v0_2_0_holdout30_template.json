@@ -16,7 +16,7 @@
     "dataset": {
       "repo_id": "wenyixu101/so101-sim-oracle-pick-and-place",
       "revision": "v0.2.0",
-      "source_tree_sha256": "1201462db640a8cdff9c938c95cf67044e5550d41ca6dc43a800dd680493749d",
+      "source_tree_sha256": "893bf831cc4b44d8a5606c7e7a5118bc2dca1e0e5889e4d9931093bf99540e96",
       "train_episodes": "0:270",
       "validation_episodes": "270:300",
       "excluded_test_episodes": "300:300"

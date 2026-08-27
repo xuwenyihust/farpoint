@@ -6,7 +6,7 @@
     "revision": "v0.2.0",
     "source": {
       "kind": "local_snapshot",
-      "tree_sha256": "1201462db640a8cdff9c938c95cf67044e5550d41ca6dc43a800dd680493749d"
+      "tree_sha256": "893bf831cc4b44d8a5606c7e7a5118bc2dca1e0e5889e4d9931093bf99540e96"
     },
     "codebase_version": "v3.0",
     "splits": {
