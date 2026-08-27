@@ -82,6 +82,8 @@ def test_compare_paired_rollouts_reports_stage_and_stratified_deltas():
             "scene_id": scene_id,
             "scene_context": {
                 "object_variant_id": variant,
+                "target_profile_id": "target-a",
+                "camera_profile_id": "front-nominal",
                 "region_band": region,
                 "yaw_stratum_id": "yaw00_18",
                 "yaw_degrees": 1.0,
@@ -101,6 +103,8 @@ def test_compare_paired_rollouts_reports_stage_and_stratified_deltas():
             },
             "hard_range_violation_count": 0,
             "delta_limited_count": 2,
+            "nonfinite_action_count": 0,
+            "maximum_hard_range_excess_calibrated": 0.0,
         }
 
     baseline = {
@@ -117,6 +121,10 @@ def test_compare_paired_rollouts_reports_stage_and_stratified_deltas():
     }
     comparison = compare_paired_rollout_reports(baseline, candidate)
     assert comparison["delta"]["task_successes"] == 1
+    assert comparison["baseline"]["task_success_rate"] == 0.5
+    assert comparison["candidate"]["task_success_rate"] == 1.0
+    assert comparison["baseline"]["task_success_rate_ci95"]["lower"] < 0.5
+    assert comparison["candidate"]["task_success_rate_ci95"]["upper"] == 1.0
     assert comparison["delta"]["stage_counts"]["ever_lifted"] == 1
     assert comparison["paired_task_outcomes"] == {
         "improved": 1,
@@ -125,6 +133,13 @@ def test_compare_paired_rollouts_reports_stage_and_stratified_deltas():
         "unchanged_failure": 0,
     }
     assert comparison["strata"]["region_band"]["core"]["candidate"]["task_successes"] == 1
+    assert comparison["strata"]["target_profile_id"]["target-a"]["candidate"][
+        "task_successes"
+    ] == 2
+    assert comparison["strata"]["camera_profile_id"]["front-nominal"]["candidate"][
+        "task_successes"
+    ] == 2
+    assert comparison["delta"]["nonfinite_action_count"] == 0
 
 
 def test_compare_paired_rollouts_rejects_scene_drift():

@@ -520,10 +520,21 @@ def compare_paired_rollout_reports(
         raise ValueError("baseline rollout contains incomplete episodes")
     if any(row.get("execution_status") != "FINISHED" for row in candidate_episodes):
         raise ValueError("candidate rollout contains incomplete episodes")
-    context_keys = ("object_variant_id", "region_band", "yaw_stratum_id")
     for baseline_row, candidate_row in zip(baseline_episodes, candidate_episodes):
         if baseline_row.get("scene_context") != candidate_row.get("scene_context"):
             raise ValueError("paired rollout scene context differs")
+    possible_context_keys = (
+        "object_variant_id",
+        "target_profile_id",
+        "camera_profile_id",
+        "region_band",
+        "yaw_stratum_id",
+    )
+    context_keys = tuple(
+        key
+        for key in possible_context_keys
+        if all(key in (row.get("scene_context") or {}) for row in baseline_episodes)
+    )
 
     stage_names = (
         "ever_cube_contact",
@@ -535,7 +546,25 @@ def compare_paired_rollout_reports(
         "ever_stable_release",
     )
 
+    def wilson_interval(successes: int, total: int) -> dict[str, Any]:
+        if total < 1:
+            raise ValueError("confidence intervals require at least one episode")
+        z = 1.959963984540054
+        rate = successes / total
+        denominator = 1 + z**2 / total
+        center = (rate + z**2 / (2 * total)) / denominator
+        radius = z * np.sqrt(rate * (1 - rate) / total + z**2 / (4 * total**2))
+        radius /= denominator
+        return {
+            "method": "wilson_score",
+            "confidence_level": 0.95,
+            "lower": float(max(0.0, center - radius)),
+            "upper": float(min(1.0, center + radius)),
+        }
+
     def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        episode_count = len(rows)
+        task_successes = sum(bool(row.get("task_success")) for row in rows)
         stage_counts = {
             name: sum(bool((row.get("stage_evidence") or {}).get(name)) for row in rows)
             for name in stage_names
@@ -557,20 +586,35 @@ def compare_paired_rollout_reports(
             for row in rows
             if (row.get("stage_evidence") or {}).get("contact_to_lift_s") is not None
         ]
+        hard_range_counts = [int(row.get("hard_range_violation_count", 0)) for row in rows]
+        delta_limited_counts = [int(row.get("delta_limited_count", 0)) for row in rows]
+        nonfinite_counts = [int(row.get("nonfinite_action_count", 0)) for row in rows]
+        maximum_range_excesses = [
+            float(row.get("maximum_hard_range_excess_calibrated", 0.0)) for row in rows
+        ]
         return {
-            "episodes": len(rows),
-            "task_successes": sum(bool(row.get("task_success")) for row in rows),
+            "episodes": episode_count,
+            "task_successes": task_successes,
+            "task_success_rate": task_successes / episode_count,
+            "task_success_rate_ci95": wilson_interval(task_successes, episode_count),
             "stage_counts": stage_counts,
+            "stage_rates": {name: count / episode_count for name, count in stage_counts.items()},
+            "stage_rate_ci95": {
+                name: wilson_interval(count, episode_count) for name, count in stage_counts.items()
+            },
             "minimum_pre_contact_gripper_object_distance_median": (
                 None if not distances else float(np.median(distances))
             ),
             "contact_to_lift_s_median": (
                 None if not contact_to_lift else float(np.median(contact_to_lift))
             ),
-            "hard_range_violation_count": sum(
-                int(row.get("hard_range_violation_count", 0)) for row in rows
-            ),
-            "delta_limited_count": sum(int(row.get("delta_limited_count", 0)) for row in rows),
+            "hard_range_violation_count": sum(hard_range_counts),
+            "hard_range_violation_count_per_episode_mean": float(np.mean(hard_range_counts)),
+            "delta_limited_count": sum(delta_limited_counts),
+            "delta_limited_count_per_episode_mean": float(np.mean(delta_limited_counts)),
+            "nonfinite_action_count": sum(nonfinite_counts),
+            "nonfinite_action_count_per_episode_mean": float(np.mean(nonfinite_counts)),
+            "maximum_hard_range_excess_calibrated": max(maximum_range_excesses),
         }
 
     baseline_summary = summarize(baseline_episodes)
@@ -628,7 +672,12 @@ def compare_paired_rollout_reports(
             - baseline_summary["hard_range_violation_count"],
             "delta_limited_count": candidate_summary["delta_limited_count"]
             - baseline_summary["delta_limited_count"],
+            "nonfinite_action_count": candidate_summary["nonfinite_action_count"]
+            - baseline_summary["nonfinite_action_count"],
         },
         "paired_task_outcomes": paired_outcomes,
         "strata": strata,
+        "confidence_interval_policy": {
+            "binary_rates": "two-sided 95% Wilson score interval",
+        },
     }
