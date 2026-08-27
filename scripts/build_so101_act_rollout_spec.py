@@ -12,6 +12,11 @@ import sys
 from pathlib import Path
 
 from farpoint.policy_rollout import load_rollout_spec
+from farpoint.policy_training import canonical_sha256
+from farpoint.v020_plan import build_v020_holdout_scenes, load_v020_config
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,7 +44,7 @@ def _identity_sha256(payload: dict, field: str) -> str:
 
 def _scene_record(source: dict) -> dict:
     obj = source["resolved"]
-    return {
+    record = {
         "scene_id": source["scene_id"],
         "seed": int(source["seed"]),
         "object_variant_id": source["object_variant_id"],
@@ -55,6 +60,23 @@ def _scene_record(source: dict) -> dict:
             "mass_kg": obj["mass_kg"],
         },
     }
+    target_profile = source.get("target_profile") or {}
+    target = target_profile.get("resolved")
+    camera_view = source.get("front_camera_view")
+    if target is not None:
+        record["target_profile_id"] = source["target_profile_id"]
+        record["target"] = {
+            "position_m": target["position_m"],
+            "dimensions_m": target["dimensions_m"],
+            "footprint_margin_m": target["footprint_margin_m"],
+        }
+    if camera_view is not None:
+        record["camera_profile_id"] = source["camera_profile_id"]
+        record["front_camera_view"] = {
+            "eye_m": camera_view["eye_m"],
+            "look_at_m": camera_view["look_at_m"],
+        }
+    return record
 
 
 def build_rollout_spec(
@@ -101,7 +123,23 @@ def build_rollout_spec(
     if source_plan is None:
         raise ValueError("frozen holdout source plan is absent from campaign")
     holdout = source_plan.get("rollout_holdout") or {}
-    source_scenes = holdout.get("scenes") or []
+    if source.get("design") == "v020_cell_balanced":
+        config_path = PROJECT_ROOT / source["variation_config"]
+        config = load_v020_config(config_path, project_root=PROJECT_ROOT)
+        if canonical_sha256(config) != source["variation_config_sha256"]:
+            raise ValueError("v0.2.0 variation config SHA256 does not match template")
+        if source_plan.get("config_sha256") != source["variation_config_sha256"]:
+            raise ValueError("v0.2.0 source plan does not bind the variation config")
+        source_scenes = build_v020_holdout_scenes(
+            config,
+            project_root=PROJECT_ROOT,
+            source_plan_sha256=source_plan["plan_sha256"],
+            replica_index=int(source["replica_index"]),
+            replica_count=int(source["replica_count"]),
+            pad_dimensions_m=source_plan["target"]["dimensions_m"],
+        )
+    else:
+        source_scenes = holdout.get("scenes") or []
     if len(source_scenes) != source["scene_count"]:
         raise ValueError("campaign holdout scene count does not match template")
     holdout_seeds = [int(row["seed"]) for row in source_scenes]

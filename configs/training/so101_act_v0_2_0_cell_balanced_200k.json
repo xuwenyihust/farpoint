@@ -1,0 +1,498 @@
+{
+  "schema_version": "farpoint.policy-training.v1",
+  "experiment_id": "so101_act_v0_2_0_cell_balanced_200k",
+  "dataset": {
+    "repo_id": "wenyixu101/so101-sim-oracle-pick-and-place",
+    "revision": "v0.2.0",
+    "source": {
+      "kind": "local_snapshot",
+      "tree_sha256": "893bf831cc4b44d8a5606c7e7a5118bc2dca1e0e5889e4d9931093bf99540e96"
+    },
+    "codebase_version": "v3.0",
+    "splits": {
+      "train": "0:270",
+      "validation": "270:300"
+    },
+    "metadata_splits": {
+      "train": "0:270",
+      "validation": "270:300",
+      "test": "300:300"
+    },
+    "expected": {
+      "total_episodes": 300,
+      "total_frames": 255043,
+      "fps": 30,
+      "selected_frames": {
+        "train": 230101,
+        "validation": 24942
+      }
+    },
+    "video_backend": "pyav",
+    "required_features": {
+      "observation.state": {
+        "dtype": "float32",
+        "shape": [
+          6
+        ]
+      },
+      "observation.images.front": {
+        "dtype": "video",
+        "shape": [
+          480,
+          640,
+          3
+        ]
+      },
+      "observation.images.wrist": {
+        "dtype": "video",
+        "shape": [
+          480,
+          640,
+          3
+        ]
+      },
+      "action": {
+        "dtype": "float32",
+        "shape": [
+          6
+        ]
+      }
+    }
+  },
+  "environment": {
+    "lerobot_version": "0.4.4",
+    "requires_cuda": true,
+    "architecture": "aarch64"
+  },
+  "policy": {
+    "type": "act",
+    "device": "cuda",
+    "vision_backbone": "resnet18",
+    "pretrained_backbone_weights": "ResNet18_Weights.IMAGENET1K_V1",
+    "chunk_size": 100,
+    "n_action_steps": 100
+  },
+  "sampling": {
+    "kind": "deterministic_grouped_batches",
+    "episode_slices": [
+      "0:270"
+    ],
+    "expected_episode_count": 270,
+    "expected_frame_count": 230101,
+    "groups": [
+      {
+        "group_id": "blue__target-a__front-nominal",
+        "episode_slices": [
+          "0:7",
+          "213:214",
+          "253:254"
+        ]
+      },
+      {
+        "group_id": "blue__target-a__front-x-negative",
+        "episode_slices": [
+          "14:22",
+          "212:213"
+        ]
+      },
+      {
+        "group_id": "blue__target-a__front-x-positive",
+        "episode_slices": [
+          "7:14",
+          "214:215",
+          "234:235"
+        ]
+      },
+      {
+        "group_id": "blue__target-a__front-yz-negative",
+        "episode_slices": [
+          "29:38"
+        ]
+      },
+      {
+        "group_id": "blue__target-a__front-yz-positive",
+        "episode_slices": [
+          "22:29",
+          "215:216",
+          "235:236"
+        ]
+      },
+      {
+        "group_id": "blue__target-b__front-nominal",
+        "episode_slices": [
+          "38:47"
+        ]
+      },
+      {
+        "group_id": "blue__target-b__front-x-negative",
+        "episode_slices": [
+          "55:63",
+          "216:217"
+        ]
+      },
+      {
+        "group_id": "blue__target-b__front-x-positive",
+        "episode_slices": [
+          "47:55",
+          "260:261"
+        ]
+      },
+      {
+        "group_id": "blue__target-b__front-yz-negative",
+        "episode_slices": [
+          "70:79"
+        ]
+      },
+      {
+        "group_id": "blue__target-b__front-yz-positive",
+        "episode_slices": [
+          "63:70",
+          "236:238"
+        ]
+      },
+      {
+        "group_id": "blue__target-c__front-nominal",
+        "episode_slices": [
+          "79:86",
+          "238:240"
+        ]
+      },
+      {
+        "group_id": "blue__target-c__front-x-negative",
+        "episode_slices": [
+          "94:101",
+          "259:260",
+          "261:262"
+        ]
+      },
+      {
+        "group_id": "blue__target-c__front-x-positive",
+        "episode_slices": [
+          "86:94",
+          "217:218"
+        ]
+      },
+      {
+        "group_id": "blue__target-c__front-yz-negative",
+        "episode_slices": [
+          "109:118"
+        ]
+      },
+      {
+        "group_id": "blue__target-c__front-yz-positive",
+        "episode_slices": [
+          "101:109",
+          "240:241"
+        ]
+      },
+      {
+        "group_id": "red__target-a__front-nominal",
+        "episode_slices": [
+          "118:123",
+          "241:243",
+          "262:263",
+          "268:269"
+        ]
+      },
+      {
+        "group_id": "red__target-a__front-x-negative",
+        "episode_slices": [
+          "125:130",
+          "218:219",
+          "243:244",
+          "254:255",
+          "266:267"
+        ]
+      },
+      {
+        "group_id": "red__target-a__front-x-positive",
+        "episode_slices": [
+          "123:125",
+          "130:132",
+          "219:221",
+          "244:246",
+          "267:268"
+        ]
+      },
+      {
+        "group_id": "red__target-a__front-yz-negative",
+        "episode_slices": [
+          "132:139",
+          "221:222",
+          "265:266"
+        ]
+      },
+      {
+        "group_id": "red__target-a__front-yz-positive",
+        "episode_slices": [
+          "139:146",
+          "222:223",
+          "255:256"
+        ]
+      },
+      {
+        "group_id": "red__target-b__front-nominal",
+        "episode_slices": [
+          "146:151",
+          "223:225",
+          "246:247",
+          "256:257"
+        ]
+      },
+      {
+        "group_id": "red__target-b__front-x-negative",
+        "episode_slices": [
+          "151:159",
+          "263:264"
+        ]
+      },
+      {
+        "group_id": "red__target-b__front-x-positive",
+        "episode_slices": [
+          "159:165",
+          "225:226",
+          "247:249"
+        ]
+      },
+      {
+        "group_id": "red__target-b__front-yz-negative",
+        "episode_slices": [
+          "165:172",
+          "226:228"
+        ]
+      },
+      {
+        "group_id": "red__target-b__front-yz-positive",
+        "episode_slices": [
+          "172:178",
+          "228:231"
+        ]
+      },
+      {
+        "group_id": "red__target-c__front-nominal",
+        "episode_slices": [
+          "178:186",
+          "231:232"
+        ]
+      },
+      {
+        "group_id": "red__target-c__front-x-negative",
+        "episode_slices": [
+          "186:192",
+          "232:233",
+          "249:250",
+          "264:265"
+        ]
+      },
+      {
+        "group_id": "red__target-c__front-x-positive",
+        "episode_slices": [
+          "192:200",
+          "250:251"
+        ]
+      },
+      {
+        "group_id": "red__target-c__front-yz-negative",
+        "episode_slices": [
+          "200:207",
+          "251:252",
+          "269:270"
+        ]
+      },
+      {
+        "group_id": "red__target-c__front-yz-positive",
+        "episode_slices": [
+          "207:212",
+          "233:234",
+          "252:253",
+          "257:259"
+        ]
+      }
+    ],
+    "batch_cycle": [
+      {
+        "blue__target-a__front-nominal": 1,
+        "blue__target-a__front-yz-positive": 1,
+        "blue__target-b__front-yz-negative": 1,
+        "blue__target-c__front-x-positive": 1,
+        "red__target-a__front-x-negative": 1,
+        "red__target-b__front-nominal": 1,
+        "red__target-b__front-yz-positive": 1,
+        "red__target-c__front-yz-negative": 1
+      },
+      {
+        "blue__target-a__front-x-negative": 1,
+        "blue__target-b__front-nominal": 1,
+        "blue__target-b__front-yz-positive": 1,
+        "blue__target-c__front-yz-negative": 1,
+        "red__target-a__front-x-positive": 1,
+        "red__target-b__front-x-negative": 1,
+        "red__target-c__front-nominal": 1,
+        "red__target-c__front-yz-positive": 1
+      },
+      {
+        "blue__target-a__front-x-positive": 1,
+        "blue__target-b__front-x-negative": 1,
+        "blue__target-c__front-nominal": 1,
+        "blue__target-c__front-yz-positive": 1,
+        "red__target-a__front-yz-negative": 1,
+        "red__target-b__front-x-positive": 1,
+        "red__target-c__front-x-negative": 1,
+        "red__target-a__front-nominal": 1
+      },
+      {
+        "blue__target-a__front-yz-negative": 1,
+        "blue__target-b__front-x-positive": 1,
+        "blue__target-c__front-x-negative": 1,
+        "blue__target-a__front-nominal": 1,
+        "red__target-a__front-yz-positive": 1,
+        "red__target-b__front-yz-negative": 1,
+        "red__target-c__front-x-positive": 1,
+        "red__target-a__front-x-negative": 1
+      },
+      {
+        "blue__target-a__front-yz-positive": 1,
+        "blue__target-b__front-yz-negative": 1,
+        "blue__target-c__front-x-positive": 1,
+        "blue__target-a__front-x-negative": 1,
+        "red__target-b__front-nominal": 1,
+        "red__target-b__front-yz-positive": 1,
+        "red__target-c__front-yz-negative": 1,
+        "red__target-a__front-x-positive": 1
+      },
+      {
+        "blue__target-b__front-nominal": 1,
+        "blue__target-b__front-yz-positive": 1,
+        "blue__target-c__front-yz-negative": 1,
+        "blue__target-a__front-x-positive": 1,
+        "red__target-b__front-x-negative": 1,
+        "red__target-c__front-nominal": 1,
+        "red__target-c__front-yz-positive": 1,
+        "red__target-a__front-yz-negative": 1
+      },
+      {
+        "blue__target-b__front-x-negative": 1,
+        "blue__target-c__front-nominal": 1,
+        "blue__target-c__front-yz-positive": 1,
+        "blue__target-a__front-yz-negative": 1,
+        "red__target-b__front-x-positive": 1,
+        "red__target-c__front-x-negative": 1,
+        "red__target-a__front-nominal": 1,
+        "red__target-a__front-yz-positive": 1
+      },
+      {
+        "blue__target-b__front-x-positive": 1,
+        "blue__target-c__front-x-negative": 1,
+        "blue__target-a__front-nominal": 1,
+        "blue__target-a__front-yz-positive": 1,
+        "red__target-b__front-yz-negative": 1,
+        "red__target-c__front-x-positive": 1,
+        "red__target-a__front-x-negative": 1,
+        "red__target-b__front-nominal": 1
+      },
+      {
+        "blue__target-b__front-yz-negative": 1,
+        "blue__target-c__front-x-positive": 1,
+        "blue__target-a__front-x-negative": 1,
+        "blue__target-b__front-nominal": 1,
+        "red__target-b__front-yz-positive": 1,
+        "red__target-c__front-yz-negative": 1,
+        "red__target-a__front-x-positive": 1,
+        "red__target-b__front-x-negative": 1
+      },
+      {
+        "blue__target-b__front-yz-positive": 1,
+        "blue__target-c__front-yz-negative": 1,
+        "blue__target-a__front-x-positive": 1,
+        "blue__target-b__front-x-negative": 1,
+        "red__target-c__front-nominal": 1,
+        "red__target-c__front-yz-positive": 1,
+        "red__target-a__front-yz-negative": 1,
+        "red__target-b__front-x-positive": 1
+      },
+      {
+        "blue__target-c__front-nominal": 1,
+        "blue__target-c__front-yz-positive": 1,
+        "blue__target-a__front-yz-negative": 1,
+        "blue__target-b__front-x-positive": 1,
+        "red__target-c__front-x-negative": 1,
+        "red__target-a__front-nominal": 1,
+        "red__target-a__front-yz-positive": 1,
+        "red__target-b__front-yz-negative": 1
+      },
+      {
+        "blue__target-c__front-x-negative": 1,
+        "blue__target-a__front-nominal": 1,
+        "blue__target-a__front-yz-positive": 1,
+        "blue__target-b__front-yz-negative": 1,
+        "red__target-c__front-x-positive": 1,
+        "red__target-a__front-x-negative": 1,
+        "red__target-b__front-nominal": 1,
+        "red__target-b__front-yz-positive": 1
+      },
+      {
+        "blue__target-c__front-x-positive": 1,
+        "blue__target-a__front-x-negative": 1,
+        "blue__target-b__front-nominal": 1,
+        "blue__target-b__front-yz-positive": 1,
+        "red__target-c__front-yz-negative": 1,
+        "red__target-a__front-x-positive": 1,
+        "red__target-b__front-x-negative": 1,
+        "red__target-c__front-nominal": 1
+      },
+      {
+        "blue__target-c__front-yz-negative": 1,
+        "blue__target-a__front-x-positive": 1,
+        "blue__target-b__front-x-negative": 1,
+        "blue__target-c__front-nominal": 1,
+        "red__target-c__front-yz-positive": 1,
+        "red__target-a__front-yz-negative": 1,
+        "red__target-b__front-x-positive": 1,
+        "red__target-c__front-x-negative": 1
+      },
+      {
+        "blue__target-c__front-yz-positive": 1,
+        "blue__target-a__front-yz-negative": 1,
+        "blue__target-b__front-x-positive": 1,
+        "blue__target-c__front-x-negative": 1,
+        "red__target-a__front-nominal": 1,
+        "red__target-a__front-yz-positive": 1,
+        "red__target-b__front-yz-negative": 1,
+        "red__target-c__front-x-positive": 1
+      }
+    ]
+  },
+  "training": {
+    "seed": 1010,
+    "batch_size": 8,
+    "steps": 200000,
+    "num_workers": 4,
+    "save_checkpoint": true,
+    "save_freq": 20000,
+    "resume": false,
+    "push_to_hub": false,
+    "wandb_enable": false,
+    "log_freq": 100
+  },
+  "validation": {
+    "profile": "training",
+    "split": "validation",
+    "sample_count": 128,
+    "batch_size": 8,
+    "num_workers": 2,
+    "seed": 1010,
+    "minimum_relative_improvement": 0,
+    "require_later_improvement": false
+  },
+  "smoke": {
+    "seed": 1010,
+    "batch_size": 2,
+    "steps": 1,
+    "num_workers": 0,
+    "save_checkpoint": false,
+    "resume": false,
+    "push_to_hub": false,
+    "wandb_enable": false,
+    "log_freq": 1
+  }
+}

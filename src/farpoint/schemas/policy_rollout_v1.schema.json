@@ -29,11 +29,16 @@
         "model_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "dataset": {
           "type": "object", "additionalProperties": false,
-          "required": ["repo_id", "revision", "resolved_commit", "train_episodes", "validation_episodes"],
+          "required": ["repo_id", "revision", "train_episodes", "validation_episodes"],
+          "oneOf": [
+            {"required": ["resolved_commit"], "not": {"required": ["source_tree_sha256"]}},
+            {"required": ["source_tree_sha256"], "not": {"required": ["resolved_commit"]}}
+          ],
           "properties": {
             "repo_id": {"type": "string", "pattern": "^[^/]+/[^/]+$"},
             "revision": {"type": "string", "minLength": 1},
             "resolved_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "source_tree_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
             "train_episodes": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
             "validation_episodes": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"},
             "excluded_test_episodes": {"type": "string", "pattern": "^[0-9]+:[0-9]+$"}
@@ -155,11 +160,22 @@
         "campaign_id": {"type": "string", "minLength": 1},
         "campaign_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "plan_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-        "scene_count": {"const": 20},
-        "evaluated_scene_count": {"type": "integer", "minimum": 1, "maximum": 20},
+        "scene_count": {"type": "integer", "minimum": 1},
+        "evaluated_scene_count": {"type": "integer", "minimum": 1},
         "disjoint": {"const": true},
-        "segment_count": {"type": "integer", "minimum": 1}
-      }
+        "segment_count": {"type": "integer", "minimum": 1},
+        "design": {"enum": ["legacy_plan_holdout", "v020_cell_balanced"]},
+        "replica_index": {"type": "integer", "minimum": 0},
+        "replica_count": {"type": "integer", "minimum": 1},
+        "variation_config": {"type": "string", "minLength": 1},
+        "variation_config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"design": {"const": "v020_cell_balanced"}}, "required": ["design"]},
+          "then": {"required": ["replica_index", "replica_count", "variation_config", "variation_config_sha256"]}
+        }
+      ]
     },
     "scenes": {
       "type": "array", "minItems": 1,
@@ -173,6 +189,8 @@
           "region_band": {"enum": ["core", "middle", "outer"]},
           "yaw_stratum_id": {"type": "string", "minLength": 1},
           "yaw_degrees": {"type": "number", "minimum": 0, "exclusiveMaximum": 90},
+          "target_profile_id": {"type": "string", "minLength": 1},
+          "camera_profile_id": {"type": "string", "minLength": 1},
           "object": {
             "type": "object", "additionalProperties": false,
             "required": ["shape", "dimensions_m", "position_m", "orientation_xyzw", "rgba", "mass_kg"],
@@ -183,6 +201,23 @@
               "orientation_xyzw": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
               "rgba": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
               "mass_kg": {"type": "number", "exclusiveMinimum": 0}
+            }
+          },
+          "target": {
+            "type": "object", "additionalProperties": false,
+            "required": ["position_m", "dimensions_m", "footprint_margin_m"],
+            "properties": {
+              "position_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "dimensions_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}},
+              "footprint_margin_m": {"type": "number", "minimum": 0}
+            }
+          },
+          "front_camera_view": {
+            "type": "object", "additionalProperties": false,
+            "required": ["eye_m", "look_at_m"],
+            "properties": {
+              "eye_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+              "look_at_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}}
             }
           },
           "initial_state": {

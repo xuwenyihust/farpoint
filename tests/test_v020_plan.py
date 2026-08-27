@@ -11,6 +11,7 @@ from farpoint.v020_plan import (
     build_v020_attempt_budget_extension,
     build_v020_pilot_authorization,
     build_v020_continuation_plan,
+    build_v020_holdout_scenes,
     build_v020_plan,
     canonical_sha256,
     load_v020_config,
@@ -360,3 +361,41 @@ def test_v020_authorization_rejects_misaligned_campaign_evidence_lists():
             config=config,
             pad_dimensions_m=[0.09, 0.09, 0.01],
         )
+
+
+def test_v020_holdout_has_one_independent_scene_per_cell_and_two_replicas():
+    config = _config()
+    source_sha = "9" * 64
+    first = build_v020_holdout_scenes(
+        config,
+        project_root=ROOT,
+        source_plan_sha256=source_sha,
+        replica_index=0,
+    )
+    second = build_v020_holdout_scenes(
+        config,
+        project_root=ROOT,
+        source_plan_sha256=source_sha,
+        replica_index=1,
+    )
+    assert len(first) == len(second) == 30
+    assert len(
+        {
+            (
+                row["object_variant_id"],
+                row["target_profile_id"],
+                row["camera_profile_id"],
+            )
+            for row in first
+        }
+    ) == 30
+    assert all(
+        row["target_profile"]["resolved"]["dimensions_m"] == [0.09, 0.09, 0.01]
+        for row in first
+    )
+    assert all(row["front_camera_view"]["eye_m"] for row in first)
+    assert {row["seed"] for row in first}.isdisjoint(row["seed"] for row in second)
+    assert {
+        tuple(row["resolved"]["position_m"][:2]) for row in first
+    }.isdisjoint(tuple(row["resolved"]["position_m"][:2]) for row in second)
+    assert all(row["seed"] >= 2**63 for row in first + second)
