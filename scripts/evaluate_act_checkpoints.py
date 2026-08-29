@@ -149,7 +149,9 @@ def main() -> int:
         )
         checkpoint_config.pretrained_path = str(pretrained_dir)
         checkpoint_config.device = "cuda"
-        policy = make_policy(checkpoint_config, ds_meta=metadata)
+        policy = make_policy(
+            checkpoint_config, ds_meta=metadata, rename_map=spec.get("rename_map")
+        )
         preprocessor, _ = make_pre_post_processors(
             policy_cfg=policy.config, pretrained_path=str(pretrained_dir)
         )
