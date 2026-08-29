@@ -66,6 +66,9 @@ V014_BALANCED_MIX_300K_CONTINUATION_CONFIG = (
 V020_CELL_BALANCED_200K_CONFIG = (
     ROOT / "configs" / "training" / "so101_act_v0_2_0_cell_balanced_200k.json"
 )
+V020_SMOLVLA_UNIFORM_20K_CONFIG = (
+    ROOT / "configs" / "training" / "so101_smolvla_v0_2_0_uniform_20k.json"
+)
 
 
 def test_local_snapshot_tree_hash_binds_paths_sizes_and_contents(tmp_path):
@@ -502,6 +505,27 @@ def test_v020_cell_balanced_200k_binds_candidate_and_all_thirty_cells(tmp_path):
     assert "--steps=200000" in arguments
     assert "--save_freq=20000" in arguments
     assert "--resume=false" in arguments
+
+
+def test_v020_smolvla_binds_base_revision_and_camera_mapping(tmp_path):
+    spec = load_training_spec(V020_SMOLVLA_UNIFORM_20K_CONFIG)
+    assert spec["policy"] == {
+        "type": "smolvla",
+        "device": "cuda",
+        "pretrained_path": "lerobot/smolvla_base",
+        "pretrained_revision": "c83c3163b8ca9b7e67c509fffd9121e66cb96205",
+    }
+    assert spec["rename_map"] == {
+        "observation.images.front": "observation.images.camera1",
+        "observation.images.wrist": "observation.images.camera2",
+    }
+    assert spec["smoke"]["batch_size"] == spec["training"]["batch_size"] == 8
+    arguments = training_arguments(spec, tmp_path / "view", tmp_path / "out", "smoke")
+    assert "--policy.path=lerobot/smolvla_base" in arguments
+    assert (
+        "--rename_map={\"observation.images.front\":\"observation.images.camera1\","
+        "\"observation.images.wrist\":\"observation.images.camera2\"}" in arguments
+    )
 
 
 def test_v014_300k_continuation_resumes_exact_200k_sampler_suffix(tmp_path):

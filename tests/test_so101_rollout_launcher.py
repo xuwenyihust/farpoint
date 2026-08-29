@@ -54,6 +54,10 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
         "FARPOINT_SO101_ASSET": str(asset),
         "FARPOINT_ACT_CHECKPOINT": str(checkpoint),
         "FARPOINT_GIT_COMMIT": "a" * 40,
+        "FARPOINT_POLICY_CAMERA_RENAME_MAP": (
+            "{\"observation.images.front\":\"observation.images.camera1\","
+            "\"observation.images.wrist\":\"observation.images.camera2\"}"
+        ),
         "TEST_POLICY_STARTED": str(tmp_path / "policy-started"),
         "TEST_POLICY_ARGS": str(tmp_path / "policy-args"),
         "TEST_REPORT_ROOT": str(data_root / "run"),
@@ -85,6 +89,11 @@ def test_rollout_launcher_mounts_checkpoint_read_only_and_preserves_arguments(tm
     assert command.count("--enable_cameras") == 1
     policy_arguments = (tmp_path / "policy-args").read_text().splitlines()
     assert policy_arguments[policy_arguments.index("--replan-interval-steps") + 1] == "10"
+    camera_map_index = policy_arguments.index("--camera-rename-map")
+    assert policy_arguments[camera_map_index + 1] == (
+        "{\"observation.images.front\":\"observation.images.camera1\","
+        "\"observation.images.wrist\":\"observation.images.camera2\"}"
+    )
 
 
 def test_rollout_launcher_mounts_frozen_expert_replay_manifest(tmp_path):

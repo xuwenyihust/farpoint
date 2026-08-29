@@ -103,6 +103,11 @@
         "architecture": {"const": "aarch64"}
       }
     },
+    "rename_map": {
+      "type": "object", "minProperties": 1,
+      "propertyNames": {"pattern": "^observation[.]images[.][a-zA-Z0-9_-]+"},
+      "additionalProperties": {"type": "string", "pattern": "^observation[.]images[.][a-zA-Z0-9_-]+"}
+    },
     "policy": {
       "type": "object", "additionalProperties": false,
       "required": ["type", "device"],

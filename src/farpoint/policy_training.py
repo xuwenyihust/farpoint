@@ -267,6 +267,10 @@ def training_arguments(
         else f"--policy.type={spec['policy']['type']}"
     )
     arguments.insert(len(entrypoint) + 5, policy_argument)
+    if spec.get("rename_map"):
+        arguments.append(
+            f"--rename_map={json.dumps(spec['rename_map'], sort_keys=True, separators=(',', ':'))}"
+        )
     if run.get("resume", False):
         if resume_checkpoint is None:
             raise ValueError("resume checkpoint is required by the continuation contract")

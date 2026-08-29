@@ -29,10 +29,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-model-sha256", required=True)
     parser.add_argument("--replan-interval-steps", type=int)
     parser.add_argument("--replay-manifest", type=Path)
+    parser.add_argument("--camera-rename-map", default="{}")
     return parser.parse_args()
 
 
-def load_policy(checkpoint: Path, replan_interval_steps: int | None):
+def load_policy(
+    checkpoint: Path,
+    replan_interval_steps: int | None,
+    camera_rename_map: dict[str, str],
+):
     from lerobot.configs.policies import PreTrainedConfig
     from lerobot.policies.factory import get_policy_class, make_pre_post_processors
 
@@ -59,18 +64,25 @@ def load_policy(checkpoint: Path, replan_interval_steps: int | None):
     declared_camera_features = {
         name for name in config.input_features if name.startswith("observation.images.")
     }
-    camera_features = [
-        feature
-        for feature in (
-            "observation.images.front",
-            "observation.images.wrist",
-        )
-        if feature in declared_camera_features
-    ]
-    if set(camera_features) != declared_camera_features:
-        raise RuntimeError(
-            f"policy checkpoint declares unsupported camera features: {declared_camera_features}"
-        )
+    if camera_rename_map:
+        if len(set(camera_rename_map.values())) != len(camera_rename_map):
+            raise ValueError("camera rename map values must be unique")
+        if not set(camera_rename_map.values()).issubset(declared_camera_features):
+            raise ValueError("camera rename map targets are absent from the policy checkpoint")
+        camera_features = list(camera_rename_map)
+    else:
+        camera_features = [
+            feature
+            for feature in (
+                "observation.images.front",
+                "observation.images.wrist",
+            )
+            if feature in declared_camera_features
+        ]
+        if set(camera_features) != declared_camera_features:
+            raise RuntimeError(
+                f"policy checkpoint declares unsupported camera features: {declared_camera_features}"
+            )
     if not camera_features:
         raise RuntimeError("policy checkpoint declares no camera input features")
     return (
@@ -78,6 +90,7 @@ def load_policy(checkpoint: Path, replan_interval_steps: int | None):
         preprocessor,
         postprocessor,
         camera_features,
+        camera_rename_map,
         {
             "policy_type": config.type,
             "chunk_size": chunk_size,
@@ -85,6 +98,13 @@ def load_policy(checkpoint: Path, replan_interval_steps: int | None):
             "replan_interval_steps": int(config.n_action_steps),
         },
     )
+
+
+def action_queue_depth(policy) -> int:
+    if hasattr(policy, "_action_queue"):
+        return len(policy._action_queue)
+    queues = getattr(policy, "_queues", {})
+    return len(queues.get("action", ()))
 
 
 def reset_components(*components) -> None:
@@ -105,14 +125,20 @@ def main() -> int:
     from lerobot.utils.control_utils import predict_action
 
     replay = ExpertActionReplay(args.replay_manifest) if args.replay_manifest else None
+    camera_rename_map = json.loads(args.camera_rename_map)
+    if not isinstance(camera_rename_map, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in camera_rename_map.items()
+    ):
+        raise ValueError("camera rename map must be a JSON string-to-string object")
     if replay is None:
-        policy, preprocessor, postprocessor, camera_features, execution = load_policy(
-            args.checkpoint, args.replan_interval_steps
+        policy, preprocessor, postprocessor, camera_features, camera_rename_map, execution = (
+            load_policy(args.checkpoint, args.replan_interval_steps, camera_rename_map)
         )
         reset_components(policy, preprocessor, postprocessor)
     else:
         policy = preprocessor = postprocessor = None
         camera_features = replay.camera_features
+        camera_rename_map = {}
         execution = {
             "source": "dataset_replay",
             "replan_interval_steps": args.replan_interval_steps,
@@ -125,6 +151,7 @@ def main() -> int:
         "policy_image_id": os.environ.get("FARPOINT_POLICY_IMAGE_ID", ""),
         "cuda_device": torch.cuda.get_device_name(0),
         "camera_features": camera_features,
+        "camera_rename_map": camera_rename_map,
         "action_execution": execution,
     }
 
@@ -186,9 +213,9 @@ def main() -> int:
                 if image.shape != (480, 640, 3):
                     self.response(400, {"error": "invalid_image_shape"})
                     return
-                observation[feature] = image
+                observation[camera_rename_map.get(feature, feature)] = image
             if replay is None:
-                queue_depth_before = len(getattr(policy, "_action_queue", ()))
+                queue_depth_before = action_queue_depth(policy)
                 action = predict_action(
                     observation,
                     policy,
@@ -204,7 +231,7 @@ def main() -> int:
                     "source": f"{policy.config.type}_policy",
                     "inference_refreshed": queue_depth_before == 0,
                     "queue_depth_before": queue_depth_before,
-                    "queue_depth_after": len(getattr(policy, "_action_queue", ())),
+                    "queue_depth_after": action_queue_depth(policy),
                 }
             else:
                 values, action_execution = replay.next_action()

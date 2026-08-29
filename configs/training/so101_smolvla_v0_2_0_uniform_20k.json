@@ -18,9 +18,13 @@
     }
   },
   "environment": {"lerobot_version": "0.4.4", "requires_cuda": true, "architecture": "aarch64"},
+  "rename_map": {
+    "observation.images.front": "observation.images.camera1",
+    "observation.images.wrist": "observation.images.camera2"
+  },
   "policy": {"type": "smolvla", "device": "cuda", "pretrained_path": "lerobot/smolvla_base", "pretrained_revision": "c83c3163b8ca9b7e67c509fffd9121e66cb96205"},
   "sampling": {"kind": "uniform_frames", "episode_slices": ["0:270"], "expected_episode_count": 270, "expected_frame_count": 230101},
   "training": {"seed": 1010, "batch_size": 8, "steps": 20000, "num_workers": 4, "save_checkpoint": true, "save_freq": 5000, "resume": false, "push_to_hub": false, "wandb_enable": false, "log_freq": 100},
   "validation": {"profile": "training", "split": "validation", "sample_count": 128, "batch_size": 4, "num_workers": 2, "seed": 1010, "minimum_relative_improvement": 0, "require_later_improvement": false},
-  "smoke": {"seed": 1010, "batch_size": 1, "steps": 1, "num_workers": 0, "save_checkpoint": false, "resume": false, "push_to_hub": false, "wandb_enable": false, "log_freq": 1}
+  "smoke": {"seed": 1010, "batch_size": 8, "steps": 1, "num_workers": 0, "save_checkpoint": false, "resume": false, "push_to_hub": false, "wandb_enable": false, "log_freq": 1}
 }
