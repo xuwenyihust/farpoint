@@ -706,3 +706,15 @@ def test_v020_holdout_builder_materializes_30_profile_balanced_scenes(tmp_path):
     assert {row["seed"] for row in spec["scenes"]}.isdisjoint(
         trial["seed"] for trial in plan["trials"]
     )
+
+
+
+def test_policy_rollout_contract_accepts_smolvla_without_weakening_act():
+    act = load_rollout_spec(CONFIG)
+    smolvla = json.loads(json.dumps(act))
+    smolvla["checkpoint"]["policy_type"] = "smolvla"
+
+    assert validate_contract(act) == []
+    assert validate_contract(smolvla) == []
+    smolvla["checkpoint"]["policy_type"] = "unknown"
+    assert validate_contract(smolvla)

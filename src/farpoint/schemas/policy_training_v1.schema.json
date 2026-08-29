@@ -103,17 +103,30 @@
         "architecture": {"const": "aarch64"}
       }
     },
+    "rename_map": {
+      "type": "object", "minProperties": 1,
+      "propertyNames": {"pattern": "^observation[.]images[.][a-zA-Z0-9_-]+"},
+      "additionalProperties": {"type": "string", "pattern": "^observation[.]images[.][a-zA-Z0-9_-]+"}
+    },
     "policy": {
       "type": "object", "additionalProperties": false,
       "required": ["type", "device"],
       "properties": {
-        "type": {"const": "act"},
+        "type": {"enum": ["act", "smolvla"]},
         "device": {"const": "cuda"},
+        "pretrained_path": {"type": "string", "pattern": "^[^\/]+\/[^\/]+$"},
+        "pretrained_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "vision_backbone": {"type": "string", "minLength": 1},
         "pretrained_backbone_weights": {"type": "string", "minLength": 1},
         "chunk_size": {"type": "integer", "minimum": 1},
         "n_action_steps": {"type": "integer", "minimum": 1}
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "smolvla"}}},
+          "then": {"required": ["pretrained_path", "pretrained_revision"]}
+        }
+      ]
     },
     "sampling": {
       "type": "object",

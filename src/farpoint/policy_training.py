@@ -248,7 +248,6 @@ def training_arguments(
         f"--dataset.root={dataset_root}",
         f"--dataset.episodes={json.dumps(episodes, separators=(',', ':'))}",
         f"--dataset.video_backend={spec['dataset']['video_backend']}",
-        f"--policy.type={spec['policy']['type']}",
         f"--policy.device={spec['policy']['device']}",
         "--policy.push_to_hub=false",
         f"--output_dir={output_dir}",
@@ -261,6 +260,17 @@ def training_arguments(
         f"--seed={run['seed']}",
         f"--wandb.enable={str(run['wandb_enable']).lower()}",
     ]
+    pretrained_path = spec["policy"].get("pretrained_path")
+    policy_argument = (
+        f"--policy.path={pretrained_path}"
+        if pretrained_path
+        else f"--policy.type={spec['policy']['type']}"
+    )
+    arguments.insert(len(entrypoint) + 5, policy_argument)
+    if spec.get("rename_map"):
+        arguments.append(
+            f"--rename_map={json.dumps(spec['rename_map'], sort_keys=True, separators=(',', ':'))}"
+        )
     if run.get("resume", False):
         if resume_checkpoint is None:
             raise ValueError("resume checkpoint is required by the continuation contract")

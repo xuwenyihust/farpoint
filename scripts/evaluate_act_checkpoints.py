@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score ACT checkpoints on a deterministic validation sample without touching test."""
+"""Score LeRobot policy checkpoints on a deterministic validation sample."""
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preflight-report", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--profile", choices=("pilot", "training"))
+    parser.add_argument("--allow-evaluator-commit-mismatch", action="store_true")
     return parser.parse_args()
 
 
@@ -72,8 +73,13 @@ def main() -> int:
 
     git_commit = os.environ.get("FARPOINT_GIT_COMMIT", "")
     image_id = os.environ.get("FARPOINT_TRAINING_IMAGE_ID", "")
-    if git_commit != preflight["farpoint_git_commit"]:
+    training_git_commit = preflight["farpoint_git_commit"]
+    if git_commit != training_git_commit and not args.allow_evaluator_commit_mismatch:
         raise RuntimeError("validation commit differs from preflight")
+    if len(git_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in git_commit
+    ):
+        raise RuntimeError("validation commit must be a full lowercase Git SHA")
     if image_id != preflight["training_image_id"]:
         raise RuntimeError("validation image differs from preflight")
     if not torch.cuda.is_available():
@@ -149,13 +155,15 @@ def main() -> int:
         )
         checkpoint_config.pretrained_path = str(pretrained_dir)
         checkpoint_config.device = "cuda"
-        policy = make_policy(checkpoint_config, ds_meta=metadata)
+        policy = make_policy(
+            checkpoint_config, ds_meta=metadata, rename_map=spec.get("rename_map")
+        )
         preprocessor, _ = make_pre_post_processors(
             policy_cfg=policy.config, pretrained_path=str(pretrained_dir)
         )
-        # ACT's teacher-forced VAE objective is only populated in training mode.
-        # inference_mode below still disables gradients and optimizer/state writes;
-        # a fresh policy is loaded for every checkpoint and never saved again.
+        # Training objectives are populated in training mode. inference_mode below
+        # still disables gradients and optimizer/state writes; a fresh policy is
+        # loaded for every checkpoint and never saved again.
         policy.train()
         totals: dict[str, float] = {}
         sample_total = 0
@@ -193,7 +201,9 @@ def main() -> int:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "experiment_id": spec["experiment_id"],
         "training_profile": profile,
-        "farpoint_git_commit": git_commit,
+        "farpoint_git_commit": training_git_commit,
+        "evaluation_git_commit": git_commit,
+        "evaluation_commit_mismatch": git_commit != training_git_commit,
         "training_image_id": image_id,
         "config_sha256": canonical_sha256(spec),
         "environment": {
@@ -218,7 +228,7 @@ def main() -> int:
         },
         "checkpoints": sorted(results, key=lambda result: result["step"]),
         "selection": {
-            "metric": "mean_act_training_objective",
+            "metric": f"mean_{spec['policy']['type']}_training_objective",
             "best_step": best["step"],
             "best_checkpoint": best["checkpoint"],
             "best_mean_loss": best["mean_loss"],
@@ -229,7 +239,7 @@ def main() -> int:
             ),
         },
         "interpretation": (
-            "Offline teacher-forced ACT loss on a fixed validation sample; "
+            f"Offline teacher-forced {spec['policy']['type']} loss on a fixed validation sample; "
             "this is not simulator rollout success."
         ),
     }

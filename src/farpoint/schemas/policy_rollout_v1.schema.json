@@ -21,7 +21,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["policy_type", "training_run_id", "training_git_commit", "training_image_id", "step", "model_sha256", "dataset"],
       "properties": {
-        "policy_type": {"const": "act"},
+        "policy_type": {"enum": ["act", "smolvla"]},
         "training_run_id": {"type": "string", "minLength": 1},
         "training_git_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "training_image_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},

@@ -65,6 +65,10 @@ POLICY_REPLAN_ARGS=()
 if [[ -n "${REPLAN_INTERVAL_STEPS}" ]]; then
   POLICY_REPLAN_ARGS+=(--replan-interval-steps "${REPLAN_INTERVAL_STEPS}")
 fi
+POLICY_CAMERA_ARGS=()
+if [[ -n "${FARPOINT_POLICY_CAMERA_RENAME_MAP:-}" ]]; then
+  POLICY_CAMERA_ARGS+=(--camera-rename-map "${FARPOINT_POLICY_CAMERA_RENAME_MAP}")
+fi
 REPLAY_MANIFEST="${FARPOINT_ACTION_REPLAY_MANIFEST:-}"
 POLICY_REPLAY_ARGS=()
 POLICY_REPLAY_MOUNT=()
@@ -130,6 +134,9 @@ policy_docker_args+=(
 )
 if (( ${#POLICY_REPLAN_ARGS[@]} )); then
   policy_docker_args+=("${POLICY_REPLAN_ARGS[@]}")
+fi
+if (( ${#POLICY_CAMERA_ARGS[@]} )); then
+  policy_docker_args+=("${POLICY_CAMERA_ARGS[@]}")
 fi
 if (( ${#POLICY_REPLAY_ARGS[@]} )); then
   policy_docker_args+=("${POLICY_REPLAY_ARGS[@]}")
