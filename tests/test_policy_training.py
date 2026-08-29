@@ -720,3 +720,30 @@ def test_training_image_preserves_ngc_cuda_torch_builds():
     assert "m.version('torch')" in dockerfile
     assert "m.version('torchvision')" in dockerfile
     assert "Version(m.version('torch')) < Version('2.11.0')" in dockerfile
+
+
+def test_v020_smolvla_contract_pins_base_model_and_uses_official_path(tmp_path):
+    path = ROOT / "configs/training/so101_smolvla_v0_2_0_uniform_20k.json"
+    spec = load_training_spec(path)
+
+    assert validate_contract(spec) == []
+    assert spec["policy"] == {
+        "type": "smolvla",
+        "device": "cuda",
+        "pretrained_path": "lerobot/smolvla_base",
+        "pretrained_revision": "c83c3163b8ca9b7e67c509fffd9121e66cb96205",
+    }
+    assert spec["dataset"]["splits"] == {"train": "0:270", "validation": "270:300"}
+    assert spec["sampling"] == {
+        "kind": "uniform_frames",
+        "episode_slices": ["0:270"],
+        "expected_episode_count": 270,
+        "expected_frame_count": 230101,
+    }
+    arguments = training_arguments(spec, tmp_path / "view", tmp_path / "out", "training")
+    assert "--policy.path=lerobot/smolvla_base" in arguments
+    assert not any(argument.startswith("--policy.type=") for argument in arguments)
+    assert "--steps=20000" in arguments
+    assert "--save_freq=5000" in arguments
+    dockerfile = (ROOT / "docker" / "so101-lerobot-training" / "Dockerfile").read_text()
+    assert "lerobot${LEROBOT_EXTRAS}==${LEROBOT_VERSION}" in dockerfile

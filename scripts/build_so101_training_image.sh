@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="${FARPOINT_SO101_TRAINING_IMAGE:-farpoint-so101-lerobot-training:0.4.4}"
+LEROBOT_EXTRAS="${FARPOINT_LEROBOT_EXTRAS:-}"
 
 if [[ "$(uname -m)" != "aarch64" ]]; then
   echo "SO-101 training image must be built on DGX Spark (aarch64), got $(uname -m)" >&2
@@ -11,6 +12,7 @@ fi
 
 docker build \
   --pull \
+  --build-arg "LEROBOT_EXTRAS=${LEROBOT_EXTRAS}" \
   --file "${PROJECT_ROOT}/docker/so101-lerobot-training/Dockerfile" \
   --tag "${IMAGE}" \
   "${PROJECT_ROOT}"

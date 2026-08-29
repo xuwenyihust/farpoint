@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve one local ACT checkpoint to an isolated Isaac rollout container."""
+"""Serve one local LeRobot policy checkpoint to an isolated Isaac rollout container."""
 
 from __future__ import annotations
 
@@ -69,16 +69,17 @@ def load_policy(checkpoint: Path, replan_interval_steps: int | None):
     ]
     if set(camera_features) != declared_camera_features:
         raise RuntimeError(
-            f"ACT checkpoint declares unsupported camera features: {declared_camera_features}"
+            f"policy checkpoint declares unsupported camera features: {declared_camera_features}"
         )
     if not camera_features:
-        raise RuntimeError("ACT checkpoint declares no camera input features")
+        raise RuntimeError("policy checkpoint declares no camera input features")
     return (
         policy,
         preprocessor,
         postprocessor,
         camera_features,
         {
+            "policy_type": config.type,
             "chunk_size": chunk_size,
             "checkpoint_n_action_steps": checkpoint_steps,
             "replan_interval_steps": int(config.n_action_steps),
@@ -187,7 +188,7 @@ def main() -> int:
                     return
                 observation[feature] = image
             if replay is None:
-                queue_depth_before = len(policy._action_queue)
+                queue_depth_before = len(getattr(policy, "_action_queue", ()))
                 action = predict_action(
                     observation,
                     policy,
@@ -200,10 +201,10 @@ def main() -> int:
                 )
                 values = action.detach().cpu().numpy().reshape(-1)
                 action_execution = {
-                    "source": "act_policy",
+                    "source": f"{policy.config.type}_policy",
                     "inference_refreshed": queue_depth_before == 0,
                     "queue_depth_before": queue_depth_before,
-                    "queue_depth_after": len(policy._action_queue),
+                    "queue_depth_after": len(getattr(policy, "_action_queue", ())),
                 }
             else:
                 values, action_execution = replay.next_action()

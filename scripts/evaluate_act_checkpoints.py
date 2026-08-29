@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score ACT checkpoints on a deterministic validation sample without touching test."""
+"""Score LeRobot policy checkpoints on a deterministic validation sample."""
 
 from __future__ import annotations
 
@@ -153,9 +153,9 @@ def main() -> int:
         preprocessor, _ = make_pre_post_processors(
             policy_cfg=policy.config, pretrained_path=str(pretrained_dir)
         )
-        # ACT's teacher-forced VAE objective is only populated in training mode.
-        # inference_mode below still disables gradients and optimizer/state writes;
-        # a fresh policy is loaded for every checkpoint and never saved again.
+        # Training objectives are populated in training mode. inference_mode below
+        # still disables gradients and optimizer/state writes; a fresh policy is
+        # loaded for every checkpoint and never saved again.
         policy.train()
         totals: dict[str, float] = {}
         sample_total = 0
@@ -218,7 +218,7 @@ def main() -> int:
         },
         "checkpoints": sorted(results, key=lambda result: result["step"]),
         "selection": {
-            "metric": "mean_act_training_objective",
+            "metric": f"mean_{spec['policy']['type']}_training_objective",
             "best_step": best["step"],
             "best_checkpoint": best["checkpoint"],
             "best_mean_loss": best["mean_loss"],
@@ -229,7 +229,7 @@ def main() -> int:
             ),
         },
         "interpretation": (
-            "Offline teacher-forced ACT loss on a fixed validation sample; "
+            f"Offline teacher-forced {spec['policy']['type']} loss on a fixed validation sample; "
             "this is not simulator rollout success."
         ),
     }

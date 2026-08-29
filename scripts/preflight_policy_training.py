@@ -138,6 +138,18 @@ def main() -> int:
     av.codec.Codec("av1", "r")
 
     source_spec = dataset_spec.get("source", {"kind": "hub"})
+    policy_source = None
+    if spec["policy"].get("pretrained_path"):
+        model_info = HfApi().model_info(spec["policy"]["pretrained_path"])
+        expected_revision = spec["policy"]["pretrained_revision"]
+        if model_info.sha != expected_revision:
+            raise RuntimeError(
+                f"pretrained policy revision moved: {model_info.sha} != {expected_revision}"
+            )
+        policy_source = {
+            "repo_id": spec["policy"]["pretrained_path"],
+            "resolved_commit": model_info.sha,
+        }
     if source_spec["kind"] == "hub":
         hub_info = HfApi().dataset_info(
             dataset_spec["repo_id"], revision=dataset_spec["revision"]
@@ -273,6 +285,8 @@ def main() -> int:
             "command": command,
         },
     }
+    if policy_source is not None:
+        report["policy_source"] = policy_source
     if resume_binding is not None:
         report["continuation"] = resume_binding
     if source_binding["kind"] == "hub":
