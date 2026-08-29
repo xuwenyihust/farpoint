@@ -179,6 +179,8 @@ def test_v010_formal_contract_selects_validation_without_dataset_test_split():
     assert "evaluate_act_checkpoints.py" in runner
     evaluator = (ROOT / "scripts" / "evaluate_act_checkpoints.py").read_text()
     assert 'rename_map=spec.get("rename_map")' in evaluator
+    assert "--allow-evaluator-commit-mismatch" in evaluator
+    assert '"evaluation_git_commit": git_commit' in evaluator
     assert '"${SOURCE_ROOT}" != "/workspace/source-dataset"' in runner
     container_runner = (ROOT / "scripts" / "run_so101_training.sh").read_text()
     assert '"${IMMUTABLE_SOURCE_ROOT}:/workspace/source-dataset:ro"' in container_runner

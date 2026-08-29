@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preflight-report", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--profile", choices=("pilot", "training"))
+    parser.add_argument("--allow-evaluator-commit-mismatch", action="store_true")
     return parser.parse_args()
 
 
@@ -72,8 +73,13 @@ def main() -> int:
 
     git_commit = os.environ.get("FARPOINT_GIT_COMMIT", "")
     image_id = os.environ.get("FARPOINT_TRAINING_IMAGE_ID", "")
-    if git_commit != preflight["farpoint_git_commit"]:
+    training_git_commit = preflight["farpoint_git_commit"]
+    if git_commit != training_git_commit and not args.allow_evaluator_commit_mismatch:
         raise RuntimeError("validation commit differs from preflight")
+    if len(git_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in git_commit
+    ):
+        raise RuntimeError("validation commit must be a full lowercase Git SHA")
     if image_id != preflight["training_image_id"]:
         raise RuntimeError("validation image differs from preflight")
     if not torch.cuda.is_available():
@@ -195,7 +201,9 @@ def main() -> int:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "experiment_id": spec["experiment_id"],
         "training_profile": profile,
-        "farpoint_git_commit": git_commit,
+        "farpoint_git_commit": training_git_commit,
+        "evaluation_git_commit": git_commit,
+        "evaluation_commit_mismatch": git_commit != training_git_commit,
         "training_image_id": image_id,
         "config_sha256": canonical_sha256(spec),
         "environment": {
